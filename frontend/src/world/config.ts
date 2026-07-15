@@ -136,10 +136,19 @@ export interface ActorTelemetry {
   distanceTravelled: number;
 }
 
+export interface ModelLoadStats {
+  waiting: number;
+  active: number;
+  ready: number;
+  failed: number;
+  peakActive: number;
+  limit: number;
+}
+
 export interface WorldDebugSnapshot {
   collisionCount: number;
   staticOverlaps: number;
   actorOverlaps: number;
+  models: ModelLoadStats;
   actors: Array<ActorTelemetry & { teamId: number }>;
 }
-

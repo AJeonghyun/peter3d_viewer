@@ -6,8 +6,9 @@ import { Physics } from '@react-three/rapier';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import type { Team } from '../types/api';
-import type { ActorTelemetry } from './config';
+import type { ActorTelemetry, ModelLoadStats } from './config';
 import { PeterActor } from './PeterActor';
+import { ModelLoadPriority, ModelLoadQueueProvider } from './modelLoadQueue';
 import { WorldEnvironment, WorldPhysicsColliders } from './WorldEnvironment';
 import { detectWorldQuality } from './quality';
 import type { WorldQualityProfile } from './quality';
@@ -17,8 +18,10 @@ interface GalileeCanvasProps {
   selectionRef: RefObject<number | null>;
   telemetry: RefObject<Map<number, ActorTelemetry>>;
   collisionCount: RefObject<number>;
+  modelLoadStats: RefObject<ModelLoadStats>;
   onSelect: (teamId: number) => void;
   onReady: () => void;
+  onModelLoadProgress: (stats: ModelLoadStats) => void;
 }
 
 function SceneReady({ onReady }: { onReady: () => void }) {
@@ -128,7 +131,7 @@ interface PhysicsWorldProps extends Omit<GalileeCanvasProps, 'selectionRef'> {
 
 const PhysicsWorld = memo(function PhysicsWorld(props: PhysicsWorldProps) {
   return (
-    <Physics gravity={[0, 0, 0]} timeStep="vary" interpolate>
+    <Physics gravity={[0, 0, 0]} timeStep={props.quality.physicsTimeStep} interpolate>
       <WorldPhysicsColliders />
       {props.teams.map((team) => (
         <PeterActor
@@ -139,6 +142,8 @@ const PhysicsWorld = memo(function PhysicsWorld(props: PhysicsWorldProps) {
           collisionCount={props.collisionCount}
           onSelect={props.onSelect}
           castShadows={props.quality.characterShadows}
+          animationFps={props.quality.animationFps}
+          steeringFps={props.quality.steeringFps}
         />
       ))}
       <SceneReady onReady={props.onReady} />
@@ -151,9 +156,16 @@ const SceneContent = memo(function SceneContent(props: GalileeCanvasProps & { qu
     <>
       <color attach="background" args={['#173c4b']} />
       <fogExp2 attach="fog" args={['#173c4b', 0.028]} />
-      <WorldEnvironment quality={props.quality} />
-      <PhysicsWorld {...props} />
-      <CameraRig selectionRef={props.selectionRef} telemetry={props.telemetry} />
+      <ModelLoadQueueProvider
+        limit={props.quality.modelLoadConcurrency}
+        statsRef={props.modelLoadStats}
+        onStatsChange={props.onModelLoadProgress}
+      >
+        <WorldEnvironment quality={props.quality} />
+        <PhysicsWorld {...props} />
+        <CameraRig selectionRef={props.selectionRef} telemetry={props.telemetry} />
+        <ModelLoadPriority selectionRef={props.selectionRef} />
+      </ModelLoadQueueProvider>
     </>
   );
 });
@@ -176,11 +188,11 @@ export const GalileeCanvas = memo(function GalileeCanvas(props: GalileeCanvasPro
       aria-label="갈릴리 호숫가 3D 장면"
       camera={{ fov: 40, near: 0.1, far: 100, position: [0, 13.2, 18.5] }}
       dpr={[1, quality.maxDpr]}
-      shadows
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
+      shadows={quality.characterShadows}
+      gl={{ antialias: quality.antialias, powerPreference: 'high-performance' }}
       onCreated={({ gl }) => {
         gl.domElement.dataset.quality = quality.tier;
-        gl.shadowMap.enabled = true;
+        gl.shadowMap.enabled = quality.characterShadows;
         gl.shadowMap.type = quality.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
         gl.outputColorSpace = THREE.SRGBColorSpace;
         gl.toneMapping = THREE.ACESFilmicToneMapping;

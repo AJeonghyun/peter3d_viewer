@@ -1,8 +1,7 @@
-import { memo, useLayoutEffect, useMemo, useRef } from 'react';
+import { lazy, memo, Suspense, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import { CuboidCollider, CylinderCollider, RigidBody } from '@react-three/rapier';
-import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import groundTextureUrl from '../../../static/assets/galilee-ground-v1.png';
 import {
@@ -12,6 +11,8 @@ import {
   seeded,
 } from './config';
 import type { WorldQualityProfile } from './quality';
+
+const WorldPostprocessing = lazy(() => import('./WorldPostprocessing'));
 
 const waterVertexShader = `
   uniform float time;
@@ -428,10 +429,9 @@ export const WorldEnvironment = memo(function WorldEnvironment({ quality }: { qu
       <RocksAndBushes />
       <GroundDetails />
       {quality.postprocessing && (
-        <EffectComposer multisampling={0} enableNormalPass={false}>
-          <Bloom intensity={0.5} luminanceThreshold={0.68} luminanceSmoothing={0.3} mipmapBlur />
-          <Vignette offset={0.18} darkness={0.52} eskil={false} />
-        </EffectComposer>
+        <Suspense fallback={null}>
+          <WorldPostprocessing />
+        </Suspense>
       )}
     </>
   );

@@ -1,7 +1,7 @@
-import { Component, memo, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ErrorInfo, ReactNode, RefObject } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useAnimations, useGLTF } from '@react-three/drei';
+import { useGLTF } from '@react-three/drei';
 import { CapsuleCollider, RigidBody } from '@react-three/rapier';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -21,6 +21,7 @@ import {
   seeded,
 } from './config';
 import type { ActorTelemetry } from './config';
+import { useModelLoadPermit } from './modelLoadQueue';
 
 interface PeterActorProps {
   team: Team;
@@ -29,11 +30,14 @@ interface PeterActorProps {
   collisionCount: RefObject<number>;
   onSelect: (teamId: number) => void;
   castShadows: boolean;
+  animationFps: number;
+  steeringFps: number;
 }
 
 interface ModelBoundaryProps {
   children: ReactNode;
   fallback: ReactNode;
+  onFailure: () => void;
 }
 
 class ModelErrorBoundary extends Component<ModelBoundaryProps, { failed: boolean }> {
@@ -45,6 +49,7 @@ class ModelErrorBoundary extends Component<ModelBoundaryProps, { failed: boolean
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.warn('GLB 모델을 불러오지 못해 데모 캐릭터를 사용합니다.', error, info.componentStack);
+    this.props.onFailure();
   }
 
   render() {
@@ -82,6 +87,7 @@ function RiggedPeter({
   selectionRef,
   onReady,
   castShadows,
+  animationFps,
 }: {
   teamId: number;
   url: string;
@@ -89,8 +95,9 @@ function RiggedPeter({
   selectionRef: RefObject<number | null>;
   onReady: () => void;
   castShadows: boolean;
+  animationFps: number;
 }) {
-  const { scene, animations } = useGLTF(url);
+  const { scene, animations } = useGLTF(url, '/draco/');
   const clone = useMemo(() => {
     const result = cloneSkeleton(scene);
     result.traverse((object) => {
@@ -118,12 +125,13 @@ function RiggedPeter({
       offset: new THREE.Vector3(-center.x, -bounds.min.y, -center.z),
     };
   }, [clip, clone]);
-  const { actions } = useAnimations(animations, clone);
+  const mixer = useMemo(() => new THREE.AnimationMixer(clone), [clone]);
   const walkAction = useRef<THREE.AnimationAction | null>(null);
   const animationPaused = useRef(false);
+  const animationElapsed = useRef(seeded(teamId, 510) / animationFps);
 
   useEffect(() => {
-    const action = clip ? actions[clip.name] : undefined;
+    const action = clip ? mixer.clipAction(clip, clone) : undefined;
     if (action && clip) {
       action.enabled = true;
       action.clampWhenFinished = false;
@@ -138,16 +146,24 @@ function RiggedPeter({
       walkAction.current = null;
       animationPaused.current = false;
       action?.stop();
+      if (clip) mixer.uncacheClip(clip);
+      mixer.uncacheRoot(clone);
     };
-  }, [actions, clip, onReady, speed]);
+  }, [clip, clone, mixer, onReady, speed]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     const action = walkAction.current;
     const shouldPause = selectionRef.current === teamId;
     if (action && shouldPause !== animationPaused.current) {
       action.paused = shouldPause;
       animationPaused.current = shouldPause;
     }
+    if (!action || shouldPause) return;
+    animationElapsed.current += Math.min(delta, 0.1);
+    const interval = 1 / animationFps;
+    if (animationElapsed.current < interval) return;
+    mixer.update(Math.min(animationElapsed.current, 0.1));
+    animationElapsed.current %= interval;
   });
 
   useEffect(() => {
@@ -162,6 +178,50 @@ function RiggedPeter({
     <group scale={fit.scale}>
       <primitive object={clone} position={fit.offset} />
     </group>
+  );
+}
+
+function QueuedRiggedPeter({
+  teamId,
+  url,
+  speed,
+  selectionRef,
+  onReady,
+  castShadows,
+  animationFps,
+  fallback,
+}: {
+  teamId: number;
+  url: string;
+  speed: number;
+  selectionRef: RefObject<number | null>;
+  onReady: () => void;
+  castShadows: boolean;
+  animationFps: number;
+  fallback: ReactNode;
+}) {
+  const { permitted, markSettled } = useModelLoadPermit(teamId, url);
+  const markReady = useCallback(() => {
+    markSettled('ready');
+    onReady();
+  }, [markSettled, onReady]);
+  const markFailed = useCallback(() => markSettled('failed'), [markSettled]);
+
+  if (!permitted) return fallback;
+  return (
+    <ModelErrorBoundary key={url} fallback={fallback} onFailure={markFailed}>
+      <Suspense fallback={fallback}>
+        <RiggedPeter
+          teamId={teamId}
+          url={url}
+          speed={speed}
+          selectionRef={selectionRef}
+          onReady={markReady}
+          castShadows={castShadows}
+          animationFps={animationFps}
+        />
+      </Suspense>
+    </ModelErrorBoundary>
   );
 }
 
@@ -285,7 +345,16 @@ function steerAroundObstacles(
 
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 
-function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, onSelect, castShadows }: PeterActorProps) {
+function PeterActorComponent({
+  team,
+  selectionRef,
+  telemetry,
+  collisionCount,
+  onSelect,
+  castShadows,
+  animationFps,
+  steeringFps,
+}: PeterActorProps) {
   const body = useRef<RapierRigidBody>(null);
   const visual = useRef<THREE.Group>(null);
   const label = useRef<THREE.Sprite>(null);
@@ -309,12 +378,18 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
     lockedPosition: new THREE.Vector3(),
     selected: false,
     distance: 0,
+    steeringElapsed: seeded(team.id, 520) / steeringFps,
+  });
+  const telemetryValue = useRef<ActorTelemetry>({
+    x: initialPosition.x,
+    z: initialPosition.z,
+    distanceTravelled: 0,
   });
   const [modelReady, setModelReady] = useState(false);
   const markModelReady = useMemo(() => () => setModelReady(true), []);
 
   useEffect(() => {
-    telemetry.current.set(team.id, { x: initialPosition.x, z: initialPosition.z, distanceTravelled: 0 });
+    telemetry.current.set(team.id, telemetryValue.current);
     return () => { telemetry.current.delete(team.id); };
   }, [initialPosition, team.id, telemetry]);
 
@@ -338,24 +413,31 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
       state.desired.set(camera.position.x - position.x, 0, camera.position.z - position.z);
       if (state.desired.lengthSq() > 0.0001) state.desired.normalize();
     } else {
+      if (state.selected) state.steeringElapsed = 1 / steeringFps;
       state.selected = false;
-      state.timer -= delta;
-      if (state.timer <= 0) {
-        state.step += 1;
-        state.turnRate = (seeded(team.id, 203 + state.step * 2) - 0.5) * 0.9;
-        state.timer = 1.35 + seeded(team.id, 204 + state.step * 2) * 2.4;
+      state.steeringElapsed += Math.min(delta, 0.1);
+      const steeringInterval = 1 / steeringFps;
+      if (state.steeringElapsed >= steeringInterval) {
+        const steeringDelta = Math.min(state.steeringElapsed, 0.12);
+        state.steeringElapsed %= steeringInterval;
+        state.timer -= steeringDelta;
+        if (state.timer <= 0) {
+          state.step += 1;
+          state.turnRate = (seeded(team.id, 203 + state.step * 2) - 0.5) * 0.9;
+          state.timer = 1.35 + seeded(team.id, 204 + state.step * 2) * 2.4;
+        }
+        state.angle += state.turnRate * steeringDelta;
+        const desired = steerAroundObstacles(
+          position,
+          state.desired.set(Math.sin(state.angle), 0, Math.cos(state.angle)),
+          state.avoidance,
+          team.id,
+          telemetry.current,
+        );
+        const desiredVelocity = desired.multiplyScalar(speed);
+        state.velocity.lerp(desiredVelocity, 1 - Math.exp(-1.8 * steeringDelta));
+        rigidBody.setLinvel({ x: state.velocity.x, y: 0, z: state.velocity.z }, true);
       }
-      state.angle += state.turnRate * delta;
-      const desired = steerAroundObstacles(
-        position,
-        state.desired.set(Math.sin(state.angle), 0, Math.cos(state.angle)),
-        state.avoidance,
-        team.id,
-        telemetry.current,
-      );
-      const desiredVelocity = desired.multiplyScalar(speed);
-      state.velocity.lerp(desiredVelocity, 1 - Math.exp(-1.8 * delta));
-      rigidBody.setLinvel({ x: state.velocity.x, y: 0, z: state.velocity.z }, true);
     }
 
     const facingDirection = isSelected ? state.desired : state.velocity;
@@ -371,11 +453,9 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
 
     state.distance += Math.hypot(position.x - state.previous.x, position.z - state.previous.z);
     state.previous.copy(position);
-    telemetry.current.set(team.id, {
-      x: position.x,
-      z: position.z,
-      distanceTravelled: state.distance,
-    });
+    telemetryValue.current.x = position.x;
+    telemetryValue.current.z = position.z;
+    telemetryValue.current.distanceTravelled = state.distance;
 
     if (visual.current) {
       if (lastSelection.current !== selectedTeamId) {
@@ -433,18 +513,16 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
       </mesh>
       <group ref={visual} scale={1}>
         {team.model_url ? (
-          <ModelErrorBoundary key={team.model_url} fallback={demo}>
-            <Suspense fallback={demo}>
-              <RiggedPeter
-                teamId={team.id}
-                url={team.model_url}
-                speed={speed}
-                selectionRef={selectionRef}
-                onReady={markModelReady}
-                castShadows={castShadows}
-              />
-            </Suspense>
-          </ModelErrorBoundary>
+          <QueuedRiggedPeter
+            teamId={team.id}
+            url={team.model_url}
+            speed={speed}
+            selectionRef={selectionRef}
+            onReady={markModelReady}
+            castShadows={castShadows}
+            animationFps={animationFps}
+            fallback={demo}
+          />
         ) : demo}
         <TeamLabel name={team.name} color={color} visible={selectionRef.current === null} spriteRef={label} />
       </group>
@@ -461,7 +539,9 @@ function actorsAreEqual(previous: PeterActorProps, next: PeterActorProps) {
     && previous.telemetry === next.telemetry
     && previous.collisionCount === next.collisionCount
     && previous.onSelect === next.onSelect
-    && previous.castShadows === next.castShadows;
+    && previous.castShadows === next.castShadows
+    && previous.animationFps === next.animationFps
+    && previous.steeringFps === next.steeringFps;
 }
 
 export const PeterActor = memo(PeterActorComponent, actorsAreEqual);

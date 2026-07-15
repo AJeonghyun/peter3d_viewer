@@ -7,7 +7,10 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "prepare:draco": "node scripts/prepare-draco.mjs",
+    "predev": "npm run prepare:draco",
     "dev": "vite",
+    "prebuild": "npm run prepare:draco",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview"

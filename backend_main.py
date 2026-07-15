@@ -5,7 +5,9 @@ uploaded images and generated GLBs in Vercel Blob when configured.
 """
 
 import asyncio
+import json
 import os
+import struct
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -37,6 +39,9 @@ UPLOADS_DIR = Path(os.getenv("PETER3D_UPLOADS_DIR", ROOT / "uploads"))
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 DB_PATH = Path(os.getenv("PETER3D_DB_PATH", DATA_DIR / "peter3d.db"))
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_GLB_BYTES = max(1, int(os.getenv("PETER3D_MAX_GLB_MB", "10"))) * 1024 * 1024
+MAX_GLB_TRIANGLES = max(1_000, int(os.getenv("PETER3D_MAX_GLB_TRIANGLES", "100000")))
+TRIPO_FACE_LIMIT = max(1_000, min(int(os.getenv("TRIPO_FACE_LIMIT", "20000")), 100_000))
 WORKER_COUNT = max(1, min(int(os.getenv("PETER3D_WORKERS", "3")), 5))
 SERVERLESS_RUNTIME = os.getenv("PETER3D_SERVERLESS", "0") == "1"
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
@@ -59,6 +64,76 @@ def init_db() -> None:
 
 def row_dict(row: Any) -> dict:
     return dict(row)
+
+
+def inspect_animated_glb(contents: bytes) -> dict:
+    """Validate the runtime contract before publishing a generated character."""
+    if len(contents) > MAX_GLB_BYTES:
+        raise ValueError(f"GLB는 {MAX_GLB_BYTES // (1024 * 1024)}MB 이하여야 합니다")
+    if len(contents) < 20:
+        raise ValueError("GLB 파일이 너무 짧습니다")
+
+    magic, version, declared_length = struct.unpack_from("<4sII", contents)
+    if magic != b"glTF" or version != 2:
+        raise ValueError("glTF 2.0 GLB 파일이 아닙니다")
+    if declared_length != len(contents):
+        raise ValueError("GLB 헤더의 파일 크기가 실제 크기와 다릅니다")
+
+    document = None
+    offset = 12
+    while offset + 8 <= len(contents):
+        chunk_length, chunk_type = struct.unpack_from("<II", contents, offset)
+        offset += 8
+        chunk_end = offset + chunk_length
+        if chunk_end > len(contents):
+            raise ValueError("GLB 청크가 파일 범위를 벗어났습니다")
+        if chunk_type == 0x4E4F534A and document is None:
+            try:
+                document = json.loads(contents[offset:chunk_end].rstrip(b"\x00 ").decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("GLB JSON 청크가 올바르지 않습니다") from exc
+        offset = chunk_end
+    if offset != len(contents) or not isinstance(document, dict):
+        raise ValueError("GLB JSON 청크를 찾지 못했습니다")
+
+    animations = document.get("animations") or []
+    skins = document.get("skins") or []
+    meshes = document.get("meshes") or []
+    accessors = document.get("accessors") or []
+    if not skins:
+        raise ValueError("리깅(스킨) 정보가 없는 GLB입니다")
+    if not animations or not any(animation.get("channels") for animation in animations):
+        raise ValueError("걷기 애니메이션 채널이 없는 GLB입니다")
+    if not meshes:
+        raise ValueError("메시가 없는 GLB입니다")
+
+    for resource in [*(document.get("buffers") or []), *(document.get("images") or [])]:
+        if resource.get("uri"):
+            raise ValueError("외부 파일을 참조하지 않는 단일 GLB만 사용할 수 있습니다")
+
+    triangle_count = 0
+    for mesh in meshes:
+        for primitive in mesh.get("primitives") or []:
+            if primitive.get("mode", 4) != 4:
+                continue
+            accessor_index = primitive.get("indices")
+            if accessor_index is None:
+                accessor_index = (primitive.get("attributes") or {}).get("POSITION")
+            if isinstance(accessor_index, int) and 0 <= accessor_index < len(accessors):
+                triangle_count += int(accessors[accessor_index].get("count", 0)) // 3
+    if triangle_count <= 0:
+        raise ValueError("삼각형 수를 확인할 수 없는 GLB입니다")
+    if triangle_count > MAX_GLB_TRIANGLES:
+        raise ValueError(
+            f"GLB가 너무 복잡합니다: {triangle_count:,} 삼각형 "
+            f"(최대 {MAX_GLB_TRIANGLES:,})"
+        )
+    return {
+        "bytes": len(contents),
+        "triangles": triangle_count,
+        "animations": len(animations),
+        "skins": len(skins),
+    }
 
 
 def public_job(row: Any) -> dict:
@@ -147,11 +222,20 @@ def update_job(job_id: str, status: str, **fields: object) -> None:
 
 async def upload_generated_glb(team_id: int, job_id: str, source_url: str) -> str:
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-        response = await client.get(source_url)
-        response.raise_for_status()
+        contents = bytearray()
+        async with client.stream("GET", source_url) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                contents.extend(chunk)
+                if len(contents) > MAX_GLB_BYTES:
+                    raise ValueError(
+                        f"GLB는 {MAX_GLB_BYTES // (1024 * 1024)}MB 이하여야 합니다"
+                    )
+    glb = bytes(contents)
+    inspect_animated_glb(glb)
     return await put_public_blob(
         f"teams/{team_id}/models/{job_id}.glb",
-        response.content,
+        glb,
         content_type="model/gltf-binary",
         multipart=True,
     )
@@ -180,6 +264,8 @@ async def run_pipeline(job_id: str) -> None:
                 texture=True,
                 pbr=False,
                 texture_quality="standard",
+                geometry_quality="standard",
+                face_limit=TRIPO_FACE_LIMIT,
                 orientation="align_image",
                 compress=True,
             )
@@ -227,10 +313,12 @@ async def run_pipeline(job_id: str) -> None:
             )
             if glb_path is None:
                 raise RuntimeError("완성된 GLB 파일을 찾지 못했습니다")
+            glb_contents = glb_path.read_bytes()
+            inspect_animated_glb(glb_contents)
             if blob_configured():
                 glb_url = await put_public_blob(
                     f"teams/{job['team_id']}/models/{job_id}.glb",
-                    glb_path.read_bytes(),
+                    glb_contents,
                     content_type="model/gltf-binary",
                     multipart=True,
                 )
@@ -565,6 +653,8 @@ async def convert_team(team_id: int, image: UploadFile = File(...)):
                     texture=True,
                     pbr=False,
                     texture_quality="standard",
+                    geometry_quality="standard",
+                    face_limit=TRIPO_FACE_LIMIT,
                     orientation="align_image",
                     compress=True,
                 )
