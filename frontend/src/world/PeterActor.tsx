@@ -76,13 +76,17 @@ function sampleBounds(object: THREE.Object3D, mixer: THREE.AnimationMixer | null
 }
 
 function RiggedPeter({
+  teamId,
   url,
   speed,
+  selectionRef,
   onReady,
   castShadows,
 }: {
+  teamId: number;
   url: string;
   speed: number;
+  selectionRef: RefObject<number | null>;
   onReady: () => void;
   castShadows: boolean;
 }) {
@@ -115,6 +119,8 @@ function RiggedPeter({
     };
   }, [clip, clone]);
   const { actions } = useAnimations(animations, clone);
+  const walkAction = useRef<THREE.AnimationAction | null>(null);
+  const animationPaused = useRef(false);
 
   useEffect(() => {
     const action = clip ? actions[clip.name] : undefined;
@@ -126,9 +132,23 @@ function RiggedPeter({
       action.setEffectiveTimeScale(Math.max(0.65, speed * clip.duration / WALK_STRIDE_LENGTH));
       action.reset().play();
     }
+    walkAction.current = action ?? null;
     onReady();
-    return () => { action?.stop(); };
+    return () => {
+      walkAction.current = null;
+      animationPaused.current = false;
+      action?.stop();
+    };
   }, [actions, clip, onReady, speed]);
+
+  useFrame(() => {
+    const action = walkAction.current;
+    const shouldPause = selectionRef.current === teamId;
+    if (action && shouldPause !== animationPaused.current) {
+      action.paused = shouldPause;
+      animationPaused.current = shouldPause;
+    }
+  });
 
   useEffect(() => {
     clone.traverse((object) => {
@@ -286,6 +306,8 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
     avoidance: new THREE.Vector3(),
     currentQuaternion: new THREE.Quaternion(),
     targetQuaternion: new THREE.Quaternion(),
+    lockedPosition: new THREE.Vector3(),
+    selected: false,
     distance: 0,
   });
   const [modelReady, setModelReady] = useState(false);
@@ -296,37 +318,54 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
     return () => { telemetry.current.delete(team.id); };
   }, [initialPosition, team.id, telemetry]);
 
-  useFrame(({ clock }, delta) => {
+  useFrame(({ camera, clock }, delta) => {
     const rigidBody = body.current;
     if (!rigidBody) return;
     const positionValue = rigidBody.translation();
     const state = movement.current;
     const position = state.position.set(positionValue.x, 0, positionValue.z);
-    state.timer -= delta;
-    if (state.timer <= 0) {
-      state.step += 1;
-      state.turnRate = (seeded(team.id, 203 + state.step * 2) - 0.5) * 0.9;
-      state.timer = 1.35 + seeded(team.id, 204 + state.step * 2) * 2.4;
-    }
-    state.angle += state.turnRate * delta;
-    const desired = steerAroundObstacles(
-      position,
-      state.desired.set(Math.sin(state.angle), 0, Math.cos(state.angle)),
-      state.avoidance,
-      team.id,
-      telemetry.current,
-    );
-    const desiredVelocity = desired.multiplyScalar(speed);
-    state.velocity.lerp(desiredVelocity, 1 - Math.exp(-1.8 * delta));
-    rigidBody.setLinvel({ x: state.velocity.x, y: 0, z: state.velocity.z }, true);
+    const selectedTeamId = selectionRef.current;
+    const isSelected = selectedTeamId === team.id;
 
-    if (state.velocity.lengthSq() > 0.0004) {
+    if (isSelected) {
+      if (!state.selected) state.lockedPosition.copy(position);
+      state.selected = true;
+      position.copy(state.lockedPosition);
+      state.velocity.set(0, 0, 0);
+      rigidBody.setTranslation({ x: position.x, y: 0, z: position.z }, true);
+      rigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+
+      state.desired.set(camera.position.x - position.x, 0, camera.position.z - position.z);
+      if (state.desired.lengthSq() > 0.0001) state.desired.normalize();
+    } else {
+      state.selected = false;
+      state.timer -= delta;
+      if (state.timer <= 0) {
+        state.step += 1;
+        state.turnRate = (seeded(team.id, 203 + state.step * 2) - 0.5) * 0.9;
+        state.timer = 1.35 + seeded(team.id, 204 + state.step * 2) * 2.4;
+      }
+      state.angle += state.turnRate * delta;
+      const desired = steerAroundObstacles(
+        position,
+        state.desired.set(Math.sin(state.angle), 0, Math.cos(state.angle)),
+        state.avoidance,
+        team.id,
+        telemetry.current,
+      );
+      const desiredVelocity = desired.multiplyScalar(speed);
+      state.velocity.lerp(desiredVelocity, 1 - Math.exp(-1.8 * delta));
+      rigidBody.setLinvel({ x: state.velocity.x, y: 0, z: state.velocity.z }, true);
+    }
+
+    const facingDirection = isSelected ? state.desired : state.velocity;
+    if (facingDirection.lengthSq() > 0.0004) {
       const forwardYaw = modelReady ? IMPORTED_MODEL_FORWARD_YAW : 0;
-      const yaw = Math.atan2(state.velocity.x, state.velocity.z) + forwardYaw;
+      const yaw = Math.atan2(facingDirection.x, facingDirection.z) + forwardYaw;
       const currentRotation = rigidBody.rotation();
       state.currentQuaternion.set(currentRotation.x, currentRotation.y, currentRotation.z, currentRotation.w);
       state.targetQuaternion.setFromAxisAngle(UP_AXIS, yaw);
-      state.currentQuaternion.slerp(state.targetQuaternion, Math.min(1, delta * 2.8));
+      state.currentQuaternion.slerp(state.targetQuaternion, Math.min(1, delta * (isSelected ? 6.5 : 2.8)));
       rigidBody.setRotation(state.currentQuaternion, true);
     }
 
@@ -339,9 +378,8 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
     });
 
     if (visual.current) {
-      const selectedTeamId = selectionRef.current;
       if (lastSelection.current !== selectedTeamId) {
-        visual.current.scale.setScalar(selectedTeamId === team.id ? 1.08 : 1);
+        visual.current.scale.setScalar(isSelected ? 1.28 : 1);
         if (label.current) label.current.visible = selectedTeamId === null;
         lastSelection.current = selectedTeamId;
       }
@@ -351,7 +389,11 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
         && selectedPosition != null
         && Math.hypot(position.x - selectedPosition.x, position.z - selectedPosition.z) < 2.8;
       visual.current.visible = !hiddenBySelection;
-      if (!modelReady) visual.current.position.y = Math.abs(Math.sin(clock.elapsedTime * 3.4 + seeded(team.id, 11) * Math.PI * 2)) * 0.035;
+      if (!modelReady) {
+        visual.current.position.y = isSelected
+          ? 0
+          : Math.abs(Math.sin(clock.elapsedTime * 3.4 + seeded(team.id, 11) * Math.PI * 2)) * 0.035;
+      }
     }
   });
 
@@ -394,8 +436,10 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
           <ModelErrorBoundary key={team.model_url} fallback={demo}>
             <Suspense fallback={demo}>
               <RiggedPeter
+                teamId={team.id}
                 url={team.model_url}
                 speed={speed}
+                selectionRef={selectionRef}
                 onReady={markModelReady}
                 castShadows={castShadows}
               />

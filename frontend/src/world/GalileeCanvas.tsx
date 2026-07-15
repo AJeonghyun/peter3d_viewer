@@ -63,10 +63,10 @@ function CameraRig({ selectionRef, telemetry }: Pick<GalileeCanvasProps, 'select
           scratch.position.set(actor.x, 0, actor.z);
           cameraGoal.current.copy(scratch.position).add(
             size.width < 760
-              ? scratch.movement.set(2.5, 2.4, 4)
-              : scratch.movement.set(3.2, 2.5, 4.8),
+              ? scratch.movement.set(1.8, 1.65, 2.7)
+              : scratch.movement.set(2.35, 1.85, 3.4),
           );
-          targetGoal.current.copy(scratch.position).add(scratch.movement.set(0, 0.8, 0));
+          targetGoal.current.copy(scratch.position).add(scratch.movement.set(0, 0.86, 0));
           followedPosition.current.copy(scratch.position);
           hasFollowedPosition.current = true;
           focusVelocity.current = 0.085;
@@ -111,7 +111,7 @@ function CameraRig({ selectionRef, telemetry }: Pick<GalileeCanvasProps, 'select
       target={[0, 0, 0]}
       enableDamping
       dampingFactor={0.055}
-      minDistance={5}
+      minDistance={3}
       maxDistance={23}
       minPolarAngle={0.48}
       maxPolarAngle={1.18}
