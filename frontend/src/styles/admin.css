@@ -1,0 +1,89 @@
+:root {
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  color: #edf5f2;
+  background: #0b2431;
+  --accent: #e78044;
+  --line: rgba(255,255,255,.1);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; }
+body { background: radial-gradient(circle at 80% 0,#214b57,#091d29 48%); }
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: .62; }
+
+.admin-page { min-height: 100vh; }
+.admin-header { height:72px; padding:0 25px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:rgba(5,23,32,.78); position:sticky; top:0; z-index:5; backdrop-filter:blur(18px); }
+.admin-header h1 { font-size:20px; margin:0; }
+.admin-header small { display:block; margin-top:3px; color:#8ca5ad; font-size:11px; }
+.admin-header a { color:#fff; text-decoration:none; padding:10px 14px; border:1px solid var(--line); border-radius:12px; }
+.admin-layout { display:grid; grid-template-columns:280px minmax(420px,1fr) minmax(360px,.8fr); gap:15px; padding:15px; max-width:1600px; margin:auto; }
+.card { background:rgba(11,38,50,.88); border:1px solid var(--line); border-radius:20px; padding:18px; box-shadow:0 18px 55px rgba(0,0,0,.17); }
+.card h2 { font-size:15px; margin:0 0 15px; }
+.muted { color:#8ca5ad; font-size:11px; }
+.teams { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; max-height:calc(100vh - 140px); overflow:auto; }
+.team-button { border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.035); padding:11px 7px; color:#dce8e5; }
+.team-button.active { border-color:var(--team-color); background:color-mix(in srgb,var(--team-color) 20%,transparent); }
+.dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px; background:var(--team-color); }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+label { display:block; color:#9db2b8; font-size:11px; font-weight:700; }
+input, textarea, select { width:100%; margin-top:6px; color:#f5f1e9; border:1px solid var(--line); border-radius:11px; padding:11px 12px; background:rgba(255,255,255,.055); outline:none; }
+input:focus, textarea:focus, select:focus { border-color:#5f9eaa; }
+textarea { resize:vertical; min-height:68px; }
+.full { grid-column:1/-1; }
+.actions { display:flex; gap:8px; margin-top:13px; }
+.primary { border:0; border-radius:11px; color:white; background:linear-gradient(135deg,#e8894d,#bd5d32); padding:11px 16px; font-weight:700; }
+.secondary { border:1px solid var(--line); border-radius:11px; color:white; background:rgba(255,255,255,.06); padding:11px 16px; }
+.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin:15px 0; }
+.stat { text-align:center; border-radius:12px; background:rgba(255,255,255,.045); padding:10px 5px; }
+.stat span { display:block; color:#91a8ae; font-size:10px; }
+.stat b { display:block; margin-top:5px; font-size:20px; color:#f0c879; }
+hr { height:1px; border:0; background:var(--line); margin:20px 0; }
+.upload-zone { border:1px dashed rgba(255,255,255,.22); border-radius:15px; padding:14px; background:rgba(255,255,255,.025); }
+.upload-zone input { padding:8px; }
+.growth-guide { margin:-8px 0 14px; line-height:1.55; }
+.delta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.delta-control { padding:12px; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.025); }
+.delta-head, .delta-result { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.delta-head strong { font-size:12px; }
+.delta-head span { color:#8ca5ad; font-size:10px; }
+.delta-result { margin-top:8px; color:#8ca5ad; font-size:10px; }
+.delta-result b { color:#edf5f2; font-size:12px; }
+.stepper { display:grid; grid-template-columns:42px 1fr 42px; gap:6px; margin-top:9px; }
+.stepper button { border:1px solid var(--line); border-radius:9px; color:#fff; background:rgba(255,255,255,.07); font-weight:800; }
+.stepper button:active { background:rgba(255,255,255,.15); }
+.stepper input { min-width:0; margin:0; padding:9px 5px; text-align:center; font-size:16px; font-weight:800; color:#f0c879; }
+.change-preview { margin-top:12px; padding:13px; border-radius:14px; background:rgba(95,158,170,.1); border:1px solid rgba(95,158,170,.2); }
+.change-preview strong { display:block; margin-bottom:8px; font-size:11px; color:#9fcbd0; }
+.change-list { display:flex; flex-wrap:wrap; gap:6px; min-height:25px; align-items:center; }
+.change-pill { padding:6px 9px; border-radius:99px; background:rgba(255,255,255,.07); font-size:11px; }
+.change-pill.positive { color:#89d8a2; background:rgba(66,164,100,.13); }
+.change-pill.negative { color:#f1a08f; background:rgba(205,91,67,.13); }
+.growth-actions { justify-content:space-between; align-items:center; }
+.growth-actions button { min-height:42px; }
+.status { display:inline-flex; align-items:center; gap:6px; border-radius:99px; padding:5px 9px; background:rgba(255,255,255,.07); font-size:10px; color:#b7c9cc; }
+.status.done { color:#85d39d; }
+.status.failed { color:#f08b77; }
+.status.modeling, .status.rigging, .status.animating, .status.rig_check { color:#f0c879; }
+.jobs { width:100%; border-collapse:collapse; font-size:11px; }
+.jobs th, .jobs td { border-bottom:1px solid var(--line); text-align:left; padding:10px 5px; vertical-align:top; }
+.jobs th { color:#79959d; }
+.result-link { color:#8ed0d5; }
+.error { color:#ef9683; max-width:220px; white-space:normal; }
+.admin-toast { position:fixed; z-index:10; left:50%; bottom:24px; transform:translate(-50%,20px); background:#061922; padding:12px 18px; border-radius:12px; opacity:0; transition:.25s; pointer-events:none; }
+.admin-toast.show { opacity:1; transform:translate(-50%,0); }
+
+@media (max-width:1050px) {
+  .admin-layout { grid-template-columns:230px 1fr; }
+  .jobs-card { grid-column:1/-1; }
+}
+
+@media (max-width:700px) {
+  .admin-layout { display:block; }
+  .card { margin-bottom:12px; }
+  .teams { grid-template-columns:repeat(5,1fr); max-height:none; }
+  .team-button { font-size:11px; }
+  .form-grid, .delta-grid { grid-template-columns:1fr; }
+  .full { grid-column:auto; }
+}
