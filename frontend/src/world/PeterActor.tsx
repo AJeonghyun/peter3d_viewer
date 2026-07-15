@@ -58,7 +58,10 @@ function findWalkClip(animations: THREE.AnimationClip[]) {
 
 function sampleBounds(object: THREE.Object3D, mixer: THREE.AnimationMixer | null, clip: THREE.AnimationClip | null) {
   const bounds = new THREE.Box3();
-  const samples = mixer && clip?.duration ? 8 : 1;
+  // A generated character can contain more than a million triangles. Sampling
+  // every animation pose blocks the main thread, while the bind pose is enough
+  // to normalize a kiosk character to the configured envelope.
+  const samples = 1;
   for (let index = 0; index < samples; index += 1) {
     if (mixer && clip) mixer.setTime((clip.duration * index) / samples);
     object.updateMatrixWorld(true);
@@ -84,7 +87,16 @@ function RiggedPeter({
   castShadows: boolean;
 }) {
   const { scene, animations } = useGLTF(url);
-  const clone = useMemo(() => cloneSkeleton(scene), [scene]);
+  const clone = useMemo(() => {
+    const result = cloneSkeleton(scene);
+    result.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      // Selection uses a dedicated low-poly proxy. Never raycast generated
+      // character geometry — Tripo meshes can exceed one million triangles.
+      object.raycast = () => undefined;
+    });
+    return result;
+  }, [scene]);
   const clip = useMemo(() => findWalkClip(animations), [animations]);
   const fit = useMemo(() => {
     const sampleMixer = clip ? new THREE.AnimationMixer(clone) : null;
@@ -360,9 +372,9 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
       onCollisionEnter={() => { collisionCount.current += 1; }}
     >
       <CapsuleCollider args={[0.34, ACTOR_RADIUS]} position={[0, 0.72, 0]} friction={0.2} restitution={0} />
-      <group
-        ref={visual}
-        scale={1}
+      <mesh
+        name={`peter-${team.id}-interaction`}
+        position-y={0.86}
         onPointerDown={(event) => {
           pointerStart.current = { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY };
         }}
@@ -374,6 +386,10 @@ function PeterActorComponent({ team, selectionRef, telemetry, collisionCount, on
           onSelect(team.id);
         }}
       >
+        <capsuleGeometry args={[0.42, 1.05, 4, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
+      </mesh>
+      <group ref={visual} scale={1}>
         {team.model_url ? (
           <ModelErrorBoundary key={team.model_url} fallback={demo}>
             <Suspense fallback={demo}>
