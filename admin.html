@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>베드로 키우기 — 운영진</title>
+  <style>
+    :root { font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; color: #edf5f2; background: #0b2431; --accent:#e78044; --line:rgba(255,255,255,.1); }
+    * { box-sizing:border-box; } body { margin:0; min-height:100vh; background:radial-gradient(circle at 80% 0,#214b57,#091d29 48%); }
+    button,input,textarea,select { font:inherit; } button { cursor:pointer; }
+    header { height:72px; padding:0 25px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:rgba(5,23,32,.78); position:sticky; top:0; z-index:5; backdrop-filter:blur(18px); }
+    header h1 { font-size:20px; margin:0; } header small { display:block; margin-top:3px; color:#8ca5ad; font-size:11px; }
+    header a { color:#fff; text-decoration:none; padding:10px 14px; border:1px solid var(--line); border-radius:12px; }
+    main { display:grid; grid-template-columns:280px minmax(420px,1fr) minmax(360px,.8fr); gap:15px; padding:15px; max-width:1600px; margin:auto; }
+    .card { background:rgba(11,38,50,.88); border:1px solid var(--line); border-radius:20px; padding:18px; box-shadow:0 18px 55px rgba(0,0,0,.17); }
+    .card h2 { font-size:15px; margin:0 0 15px; } .muted { color:#8ca5ad; font-size:11px; }
+    .teams { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; max-height:calc(100vh - 140px); overflow:auto; }
+    .team-button { border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.035); padding:11px 7px; color:#dce8e5; }
+    .team-button.active { border-color:var(--team-color); background:color-mix(in srgb,var(--team-color) 20%,transparent); }
+    .dot { width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--team-color); }
+    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    label { display:block; color:#9db2b8; font-size:11px; font-weight:700; }
+    input,textarea,select { width:100%; margin-top:6px; color:#f5f1e9; border:1px solid var(--line); border-radius:11px; padding:11px 12px; background:rgba(255,255,255,.055); outline:none; }
+    input:focus,textarea:focus,select:focus { border-color:#5f9eaa; } textarea { resize:vertical; min-height:68px; }
+    .full { grid-column:1/-1; }
+    .actions { display:flex; gap:8px; margin-top:13px; }
+    .primary { border:0; border-radius:11px; color:white; background:linear-gradient(135deg,#e8894d,#bd5d32); padding:11px 16px; font-weight:700; }
+    .secondary { border:1px solid var(--line); border-radius:11px; color:white; background:rgba(255,255,255,.06); padding:11px 16px; }
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin:15px 0; }
+    .stat { text-align:center; border-radius:12px; background:rgba(255,255,255,.045); padding:10px 5px; }
+    .stat span { display:block; color:#91a8ae; font-size:10px; } .stat b { display:block; margin-top:5px; font-size:20px; color:#f0c879; }
+    hr { height:1px;border:0;background:var(--line);margin:20px 0; }
+    .upload-zone { border:1px dashed rgba(255,255,255,.22); border-radius:15px; padding:14px; background:rgba(255,255,255,.025); }
+    .upload-zone + .upload-zone { margin-top:10px; }
+    .upload-zone input { padding:8px; }
+    .growth-guide { margin:-8px 0 14px; line-height:1.55; }
+    .delta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+    .delta-control { padding:12px; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.025); }
+    .delta-head,.delta-result { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .delta-head strong { font-size:12px; }
+    .delta-head span { color:#8ca5ad; font-size:10px; }
+    .delta-result { margin-top:8px; color:#8ca5ad; font-size:10px; }
+    .delta-result b { color:#edf5f2; font-size:12px; }
+    .stepper { display:grid; grid-template-columns:42px 1fr 42px; gap:6px; margin-top:9px; }
+    .stepper button { border:1px solid var(--line); border-radius:9px; color:#fff; background:rgba(255,255,255,.07); font-weight:800; }
+    .stepper button:active { background:rgba(255,255,255,.15); }
+    .stepper input { min-width:0; margin:0; padding:9px 5px; text-align:center; font-size:16px; font-weight:800; color:#f0c879; }
+    .change-preview { margin-top:12px; padding:13px; border-radius:14px; background:rgba(95,158,170,.1); border:1px solid rgba(95,158,170,.2); }
+    .change-preview strong { display:block; margin-bottom:8px; font-size:11px; color:#9fcbd0; }
+    .change-list { display:flex; flex-wrap:wrap; gap:6px; min-height:25px; align-items:center; }
+    .change-pill { padding:6px 9px; border-radius:99px; background:rgba(255,255,255,.07); font-size:11px; }
+    .change-pill.positive { color:#89d8a2; background:rgba(66,164,100,.13); }
+    .change-pill.negative { color:#f1a08f; background:rgba(205,91,67,.13); }
+    .growth-actions { justify-content:space-between; align-items:center; }
+    .growth-actions button { min-height:42px; }
+    .status { display:inline-flex; align-items:center; gap:6px; border-radius:99px; padding:5px 9px; background:rgba(255,255,255,.07); font-size:10px; color:#b7c9cc; }
+    .status.done { color:#85d39d; }.status.failed { color:#f08b77; }.status.modeling,.status.rigging,.status.animating,.status.rig_check { color:#f0c879; }
+    .jobs { width:100%; border-collapse:collapse; font-size:11px; } .jobs th,.jobs td { border-bottom:1px solid var(--line); text-align:left; padding:10px 5px; vertical-align:top; }.jobs th { color:#79959d; }
+    .error { color:#ef9683; max-width:220px; white-space:normal; } #toast { position:fixed;z-index:10;left:50%;bottom:24px;transform:translate(-50%,20px);background:#061922;padding:12px 18px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none; } #toast.show{opacity:1;transform:translate(-50%,0)}
+    @media(max-width:1050px){main{grid-template-columns:230px 1fr}.jobs-card{grid-column:1/-1}} @media(max-width:700px){main{display:block}.card{margin-bottom:12px}.teams{grid-template-columns:repeat(5,1fr);max-height:none}.team-button{font-size:11px}.form-grid,.delta-grid{grid-template-columns:1fr}.full{grid-column:auto}}
+  </style>
+</head>
+<body>
+  <header><div><h1>베드로 키우기 운영실</h1><small>조 정보 · 달란트 · 성품 · 3D 변환</small></div><a href="/" target="_blank">갈릴리 월드 열기 ↗</a></header>
+  <main>
+    <section class="card"><h2>25개 조</h2><div id="teams" class="teams"></div></section>
+    <section class="card">
+      <h2 id="editorTitle">조를 선택하세요</h2>
+      <form id="teamForm" class="form-grid">
+        <label>조 이름<input id="name" maxlength="30" required /></label>
+        <label>대표 색상<input id="color" type="color" /></label>
+        <label>상징<input id="symbol" maxlength="20" /></label>
+        <label class="full">조 아이덴티티<textarea id="identity" maxlength="120"></textarea></label>
+        <div class="full actions"><button class="primary">조 정보 저장</button></div>
+      </form>
+      <div id="stats" class="stats"></div>
+      <hr />
+      <h2>프로그램 기록 반영</h2>
+      <p class="muted growth-guide">현재 수치를 확인하며 −/+ 버튼으로 변화량을 정하세요. 반영될 결과를 아래에서 바로 확인할 수 있습니다.</p>
+      <form id="growthForm" class="form-grid">
+        <label class="full">프로그램·활동명<input id="source" placeholder="예: 조별 협동 게임" required /></label>
+        <div class="full delta-grid">
+          <div class="delta-control" data-delta="talentDelta">
+            <div class="delta-head"><strong>달란트</strong><span>현재 <b id="talentDeltaCurrent">0</b></span></div>
+            <div class="stepper"><button type="button" data-adjust="-10" aria-label="달란트 10 감소">−10</button><input id="talentDelta" type="number" value="0" min="-10000" max="10000" aria-label="달란트 변화량" /><button type="button" data-adjust="10" aria-label="달란트 10 증가">+10</button></div>
+            <div class="delta-result"><span>반영 후</span><b id="talentDeltaResult">0</b></div>
+          </div>
+          <div class="delta-control" data-delta="courageDelta">
+            <div class="delta-head"><strong>용기</strong><span>현재 <b id="courageDeltaCurrent">10</b></span></div>
+            <div class="stepper"><button type="button" data-adjust="-1" aria-label="용기 1 감소">−</button><input id="courageDelta" type="number" value="0" min="-100" max="100" aria-label="용기 변화량" /><button type="button" data-adjust="1" aria-label="용기 1 증가">+</button></div>
+            <div class="delta-result"><span>반영 후</span><b id="courageDeltaResult">10</b></div>
+          </div>
+          <div class="delta-control" data-delta="wisdomDelta">
+            <div class="delta-head"><strong>현명</strong><span>현재 <b id="wisdomDeltaCurrent">10</b></span></div>
+            <div class="stepper"><button type="button" data-adjust="-1" aria-label="현명 1 감소">−</button><input id="wisdomDelta" type="number" value="0" min="-100" max="100" aria-label="현명 변화량" /><button type="button" data-adjust="1" aria-label="현명 1 증가">+</button></div>
+            <div class="delta-result"><span>반영 후</span><b id="wisdomDeltaResult">10</b></div>
+          </div>
+          <div class="delta-control" data-delta="faithDelta">
+            <div class="delta-head"><strong>진실</strong><span>현재 <b id="faithDeltaCurrent">10</b></span></div>
+            <div class="stepper"><button type="button" data-adjust="-1" aria-label="진실 1 감소">−</button><input id="faithDelta" type="number" value="0" min="-100" max="100" aria-label="진실 변화량" /><button type="button" data-adjust="1" aria-label="진실 1 증가">+</button></div>
+            <div class="delta-result"><span>반영 후</span><b id="faithDeltaResult">10</b></div>
+          </div>
+          <div class="delta-control" data-delta="loveDelta">
+            <div class="delta-head"><strong>열정</strong><span>현재 <b id="loveDeltaCurrent">10</b></span></div>
+            <div class="stepper"><button type="button" data-adjust="-1" aria-label="열정 1 감소">−</button><input id="loveDelta" type="number" value="0" min="-100" max="100" aria-label="열정 변화량" /><button type="button" data-adjust="1" aria-label="열정 1 증가">+</button></div>
+            <div class="delta-result"><span>반영 후</span><b id="loveDeltaResult">10</b></div>
+          </div>
+        </div>
+        <label class="full">메모 <span class="muted">(선택)</span><input id="growthNote" maxlength="200" placeholder="기록에 남길 설명" /></label>
+        <section class="full change-preview" aria-live="polite"><strong>이번에 반영되는 변화</strong><div id="changeList" class="change-list"><span class="muted">아직 선택한 변화가 없습니다</span></div></section>
+        <div class="full actions growth-actions"><button id="resetDeltas" type="button" class="secondary">변화량 초기화</button><button class="primary">이 기록 반영하기</button></div>
+      </form>
+      <hr />
+      <div class="upload-zone">
+        <h2>색칠 그림 → 걷는 베드로</h2>
+        <p class="muted">PNG/JPG, 최대 10MB. 무료 리깅 검사 후 걷기 하나만 생성합니다.</p>
+        <form id="uploadForm"><input id="image" type="file" accept="image/png,image/jpeg" required /><div class="actions"><button class="primary">변환 대기열에 추가</button><span id="conversionStatus" class="status">그림 없음</span></div></form>
+      </div>
+    </section>
+    <section class="card jobs-card"><h2>3D 변환 작업</h2><p class="muted">최대 3개씩 처리하며 실패 작업은 원인을 확인하고 다시 업로드할 수 있습니다.</p><table class="jobs"><thead><tr><th>조</th><th>상태</th><th>결과</th></tr></thead><tbody id="jobs"></tbody></table></section>
+  </main>
+  <div id="toast"></div>
+  <script>
+    const API='/api'; const statNames={courage:'용기',wisdom:'현명',faith:'진실',love:'열정'}; let teams=[];let selected=null;
+    const deltaFields={talentDelta:{key:'talents',label:'달란트'},courageDelta:{key:'courage',label:'용기'},wisdomDelta:{key:'wisdom',label:'현명'},faithDelta:{key:'faith',label:'진실'},loveDelta:{key:'love',label:'열정'}};
+    const $=id=>document.getElementById(id); const esc=value=>{const e=document.createElement('span');e.textContent=String(value??'');return e.innerHTML};
+    function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout($('toast').timer);$('toast').timer=setTimeout(()=>$('toast').classList.remove('show'),2800)}
+    async function request(url,options={}){const response=await fetch(url,options);if(!response.ok){let message=`요청 실패 (${response.status})`;try{const data=await response.json();message=data.detail||message}catch{}throw new Error(message)}return response.json()}
+    async function loadTeams(preserve=true){const current=selected?.id;teams=await request(`${API}/teams`,{cache:'no-store'});renderTeamButtons();const id=preserve&&current?current:teams[0]?.id;if(id)selectTeam(id)}
+    function renderTeamButtons(){$('teams').innerHTML=teams.map(t=>`<button class="team-button ${selected?.id===t.id?'active':''}" style="--team-color:${t.color}" data-id="${t.id}"><span class="dot"></span>${esc(t.name)}</button>`).join('');document.querySelectorAll('.team-button').forEach(b=>b.onclick=()=>selectTeam(Number(b.dataset.id)))}
+    function selectTeam(id){const teamChanged=selected&&selected.id!==id;selected=teams.find(t=>t.id===id);if(!selected)return;if(teamChanged)resetDeltas();renderTeamButtons();$('editorTitle').textContent=`${selected.name} 관리`;$('name').value=selected.name;$('color').value=selected.color;$('symbol').value=selected.symbol;$('identity').value=selected.identity_text;$('stats').innerHTML=Object.entries(statNames).map(([key,label])=>`<div class="stat"><span>${label}</span><b>${selected[key]}</b></div>`).join('')+`<div class="stat"><span>달란트</span><b>${selected.talents}</b></div>`;$('conversionStatus').className=`status ${selected.conversion_status}`;$('conversionStatus').textContent=statusLabel(selected.conversion_status);syncGrowthUi()}
+    function statusLabel(status){return {empty:'그림 없음',queued:'대기 중',modeling:'3D 생성',rig_check:'리깅 검사',rigging:'뼈대 적용',animating:'걷기 적용',done:'완료',failed:'실패'}[status]||status}
+    $('teamForm').onsubmit=async e=>{e.preventDefault();if(!selected)return;try{await request(`${API}/teams/${selected.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('name').value,color:$('color').value,symbol:$('symbol').value,identity_text:$('identity').value})});await loadTeams();toast('조 정보를 저장했습니다')}catch(error){toast(error.message)}};
+    function boundedResult(key,current,delta){return key==='talents'?Math.max(0,current+delta):Math.max(0,Math.min(100,current+delta))}
+    function signed(value){return `${value>0?'+':''}${value}`}
+    function syncGrowthUi(){if(!selected)return;const changes=[];Object.entries(deltaFields).forEach(([id,field])=>{const input=$(id);const delta=Math.max(Number(input.min),Math.min(Number(input.max),Number(input.value)||0));input.value=delta;const current=Number(selected[field.key])||0;const result=boundedResult(field.key,current,delta);$(`${id}Current`).textContent=current;$(`${id}Result`).textContent=result;if(delta)changes.push(`<span class="change-pill ${delta>0?'positive':'negative'}">${field.label} ${signed(delta)} → ${result}</span>`)});$('changeList').innerHTML=changes.join('')||'<span class="muted">아직 선택한 변화가 없습니다</span>'}
+    function resetDeltas(){Object.keys(deltaFields).forEach(id=>$(id).value=0);syncGrowthUi()}
+    document.querySelectorAll('[data-adjust]').forEach(button=>button.onclick=()=>{const input=$(button.closest('[data-delta]').dataset.delta);input.value=(Number(input.value)||0)+Number(button.dataset.adjust);syncGrowthUi()});
+    Object.keys(deltaFields).forEach(id=>$(id).addEventListener('input',syncGrowthUi));
+    $('resetDeltas').onclick=resetDeltas;
+    $('growthForm').onsubmit=async e=>{e.preventDefault();if(!selected)return;const stats={};Object.keys(statNames).forEach(key=>{const value=Number($(`${key}Delta`).value);if(value)stats[key]=value});try{await request(`${API}/teams/${selected.id}/growth`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:$('source').value,note:$('growthNote').value,talent_delta:Number($('talentDelta').value),stats})});e.target.reset();resetDeltas();await loadTeams();toast('기록을 반영했습니다')}catch(error){toast(error.message)}};
+    $('uploadForm').onsubmit=async e=>{e.preventDefault();if(!selected||!$('image').files[0])return;const form=new FormData();form.append('image',$('image').files[0]);try{const result=await request(`${API}/teams/${selected.id}/convert`,{method:'POST',body:form});$('image').value='';await Promise.all([loadTeams(),loadJobs()]);toast(`${selected.name} 변환 작업 ${result.job_id}를 등록했습니다`)}catch(error){toast(error.message)}};
+    async function loadJobs(){try{const jobs=await request(`${API}/jobs`,{cache:'no-store'});$('jobs').innerHTML=jobs.length?jobs.map(j=>`<tr><td>${j.team_id}조<br><span class="muted">${esc(j.id)}</span></td><td><span class="status ${j.status}">${statusLabel(j.status)}</span></td><td>${j.glb_url?`<a href="${j.glb_url}" target="_blank" style="color:#8ed0d5">GLB 보기</a>`:j.error?`<span class="error">${esc(j.error)}</span>`:'—'}</td></tr>`).join(''):'<tr><td colspan="3" class="muted">아직 변환 작업이 없습니다</td></tr>'}catch(error){console.warn(error)}}
+    Promise.all([loadTeams(false),loadJobs()]).catch(error=>toast(error.message));setInterval(()=>{loadJobs();if(!document.querySelector('input:focus,textarea:focus'))loadTeams()},7000);
+  </script>
+</body>
+</html>

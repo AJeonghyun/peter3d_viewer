@@ -1,0 +1,13 @@
+.env
+.venv/
+.omx/
+.DS_Store
+**/.DS_Store
+__pycache__/
+*.pyc
+data/*.db
+data/*.db-*
+uploads/*
+static/models/*
+!uploads/.gitkeep
+!static/models/.gitkeep
