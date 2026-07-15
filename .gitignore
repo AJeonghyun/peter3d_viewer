@@ -5,6 +5,7 @@
 skills-lock.json
 frontend/node_modules/
 frontend/dist/
+frontend/public/draco/
 npm-debug.log*
 .DS_Store
 **/.DS_Store

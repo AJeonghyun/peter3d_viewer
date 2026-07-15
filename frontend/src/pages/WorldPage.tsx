@@ -11,7 +11,7 @@ import {
   STAT_LABELS,
   fallbackTeams,
 } from '../world/config';
-import type { ActorTelemetry, WorldDebugSnapshot } from '../world/config';
+import type { ActorTelemetry, ModelLoadStats, WorldDebugSnapshot } from '../world/config';
 import '../styles/world.css';
 
 interface GrowthEvent {
@@ -96,11 +96,27 @@ export default function WorldPage() {
   const [history, setHistory] = useState<GrowthEvent[] | null>(null);
   const [historyError, setHistoryError] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
+  const [modelLoadProgress, setModelLoadProgress] = useState<ModelLoadStats>({
+    waiting: 0,
+    active: 0,
+    ready: 0,
+    failed: 0,
+    peakActive: 0,
+    limit: 0,
+  });
   const [runtimeError, setRuntimeError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const selectionRef = useRef<number | null>(null);
   const telemetry = useRef(new Map<number, ActorTelemetry>());
   const collisionCount = useRef(0);
+  const modelLoadStats = useRef<ModelLoadStats>({
+    waiting: 0,
+    active: 0,
+    ready: 0,
+    failed: 0,
+    peakActive: 0,
+    limit: 0,
+  });
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,6 +125,10 @@ export default function WorldPage() {
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [selectedTeamId, teams],
+  );
+  const actualModelCount = useMemo(
+    () => teams.reduce((count, team) => count + (team.model_url ? 1 : 0), 0),
+    [teams],
   );
 
   const showToast = useCallback((message: string) => {
@@ -193,6 +213,19 @@ export default function WorldPage() {
     loadingTimer.current = setTimeout(() => setSceneReady(true), 650);
   }, []);
 
+  const handleModelLoadProgress = useCallback((stats: ModelLoadStats) => {
+    setModelLoadProgress((previous) => (
+      previous.waiting === stats.waiting
+      && previous.active === stats.active
+      && previous.ready === stats.ready
+      && previous.failed === stats.failed
+      && previous.peakActive === stats.peakActive
+      && previous.limit === stats.limit
+        ? previous
+        : stats
+    ));
+  }, []);
+
   const handleSelect = useCallback((teamId: number) => {
     setFinderOpen(false);
     setSelection(teamId);
@@ -223,6 +256,7 @@ export default function WorldPage() {
         collisionCount: collisionCount.current,
         staticOverlaps,
         actorOverlaps,
+        models: { ...modelLoadStats.current },
         actors: actors.map((actor) => ({
           ...actor,
           x: Number(actor.x.toFixed(3)),
@@ -261,8 +295,10 @@ export default function WorldPage() {
               selectionRef={selectionRef}
               telemetry={telemetry}
               collisionCount={collisionCount}
+              modelLoadStats={modelLoadStats}
               onSelect={handleSelect}
               onReady={handleSceneReady}
+              onModelLoadProgress={handleModelLoadProgress}
             />
           </CanvasErrorBoundary>
         )}
@@ -368,10 +404,20 @@ export default function WorldPage() {
         </section>
       </div>
 
-      <div id="loading" className={`loading-screen${sceneReady ? ' hide' : ''}`}>
+      <div
+        id="loading"
+        className={`loading-screen${sceneReady && modelLoadProgress.waiting === 0 && modelLoadProgress.active === 0 ? ' hide' : ''}`}
+      >
         <div className="fish-loader">◇</div>
         <strong>갈릴리 호숫가를 준비하고 있어요</strong>
-        <small id="loadingStatus">{teams.length ? `${teams.length}명의 베드로를 갈릴리에 배치하는 중…` : '베드로들을 불러오는 중…'}</small>
+        <small id="loadingStatus">
+          {teams.length
+            ? `${Math.min(
+              actualModelCount,
+              modelLoadProgress.ready + modelLoadProgress.failed,
+            )}/${actualModelCount}개 실제 모델 준비 · ${teams.length}명의 베드로 배치 중…`
+            : '베드로들을 불러오는 중…'}
+        </small>
       </div>
 
       {runtimeError && <div className="runtime-error" role="alert">{runtimeError}</div>}

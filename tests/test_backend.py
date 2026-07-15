@@ -1,4 +1,6 @@
 import asyncio
+import json
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +8,13 @@ from pathlib import Path
 from fastapi import HTTPException
 
 import backend_main
+
+
+def make_glb(document: dict) -> bytes:
+    payload = json.dumps(document, separators=(",", ":")).encode("utf-8")
+    payload += b" " * ((4 - len(payload) % 4) % 4)
+    chunk = struct.pack("<II", len(payload), 0x4E4F534A) + payload
+    return struct.pack("<4sII", b"glTF", 2, 12 + len(chunk)) + chunk
 
 
 class Peter3DBackendTests(unittest.TestCase):
@@ -119,6 +128,46 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertNotIn("image_path", result)
         self.assertNotIn("model_task_id", result)
         self.assertEqual(result["id"], "safe-job")
+
+    def test_accepts_a_bounded_rigged_animated_glb(self):
+        contents = make_glb({
+            "asset": {"version": "2.0"},
+            "buffers": [{}],
+            "accessors": [{"count": 60000}],
+            "meshes": [{"primitives": [{"indices": 0}]}],
+            "skins": [{"joints": [0]}],
+            "animations": [{"channels": [{"sampler": 0, "target": {"node": 0}}]}],
+        })
+
+        result = backend_main.inspect_animated_glb(contents)
+
+        self.assertEqual(result["triangles"], 20000)
+        self.assertEqual(result["animations"], 1)
+        self.assertEqual(result["skins"], 1)
+
+    def test_rejects_a_glb_without_walk_animation_channels(self):
+        contents = make_glb({
+            "asset": {"version": "2.0"},
+            "accessors": [{"count": 3000}],
+            "meshes": [{"primitives": [{"indices": 0}]}],
+            "skins": [{"joints": [0]}],
+            "animations": [{"channels": []}],
+        })
+
+        with self.assertRaisesRegex(ValueError, "애니메이션"):
+            backend_main.inspect_animated_glb(contents)
+
+    def test_rejects_a_glb_over_the_triangle_budget(self):
+        contents = make_glb({
+            "asset": {"version": "2.0"},
+            "accessors": [{"count": (backend_main.MAX_GLB_TRIANGLES + 1) * 3}],
+            "meshes": [{"primitives": [{"indices": 0}]}],
+            "skins": [{"joints": [0]}],
+            "animations": [{"channels": [{"sampler": 0, "target": {"node": 0}}]}],
+        })
+
+        with self.assertRaisesRegex(ValueError, "너무 복잡"):
+            backend_main.inspect_animated_glb(contents)
 
 if __name__ == "__main__":
     unittest.main()
