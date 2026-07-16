@@ -76,6 +76,7 @@ SQLITE_SCHEMA = (
         title TEXT NOT NULL DEFAULT '첫걸음을 준비하는 자',
         image_url TEXT,
         model_url TEXT,
+        model_asset_id TEXT,
         conversion_status TEXT NOT NULL DEFAULT 'empty',
         updated_at TEXT NOT NULL
     )
@@ -115,6 +116,9 @@ SQLITE_SCHEMA = (
         glb_animations INTEGER,
         lease_token TEXT,
         lease_until TEXT,
+        asset_only INTEGER NOT NULL DEFAULT 0,
+        asset_name TEXT,
+        source_image_url TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
@@ -126,6 +130,20 @@ SQLITE_SCHEMA = (
         task_type TEXT NOT NULL,
         consumed_credit INTEGER NOT NULL DEFAULT 0,
         recorded_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_assets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        source_image_url TEXT,
+        glb_url TEXT NOT NULL,
+        pipeline_profile TEXT NOT NULL DEFAULT 'h3_smart',
+        glb_bytes INTEGER,
+        glb_triangles INTEGER,
+        glb_animations INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
     )
     """,
 )
@@ -147,6 +165,7 @@ POSTGRES_SCHEMA = (
         title TEXT NOT NULL DEFAULT '첫걸음을 준비하는 자',
         image_url TEXT,
         model_url TEXT,
+        model_asset_id TEXT,
         conversion_status TEXT NOT NULL DEFAULT 'empty',
         updated_at TEXT NOT NULL
     )
@@ -186,6 +205,9 @@ POSTGRES_SCHEMA = (
         glb_animations INTEGER,
         lease_token TEXT,
         lease_until TEXT,
+        asset_only INTEGER NOT NULL DEFAULT 0,
+        asset_name TEXT,
+        source_image_url TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
@@ -197,6 +219,20 @@ POSTGRES_SCHEMA = (
         task_type TEXT NOT NULL,
         consumed_credit INTEGER NOT NULL DEFAULT 0,
         recorded_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_assets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        source_image_url TEXT,
+        glb_url TEXT NOT NULL,
+        pipeline_profile TEXT NOT NULL DEFAULT 'h3_smart',
+        glb_bytes INTEGER,
+        glb_triangles INTEGER,
+        glb_animations INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
     )
     """,
 )
@@ -213,6 +249,13 @@ JOB_COLUMN_MIGRATIONS = {
     "glb_animations": "INTEGER",
     "lease_token": "TEXT",
     "lease_until": "TEXT",
+    "asset_only": "INTEGER NOT NULL DEFAULT 0",
+    "asset_name": "TEXT",
+    "source_image_url": "TEXT",
+}
+
+TEAM_COLUMN_MIGRATIONS = {
+    "model_asset_id": "TEXT",
 }
 
 
@@ -223,6 +266,8 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
             db.execute(statement)
 
         if db.postgres:
+            for column, definition in TEAM_COLUMN_MIGRATIONS.items():
+                db.execute(f"ALTER TABLE teams ADD COLUMN IF NOT EXISTS {column} {definition}")
             for column, definition in JOB_COLUMN_MIGRATIONS.items():
                 db.execute(
                     f"ALTER TABLE conversion_jobs ADD COLUMN IF NOT EXISTS {column} {definition}"
@@ -236,6 +281,12 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
                     (team_id, f"{team_id}조", timestamp),
                 )
         else:
+            team_columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(teams)").fetchall()
+            }
+            for column, definition in TEAM_COLUMN_MIGRATIONS.items():
+                if column not in team_columns:
+                    db.execute(f"ALTER TABLE teams ADD COLUMN {column} {definition}")
             columns = {
                 row["name"] for row in db.execute("PRAGMA table_info(conversion_jobs)").fetchall()
             }
@@ -247,6 +298,39 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
                     "INSERT OR IGNORE INTO teams (id, name, updated_at) VALUES (?, ?, ?)",
                     (team_id, f"{team_id}조", timestamp),
                 )
+
+        db.execute(
+            """
+            INSERT INTO model_assets (
+                id, name, source_image_url, glb_url, pipeline_profile,
+                glb_bytes, glb_triangles, glb_animations, created_at, updated_at
+            )
+            SELECT id, COALESCE(asset_name, '기존 생성 모델 ' || id), source_image_url,
+                glb_url, pipeline_profile, glb_bytes, glb_triangles, glb_animations,
+                created_at, updated_at
+            FROM conversion_jobs
+            WHERE status = 'done' AND glb_url IS NOT NULL
+            ON CONFLICT (id) DO NOTHING
+            """
+        )
+        db.execute(
+            """
+            UPDATE teams SET model_asset_id = (
+                SELECT conversion_jobs.id FROM conversion_jobs
+                WHERE conversion_jobs.team_id = teams.id
+                  AND conversion_jobs.status = 'done'
+                  AND conversion_jobs.glb_url = teams.model_url
+                ORDER BY conversion_jobs.updated_at DESC LIMIT 1
+            )
+            WHERE model_asset_id IS NULL AND model_url IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM conversion_jobs
+                WHERE conversion_jobs.team_id = teams.id
+                  AND conversion_jobs.status = 'done'
+                  AND conversion_jobs.glb_url = teams.model_url
+              )
+            """
+        )
 
 
 def blob_configured() -> bool:

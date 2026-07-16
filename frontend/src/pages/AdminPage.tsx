@@ -4,6 +4,7 @@ import { prepareUploadImage } from '../lib/prepareUploadImage';
 import type {
   ConversionJob,
   GrowthPayload,
+  ModelAsset,
   PipelineProfile,
   StatKey,
   Team,
@@ -145,9 +146,13 @@ function metricEntries(job: ConversionJob): Array<[string, string | number | boo
 export default function AdminPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [jobs, setJobs] = useState<ConversionJob[]>([]);
+  const [modelAssets, setModelAssets] = useState<ModelAsset[]>([]);
   const [billing, setBilling] = useState<TripoBilling | null>(null);
   const [billingError, setBillingError] = useState(false);
   const [pipelineProfile, setPipelineProfile] = useState('h3_smart');
+  const [assetName, setAssetName] = useState('');
+  const [applyTeamIds, setApplyTeamIds] = useState<number[]>([]);
+  const [applyingAssetId, setApplyingAssetId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [teamDraft, setTeamDraft] = useState<TeamDraft>(EMPTY_DRAFT);
   const [source, setSource] = useState('');
@@ -188,6 +193,12 @@ export default function AdminPage() {
     return fresh;
   }
 
+  async function refreshModelAssets() {
+    const fresh = await apiRequest<ModelAsset[]>('/model-assets', { cache: 'no-store' });
+    setModelAssets(fresh);
+    return fresh;
+  }
+
   async function refreshBilling() {
     try {
       const fresh = await apiRequest<TripoBilling>('/tripo/billing', { cache: 'no-store' });
@@ -212,10 +223,12 @@ export default function AdminPage() {
     void Promise.all([
       apiRequest<Team[]>('/teams', { cache: 'no-store' }),
       apiRequest<ConversionJob[]>('/jobs', { cache: 'no-store' }),
-    ]).then(([freshTeams, freshJobs]) => {
+      apiRequest<ModelAsset[]>('/model-assets', { cache: 'no-store' }),
+    ]).then(([freshTeams, freshJobs, freshAssets]) => {
       if (!active) return;
       setTeams(freshTeams);
       setJobs(freshJobs);
+      setModelAssets(freshAssets);
       const first = freshTeams[0];
       if (first) {
         setSelectedId(first.id);
@@ -228,6 +241,7 @@ export default function AdminPage() {
 
     const polling = window.setInterval(() => {
       void refreshJobs().catch(console.warn);
+      void refreshModelAssets().catch(console.warn);
       if (!document.querySelector('input:focus, textarea:focus')) {
         void refreshTeams().catch(console.warn);
       }
@@ -310,28 +324,56 @@ export default function AdminPage() {
     }
   }
 
-  async function uploadImage(event: FormEvent<HTMLFormElement>) {
+  async function generateModelAsset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const image = imageInputRef.current?.files?.[0];
-    if (!selected || !image) return;
-    const teamName = selected.name;
+    if (!image || !assetName.trim()) return;
     setUploading(true);
     try {
       const prepared = await prepareUploadImage(image);
       const form = new FormData();
       form.append('image', prepared.file);
+      form.append('name', assetName.trim());
       form.append('pipeline_profile', pipelineProfile);
-      const result = await apiRequest<{ job_id: string }>(`/teams/${selected.id}/convert`, {
+      const result = await apiRequest<{ job_id: string }>('/model-assets/generate', {
         method: 'POST',
         body: form,
       });
       if (imageInputRef.current) imageInputRef.current.value = '';
-      await Promise.all([refreshTeams(), refreshJobs()]);
-      showToast(`${teamName} 변환 작업 ${result.job_id}를 ${selectedProfile?.label ?? pipelineProfile}로 등록했습니다${prepared.optimized ? ' · 사진 자동 최적화됨' : ''}`);
+      setAssetName('');
+      await refreshJobs();
+      showToast(`공용 모델 작업 ${result.job_id}를 ${selectedProfile?.label ?? pipelineProfile}로 등록했습니다${prepared.optimized ? ' · 사진 자동 최적화됨' : ''}`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '이미지를 등록하지 못했습니다');
     } finally {
       setUploading(false);
+    }
+  }
+
+  function toggleApplyTeam(teamId: number) {
+    setApplyTeamIds((current) => current.includes(teamId)
+      ? current.filter((id) => id !== teamId)
+      : [...current, teamId].sort((a, b) => a - b));
+  }
+
+  async function applyModelAsset(asset: ModelAsset) {
+    if (!applyTeamIds.length) {
+      showToast('모델을 적용할 조를 먼저 선택해주세요');
+      return;
+    }
+    setApplyingAssetId(asset.id);
+    try {
+      await apiRequest(`/model-assets/${asset.id}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_ids: applyTeamIds }),
+      });
+      await Promise.all([refreshTeams(), refreshModelAssets()]);
+      showToast(`${asset.name}을 ${applyTeamIds.length}개 조에 적용했습니다`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '모델을 조에 적용하지 못했습니다');
+    } finally {
+      setApplyingAssetId(null);
     }
   }
 
@@ -430,11 +472,19 @@ export default function AdminPage() {
             </div>
           </form>
 
-          <hr />
-          <div className="upload-zone">
-            <h2>색칠 그림 → 걷는 베드로</h2>
-            <p className="muted">PNG/JPG. 사진 자동 보정, Rig v2.5, idle·walk 생성과 iPad용 경량화를 순서대로 진행합니다.</p>
-            <form onSubmit={uploadImage}>
+        </section>
+
+        <section className="card jobs-card">
+          <section className="model-workspace">
+            <div className="workspace-step">
+              <span>1</span>
+              <div><h2>공용 GLB 모델 만들기</h2><p className="muted">조를 고르지 않고 먼저 모델을 생성해 보관합니다.</p></div>
+            </div>
+            <form className="asset-generation-form" onSubmit={generateModelAsset}>
+              <label>
+                모델 이름
+                <input value={assetName} maxLength={60} placeholder="예: 파란 구름 베드로" required onChange={(event) => setAssetName(event.target.value)} />
+              </label>
               <label className="pipeline-select">
                 생성 프로필
                 <select value={pipelineProfile} onChange={(event) => setPipelineProfile(event.target.value)}>
@@ -447,15 +497,48 @@ export default function AdminPage() {
                 {selectedProfile && <small>{selectedProfile.description}</small>}
               </label>
               <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" required />
-              <div className="actions">
-                <button className="primary" disabled={!selected || uploading}>{uploading ? '등록 중…' : '변환 대기열에 추가'}</button>
-                <span className={`status ${selected?.conversion_status ?? ''}`}>{selected ? statusLabel(selected.conversion_status) : '그림 없음'}</span>
-              </div>
+              <button className="primary" disabled={uploading}>{uploading ? '등록 중…' : '모델 생성 대기열에 추가'}</button>
             </form>
-          </div>
-        </section>
 
-        <section className="card jobs-card">
+            <div className="workspace-step apply-step">
+              <span>2</span>
+              <div><h2>완성 모델을 조에 적용</h2><p className="muted">한 모델을 여러 조에 동시에 배정할 수 있습니다.</p></div>
+            </div>
+            <div className="target-actions">
+              <button type="button" className="secondary" disabled={!selected} onClick={() => selected && setApplyTeamIds([selected.id])}>현재 조만</button>
+              <button type="button" className="secondary" onClick={() => setApplyTeamIds(teams.map((team) => team.id))}>전체 25조</button>
+              <button type="button" className="secondary" onClick={() => setApplyTeamIds([])}>선택 해제</button>
+              <strong>{applyTeamIds.length}개 조 선택</strong>
+            </div>
+            <div className="target-team-grid" aria-label="모델 적용 대상 조">
+              {teams.map((team) => (
+                <label key={team.id} className={applyTeamIds.includes(team.id) ? 'checked' : ''}>
+                  <input type="checkbox" checked={applyTeamIds.includes(team.id)} onChange={() => toggleApplyTeam(team.id)} />
+                  {team.id}조
+                </label>
+              ))}
+            </div>
+            <div className="asset-library">
+              {modelAssets.length ? modelAssets.map((asset) => (
+                <article className="asset-card" key={asset.id}>
+                  <div className="asset-card-head">
+                    <div><strong>{asset.name}</strong><span>{asset.team_ids.length ? `${asset.team_ids.join(', ')}조 적용 중` : '아직 적용된 조 없음'}</span></div>
+                    <a href={asset.glb_url} target="_blank" rel="noreferrer">GLB 확인</a>
+                  </div>
+                  <div className="asset-metrics">
+                    {asset.glb_bytes != null && <span>{formatBytes(asset.glb_bytes)}</span>}
+                    {asset.glb_triangles != null && <span>{asset.glb_triangles.toLocaleString('ko-KR')} tris</span>}
+                    {asset.glb_animations != null && <span>동작 {asset.glb_animations}개</span>}
+                  </div>
+                  <button className="primary" type="button" disabled={!applyTeamIds.length || applyingAssetId !== null} onClick={() => void applyModelAsset(asset)}>
+                    {applyingAssetId === asset.id ? '적용 중…' : `선택한 ${applyTeamIds.length}개 조에 적용`}
+                  </button>
+                </article>
+              )) : <p className="empty-library">완성된 공용 모델이 없습니다. 위에서 첫 모델을 생성해주세요.</p>}
+            </div>
+          </section>
+
+          <hr />
           <h2>3D 변환 작업</h2>
           <section className={`billing-panel ${billingError || billing?.error ? 'unavailable' : ''}`} aria-label="Tripo 크레딧 현황">
             <div className="billing-title">
@@ -480,7 +563,7 @@ export default function AdminPage() {
                   const metrics = metricEntries(job);
                   return (
                     <tr key={job.id}>
-                      <td>{job.team_id}조<br /><span className="muted job-id">{job.id}</span></td>
+                      <td>{job.asset_only ? (job.asset_name || '공용 모델') : `${job.team_id}조`}<br /><span className="muted job-id">{job.id}</span></td>
                       <td>
                         <span className={`status ${job.status}`}>{statusLabel(job.status)}</span>
                         {job.fallback_used && <span className="fallback-badge">멀티뷰 보완</span>}

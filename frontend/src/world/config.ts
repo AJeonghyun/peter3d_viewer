@@ -125,6 +125,7 @@ export function fallbackTeams(): Team[] {
     title: '첫걸음을 준비하는 자',
     image_url: null,
     model_url: null,
+    model_asset_id: null,
     conversion_status: 'demo',
     updated_at: '',
   }));

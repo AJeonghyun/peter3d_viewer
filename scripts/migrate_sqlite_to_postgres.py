@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from peter3d_storage import JOB_COLUMN_MIGRATIONS, POSTGRES_SCHEMA
+from peter3d_storage import JOB_COLUMN_MIGRATIONS, POSTGRES_SCHEMA, TEAM_COLUMN_MIGRATIONS
 
 
 TEAM_COLUMNS = (
@@ -38,6 +38,7 @@ TEAM_COLUMNS = (
     "title",
     "image_url",
     "model_url",
+    "model_asset_id",
     "conversion_status",
     "updated_at",
 )
@@ -75,6 +76,9 @@ JOB_COLUMNS = (
     "glb_animations",
     "lease_token",
     "lease_until",
+    "asset_only",
+    "asset_name",
+    "source_image_url",
     "created_at",
     "updated_at",
 )
@@ -146,12 +150,15 @@ def main() -> None:
         with postgres_db.cursor() as cur:
             for statement in POSTGRES_SCHEMA:
                 cur.execute(statement)
+            for column, definition in TEAM_COLUMN_MIGRATIONS.items():
+                cur.execute(f"ALTER TABLE teams ADD COLUMN IF NOT EXISTS {column} {definition}")
             for column, definition in JOB_COLUMN_MIGRATIONS.items():
                 cur.execute(
                     f"ALTER TABLE conversion_jobs ADD COLUMN IF NOT EXISTS {column} {definition}"
                 )
 
             for team in teams:
+                team.setdefault("model_asset_id", None)
                 upsert(cur, "teams", TEAM_COLUMNS, team)
             for event in events:
                 upsert(cur, "growth_events", EVENT_COLUMNS, event)
@@ -162,6 +169,7 @@ def main() -> None:
                     job.setdefault(column, None)
                 job["pipeline_profile"] = job["pipeline_profile"] or "h3_smart"
                 job["fallback_used"] = int(job["fallback_used"] or 0)
+                job["asset_only"] = int(job["asset_only"] or 0)
                 job["image_path"] = team_image or "migrated://source-unavailable"
                 if job["status"] == "done":
                     job["glb_url"] = team_model
@@ -169,6 +177,21 @@ def main() -> None:
                     job["status"] = "failed"
                     job["error"] = "클라우드 이관 중 중단된 작업입니다. 이미지를 다시 등록해주세요."
                 upsert(cur, "conversion_jobs", JOB_COLUMNS, job)
+
+            cur.execute(
+                """
+                INSERT INTO model_assets (
+                    id, name, source_image_url, glb_url, pipeline_profile,
+                    glb_bytes, glb_triangles, glb_animations, created_at, updated_at
+                )
+                SELECT id, COALESCE(asset_name, '기존 생성 모델 ' || id), source_image_url,
+                    glb_url, pipeline_profile, glb_bytes, glb_triangles, glb_animations,
+                    created_at, updated_at
+                FROM conversion_jobs
+                WHERE status = 'done' AND glb_url IS NOT NULL
+                ON CONFLICT (id) DO NOTHING
+                """
+            )
 
             cur.execute(
                 """

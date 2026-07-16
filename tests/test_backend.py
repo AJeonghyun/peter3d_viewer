@@ -65,8 +65,20 @@ class Peter3DBackendTests(unittest.TestCase):
             "glb_animations",
             "lease_token",
             "lease_until",
+            "asset_only",
+            "asset_name",
+            "source_image_url",
         }.issubset(columns))
         self.assertIsNotNone(usage_table)
+        with backend_main.connect_db() as db:
+            team_columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(teams)").fetchall()
+            }
+            asset_table = db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'model_assets'"
+            ).fetchone()
+        self.assertIn("model_asset_id", team_columns)
+        self.assertIsNotNone(asset_table)
 
     def test_generation_profiles_enable_autofix_without_invalid_p1_flags(self):
         h3 = backend_main.image_model_options("h3_smart")
@@ -197,6 +209,71 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertNotIn("image_path", result)
         self.assertNotIn("model_task_id", result)
         self.assertEqual(result["id"], "safe-job")
+
+    def test_asset_generation_finishes_without_changing_a_team(self):
+        timestamp = backend_main.now_iso()
+        with backend_main.connect_db() as db:
+            db.execute(
+                """
+                INSERT INTO conversion_jobs (
+                    id, team_id, status, image_path, asset_only, asset_name,
+                    source_image_url, created_at, updated_at
+                ) VALUES ('shared-model', 1, 'animating', 'source.png', 1,
+                    '공용 베드로', '/uploads/source.png', ?, ?)
+                """,
+                (timestamp, timestamp),
+            )
+            job = dict(db.execute(
+                "SELECT * FROM conversion_jobs WHERE id = 'shared-model'"
+            ).fetchone())
+
+        asyncio.run(backend_main.activate_generated_model(
+            job,
+            "https://assets.example/shared.glb",
+            {"bytes": 1024, "triangles": 20000, "animations": 2},
+        ))
+
+        with backend_main.connect_db() as db:
+            team = db.execute("SELECT * FROM teams WHERE id = 1").fetchone()
+            asset = db.execute(
+                "SELECT * FROM model_assets WHERE id = 'shared-model'"
+            ).fetchone()
+            completed_job = db.execute(
+                "SELECT * FROM conversion_jobs WHERE id = 'shared-model'"
+            ).fetchone()
+        self.assertIsNone(team["model_url"])
+        self.assertEqual(team["conversion_status"], "empty")
+        self.assertEqual(asset["name"], "공용 베드로")
+        self.assertEqual(completed_job["status"], "done")
+        self.assertIsNone(backend_main.public_job(completed_job)["team_id"])
+
+    def test_one_model_asset_can_be_applied_to_multiple_teams(self):
+        timestamp = backend_main.now_iso()
+        with backend_main.connect_db() as db:
+            db.execute(
+                """
+                INSERT INTO model_assets (
+                    id, name, glb_url, created_at, updated_at
+                ) VALUES ('reusable', '재사용 모델', 'https://assets.example/reusable.glb', ?, ?)
+                """,
+                (timestamp, timestamp),
+            )
+
+        result = asyncio.run(backend_main.apply_model_asset(
+            "reusable",
+            backend_main.ModelAssetApply(team_ids=[4, 7, 4]),
+        ))
+
+        self.assertEqual(result["applied_count"], 2)
+        with backend_main.connect_db() as db:
+            teams = db.execute(
+                "SELECT id, model_url, model_asset_id FROM teams WHERE id IN (4, 7) ORDER BY id"
+            ).fetchall()
+            untouched = db.execute("SELECT model_url FROM teams WHERE id = 8").fetchone()
+        self.assertEqual([row["id"] for row in teams], [4, 7])
+        self.assertTrue(all(row["model_asset_id"] == "reusable" for row in teams))
+        self.assertTrue(all(row["model_url"].endswith("reusable.glb") for row in teams))
+        self.assertIsNone(untouched["model_url"])
 
     def test_accepts_a_bounded_rigged_animated_glb(self):
         contents = make_glb({

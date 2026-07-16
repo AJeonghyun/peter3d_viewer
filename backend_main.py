@@ -169,7 +169,9 @@ def public_job(row: Any) -> dict:
     job = row_dict(row)
     return {
         "id": job["id"],
-        "team_id": job["team_id"],
+        "team_id": None if job.get("asset_only") else job["team_id"],
+        "asset_only": bool(job.get("asset_only")),
+        "asset_name": job.get("asset_name"),
         "status": job["status"],
         "error": job["error"],
         "glb_url": job["glb_url"],
@@ -181,6 +183,24 @@ def public_job(row: Any) -> dict:
         "glb_animations": job.get("glb_animations"),
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
+    }
+
+
+def public_model_asset(row: Any) -> dict:
+    asset = row_dict(row)
+    team_ids = asset.get("team_ids") or ""
+    return {
+        "id": asset["id"],
+        "name": asset["name"],
+        "source_image_url": asset.get("source_image_url"),
+        "glb_url": asset["glb_url"],
+        "pipeline_profile": asset.get("pipeline_profile") or DEFAULT_PIPELINE_PROFILE,
+        "glb_bytes": asset.get("glb_bytes"),
+        "glb_triangles": asset.get("glb_triangles"),
+        "glb_animations": asset.get("glb_animations"),
+        "team_ids": [int(value) for value in str(team_ids).split(",") if value],
+        "created_at": asset["created_at"],
+        "updated_at": asset["updated_at"],
     }
 
 
@@ -219,6 +239,10 @@ class GrowthCreate(BaseModel):
     note: str = Field(default="", max_length=200)
     talent_delta: int = Field(default=0, ge=-10000, le=10000)
     stats: Dict[str, int] = Field(default_factory=dict)
+
+
+class ModelAssetApply(BaseModel):
+    team_ids: List[int] = Field(min_length=1, max_length=25)
 
 
 def profile_config(profile: str) -> dict:
@@ -391,8 +415,11 @@ def update_job(job_id: str, status: str, **fields: object) -> None:
             f"UPDATE conversion_jobs SET {', '.join(assignments)} WHERE id = ?",
             values,
         )
-        row = db.execute("SELECT team_id FROM conversion_jobs WHERE id = ?", (job_id,)).fetchone()
-        if row:
+        row = db.execute(
+            "SELECT team_id, asset_only FROM conversion_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+        if row and not row["asset_only"]:
             db.execute(
                 "UPDATE teams SET conversion_status = ?, updated_at = ? WHERE id = ?",
                 (status, now_iso(), row["team_id"]),
@@ -426,10 +453,10 @@ def reserve_multiview_slot(job_id: str) -> bool:
         if reserved.rowcount != 1:
             return False
         team = db.execute(
-            "SELECT team_id FROM conversion_jobs WHERE id = ?",
+            "SELECT team_id, asset_only FROM conversion_jobs WHERE id = ?",
             (job_id,),
         ).fetchone()
-        if team:
+        if team and not team["asset_only"]:
             db.execute(
                 "UPDATE teams SET conversion_status = 'multiview_starting', updated_at = ? WHERE id = ?",
                 (timestamp, team["team_id"]),
@@ -437,7 +464,13 @@ def reserve_multiview_slot(job_id: str) -> bool:
     return True
 
 
-async def upload_generated_glb(team_id: int, job_id: str, source_url: str) -> tuple[str, dict]:
+def model_blob_path(job: dict) -> str:
+    if job.get("asset_only"):
+        return f"model-assets/{job['id']}/model.glb"
+    return f"teams/{job['team_id']}/models/{job['id']}.glb"
+
+
+async def upload_generated_glb(job: dict, source_url: str) -> tuple[str, dict]:
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
         contents = bytearray()
         async with client.stream("GET", source_url) as response:
@@ -451,7 +484,7 @@ async def upload_generated_glb(team_id: int, job_id: str, source_url: str) -> tu
     glb = bytes(contents)
     metrics = inspect_animated_glb(glb, minimum_animations=2)
     url = await put_public_blob(
-        f"teams/{team_id}/models/{job_id}.glb",
+        model_blob_path(job),
         glb,
         content_type="model/gltf-binary",
         multipart=True,
@@ -464,12 +497,46 @@ def final_model_url(task: Any) -> Optional[str]:
 
 
 async def activate_generated_model(job: dict, glb_url: str, metrics: dict) -> None:
+    timestamp = now_iso()
     with connect_db() as db:
-        previous = row_dict(get_team_or_404(db, job["team_id"]))
         db.execute(
-            "UPDATE teams SET model_url = ?, conversion_status = 'done', updated_at = ? WHERE id = ?",
-            (glb_url, now_iso(), job["team_id"]),
+            """
+            INSERT INTO model_assets (
+                id, name, source_image_url, glb_url, pipeline_profile,
+                glb_bytes, glb_triangles, glb_animations, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (id) DO UPDATE SET
+                name = excluded.name,
+                source_image_url = excluded.source_image_url,
+                glb_url = excluded.glb_url,
+                pipeline_profile = excluded.pipeline_profile,
+                glb_bytes = excluded.glb_bytes,
+                glb_triangles = excluded.glb_triangles,
+                glb_animations = excluded.glb_animations,
+                updated_at = excluded.updated_at
+            """,
+            (
+                job["id"],
+                job.get("asset_name") or f"{job['team_id']}조 생성 모델",
+                job.get("source_image_url"),
+                glb_url,
+                job.get("pipeline_profile") or DEFAULT_PIPELINE_PROFILE,
+                metrics["bytes"],
+                metrics["triangles"],
+                metrics["animations"],
+                job.get("created_at") or timestamp,
+                timestamp,
+            ),
         )
+        if not job.get("asset_only"):
+            get_team_or_404(db, job["team_id"])
+            db.execute(
+                """
+                UPDATE teams SET model_url = ?, model_asset_id = ?,
+                    conversion_status = 'done', updated_at = ? WHERE id = ?
+                """,
+                (glb_url, job["id"], timestamp, job["team_id"]),
+            )
     update_job(
         job["id"],
         "done",
@@ -478,8 +545,6 @@ async def activate_generated_model(job: dict, glb_url: str, metrics: dict) -> No
         glb_triangles=metrics["triangles"],
         glb_animations=metrics["animations"],
     )
-    if previous["model_url"] != glb_url:
-        await delete_blob_if_managed(previous["model_url"])
 
 
 async def run_pipeline(job_id: str) -> None:
@@ -580,7 +645,9 @@ async def run_pipeline(job_id: str) -> None:
             if animation.status != TaskStatus.SUCCESS:
                 raise RuntimeError(animation.error_msg or "대기·걷기 적용에 실패했습니다")
 
-            output_dir = MODELS_DIR / f"team-{job['team_id']}"
+            output_dir = MODELS_DIR / (
+                f"asset-{job['id']}" if job.get("asset_only") else f"team-{job['team_id']}"
+            )
             output_dir.mkdir(parents=True, exist_ok=True)
             files = await client.download_task_models(animation, str(output_dir))
             glb_path = next(
@@ -593,13 +660,14 @@ async def run_pipeline(job_id: str) -> None:
             metrics = inspect_animated_glb(glb_contents, minimum_animations=2)
             if blob_configured():
                 glb_url = await put_public_blob(
-                    f"teams/{job['team_id']}/models/{job_id}.glb",
+                    model_blob_path(job),
                     glb_contents,
                     content_type="model/gltf-binary",
                     multipart=True,
                 )
             else:
-                glb_url = f"/static/models/team-{job['team_id']}/{glb_path.name}"
+                folder = f"asset-{job['id']}" if job.get("asset_only") else f"team-{job['team_id']}"
+                glb_url = f"/static/models/{folder}/{glb_path.name}"
             await activate_generated_model(job, glb_url, metrics)
     except Exception as exc:  # noqa: BLE001 - user-facing job boundary
         update_job(job_id, "failed", error=str(exc))
@@ -749,7 +817,7 @@ async def advance_serverless_job(job_id: str) -> None:
             source_url = final_model_url(task)
             if not source_url:
                 raise RuntimeError("완성된 GLB 다운로드 주소를 찾지 못했습니다")
-            glb_url, metrics = await upload_generated_glb(job["team_id"], job_id, source_url)
+            glb_url, metrics = await upload_generated_glb(job, source_url)
             await activate_generated_model(job, glb_url, metrics)
     except Exception as exc:  # noqa: BLE001 - user-facing job boundary
         update_job(job_id, "failed", error=str(exc))
@@ -995,12 +1063,7 @@ async def add_growth(team_id: int, payload: GrowthCreate):
         return row_dict(get_team_or_404(db, team_id))
 
 
-@app.post("/api/teams/{team_id}/convert", status_code=202)
-async def convert_team(
-    team_id: int,
-    image: UploadFile = File(...),
-    pipeline_profile: str = Form(DEFAULT_PIPELINE_PROFILE),
-):
+def ensure_conversion_available(pipeline_profile: str) -> None:
     api_key = os.getenv("TRIPO_API_KEY", "")
     if SERVERLESS_RUNTIME and not (using_postgres() and blob_configured()):
         raise HTTPException(
@@ -1011,21 +1074,9 @@ async def convert_team(
         raise HTTPException(status_code=503, detail="TRIPO_API_KEY가 설정되지 않았습니다")
     if pipeline_profile not in PIPELINE_PROFILES:
         raise HTTPException(status_code=422, detail="지원하지 않는 변환 프로필입니다")
-    with connect_db() as db:
-        previous_team = row_dict(get_team_or_404(db, team_id))
-        active_job = db.execute(
-            """
-            SELECT id FROM conversion_jobs
-            WHERE team_id = ? AND status NOT IN ('done', 'failed')
-            ORDER BY created_at DESC LIMIT 1
-            """,
-            (team_id,),
-        ).fetchone()
-    if active_job:
-        raise HTTPException(
-            status_code=409,
-            detail=f"이 조는 이미 변환 작업 {active_job['id']}을 진행 중입니다",
-        )
+
+
+async def validated_image_upload(image: UploadFile) -> tuple[bytes, str, str]:
     content_type = (image.content_type or "").lower()
     extensions = {"image/png": ".png", "image/jpeg": ".jpg"}
     if content_type not in extensions:
@@ -1041,13 +1092,54 @@ async def convert_team(
     }
     if not signatures[content_type]:
         raise HTTPException(status_code=422, detail="파일 내용이 올바른 이미지 형식이 아닙니다")
+    return contents, content_type, extensions[content_type]
 
+
+async def enqueue_conversion(job_id: str) -> None:
+    if SERVERLESS_RUNTIME:
+        return
+    if job_queue is None:
+        raise HTTPException(status_code=503, detail="변환 대기열이 준비되지 않았습니다")
+    await job_queue.put(job_id)
+
+
+@app.get("/api/model-assets")
+async def list_model_assets():
+    with connect_db() as db:
+        assets = [row_dict(row) for row in db.execute(
+            "SELECT * FROM model_assets ORDER BY created_at DESC"
+        ).fetchall()]
+        assignments = db.execute(
+            """
+            SELECT model_asset_id, id AS team_id FROM teams
+            WHERE model_asset_id IS NOT NULL ORDER BY id
+            """
+        ).fetchall()
+    team_ids_by_asset: Dict[str, List[int]] = {}
+    for row in assignments:
+        team_ids_by_asset.setdefault(row["model_asset_id"], []).append(int(row["team_id"]))
+    for asset in assets:
+        asset["team_ids"] = ",".join(str(value) for value in team_ids_by_asset.get(asset["id"], []))
+    return [public_model_asset(asset) for asset in assets]
+
+
+@app.post("/api/model-assets/generate", status_code=202)
+async def generate_model_asset(
+    image: UploadFile = File(...),
+    name: str = Form(...),
+    pipeline_profile: str = Form(DEFAULT_PIPELINE_PROFILE),
+):
+    ensure_conversion_available(pipeline_profile)
+    asset_name = name.strip()
+    if not asset_name or len(asset_name) > 60:
+        raise HTTPException(status_code=422, detail="모델 이름은 1~60자로 입력해주세요")
+    contents, content_type, extension = await validated_image_upload(image)
     job_id = uuid.uuid4().hex[:12]
-    filename = f"team-{team_id}-{job_id}{extensions[content_type]}"
+    filename = f"asset-{job_id}{extension}"
     image_path = UPLOADS_DIR / filename
     if blob_configured():
         image_url = await put_public_blob(
-            f"teams/{team_id}/images/{job_id}{extensions[content_type]}",
+            f"model-assets/{job_id}/source{extension}",
             contents,
             content_type=content_type,
         )
@@ -1062,10 +1154,106 @@ async def convert_team(
         db.execute(
             """
             INSERT INTO conversion_jobs (
-                id, team_id, status, image_path, pipeline_profile, created_at, updated_at
-            ) VALUES (?, ?, 'queued', ?, ?, ?, ?)
+                id, team_id, status, image_path, pipeline_profile, asset_only,
+                asset_name, source_image_url, created_at, updated_at
+            ) VALUES (?, 1, 'queued', ?, ?, 1, ?, ?, ?, ?)
             """,
-            (job_id, team_id, image_job_source, pipeline_profile, timestamp, timestamp),
+            (
+                job_id, image_job_source, pipeline_profile, asset_name,
+                image_url, timestamp, timestamp,
+            ),
+        )
+    await enqueue_conversion(job_id)
+    return {"job_id": job_id, "status": "queued", "asset_name": asset_name}
+
+
+@app.post("/api/model-assets/{asset_id}/apply")
+async def apply_model_asset(asset_id: str, payload: ModelAssetApply):
+    team_ids = sorted(set(payload.team_ids))
+    if any(team_id < 1 or team_id > 25 for team_id in team_ids):
+        raise HTTPException(status_code=422, detail="조 번호는 1~25 사이여야 합니다")
+    timestamp = now_iso()
+    with connect_db() as db:
+        asset = db.execute("SELECT * FROM model_assets WHERE id = ?", (asset_id,)).fetchone()
+        if not asset:
+            raise HTTPException(status_code=404, detail="모델 보관함에서 GLB를 찾을 수 없습니다")
+        existing = db.execute(
+            f"SELECT id FROM teams WHERE id IN ({','.join('?' for _ in team_ids)})",
+            team_ids,
+        ).fetchall()
+        if len(existing) != len(team_ids):
+            raise HTTPException(status_code=404, detail="선택한 조 중 존재하지 않는 조가 있습니다")
+        for team_id in team_ids:
+            db.execute(
+                """
+                UPDATE teams SET model_url = ?, model_asset_id = ?,
+                    conversion_status = 'done', updated_at = ? WHERE id = ?
+                """,
+                (asset["glb_url"], asset_id, timestamp, team_id),
+            )
+        rows = db.execute(
+            f"SELECT * FROM teams WHERE id IN ({','.join('?' for _ in team_ids)}) ORDER BY id",
+            team_ids,
+        ).fetchall()
+    return {
+        "asset_id": asset_id,
+        "applied_count": len(team_ids),
+        "teams": [row_dict(row) for row in rows],
+    }
+
+
+@app.post("/api/teams/{team_id}/convert", status_code=202)
+async def convert_team(
+    team_id: int,
+    image: UploadFile = File(...),
+    pipeline_profile: str = Form(DEFAULT_PIPELINE_PROFILE),
+):
+    ensure_conversion_available(pipeline_profile)
+    with connect_db() as db:
+        previous_team = row_dict(get_team_or_404(db, team_id))
+        active_job = db.execute(
+            """
+            SELECT id FROM conversion_jobs
+            WHERE team_id = ? AND asset_only = 0 AND status NOT IN ('done', 'failed')
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (team_id,),
+        ).fetchone()
+    if active_job:
+        raise HTTPException(
+            status_code=409,
+            detail=f"이 조는 이미 변환 작업 {active_job['id']}을 진행 중입니다",
+        )
+    contents, content_type, extension = await validated_image_upload(image)
+
+    job_id = uuid.uuid4().hex[:12]
+    filename = f"team-{team_id}-{job_id}{extension}"
+    image_path = UPLOADS_DIR / filename
+    if blob_configured():
+        image_url = await put_public_blob(
+            f"teams/{team_id}/images/{job_id}{extension}",
+            contents,
+            content_type=content_type,
+        )
+        if not SERVERLESS_RUNTIME:
+            image_path.write_bytes(contents)
+    else:
+        image_path.write_bytes(contents)
+        image_url = f"/uploads/{filename}"
+    image_job_source = image_url if SERVERLESS_RUNTIME else str(image_path)
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            INSERT INTO conversion_jobs (
+                id, team_id, status, image_path, pipeline_profile,
+                asset_name, source_image_url, created_at, updated_at
+            ) VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job_id, team_id, image_job_source, pipeline_profile,
+                f"{previous_team['name']} 생성 모델", image_url, timestamp, timestamp,
+            ),
         )
         db.execute(
             "UPDATE teams SET image_url = ?, conversion_status = 'queued', updated_at = ? WHERE id = ?",
@@ -1074,12 +1262,7 @@ async def convert_team(
     if previous_team["image_url"] != image_url:
         await delete_blob_if_managed(previous_team["image_url"])
 
-    if SERVERLESS_RUNTIME:
-        return {"job_id": job_id, "team_id": team_id, "status": "queued"}
-
-    if job_queue is None:
-        raise HTTPException(status_code=503, detail="변환 대기열이 준비되지 않았습니다")
-    await job_queue.put(job_id)
+    await enqueue_conversion(job_id)
     return {"job_id": job_id, "team_id": team_id, "status": "queued"}
 
 
