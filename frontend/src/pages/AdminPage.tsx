@@ -57,8 +57,8 @@ const EMPTY_DRAFT: TeamDraft = { name: '', color: '#67b8c7', symbol: '', identit
 const FALLBACK_PIPELINE_PROFILES: PipelineProfile[] = [
   {
     id: 'h3_smart',
-    label: 'H3 + 스마트 경량화',
-    description: '품질과 iPad 성능의 균형을 우선하고, 필요한 경우에만 멀티뷰로 보완합니다.',
+    label: 'H3.1 40K Detail',
+    description: '40,000면으로 그림 디테일을 보존하고, 필요한 경우에만 멀티뷰로 보완합니다.',
     estimated_credits: 0,
   },
   {
