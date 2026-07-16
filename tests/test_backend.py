@@ -87,8 +87,10 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertTrue(h3["enable_image_autofix"])
         self.assertTrue(h3["smart_low_poly"])
         self.assertEqual(h3["model_version"], "v3.1-20260211")
+        self.assertEqual(h3["face_limit"], 40_000)
         self.assertTrue(p1["enable_image_autofix"])
         self.assertEqual(p1["model_version"], "P1-20260311")
+        self.assertEqual(p1["face_limit"], 40_000)
         self.assertNotIn("smart_low_poly", p1)
         self.assertNotIn("geometry_quality", p1)
         self.assertNotIn("texture_quality", p1)
@@ -100,8 +102,9 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(payload["type"], "multiview_to_model")
         self.assertEqual(payload["original_task_id"], "views-task")
         self.assertTrue(payload["smart_low_poly"])
+        self.assertEqual(payload["face_limit"], 40_000)
 
-    def test_rig_and_animation_tasks_use_latest_rig_and_two_clips(self):
+    def test_rig_and_animation_tasks_use_biped_v1_and_two_clips(self):
         class FakeClient:
             def __init__(self):
                 self.rig_kwargs = None
@@ -119,10 +122,13 @@ class Peter3DBackendTests(unittest.TestCase):
         rig_id = asyncio.run(backend_main.create_rig_task(client, "model-task"))
         animation_id = asyncio.run(backend_main.create_animation_task(client, rig_id))
 
-        self.assertEqual(client.rig_kwargs["model_version"], "v2.5-20260210")
+        self.assertEqual(client.rig_kwargs["model_version"], "v1.0-20240301")
         self.assertEqual(
             client.animation_kwargs["animation"],
-            [backend_main.Animation.IDLE, backend_main.Animation.WALK],
+            [
+                "preset:biped:standing_relax",
+                "preset:biped:walk",
+            ],
         )
         self.assertEqual(animation_id, "animation-task")
 
