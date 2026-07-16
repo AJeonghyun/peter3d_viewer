@@ -122,6 +122,8 @@ function RiggedPeter({
     });
     return result;
   }, [scene]);
+  // AnimationClip tracks are immutable and can stay shared in the GLTF cache;
+  // each cloned skeleton still receives its own mixer, actions, and phase.
   const clips = useMemo(() => findAnimationClips(animations), [animations]);
   const boundsClip = clips.walk ?? clips.idle;
   const fit = useMemo(() => {
@@ -151,6 +153,8 @@ function RiggedPeter({
     const walking = clips.walk ? mixer.clipAction(clips.walk, clone) : null;
     const idling = clips.idle ? mixer.clipAction(clips.idle, clone) : null;
     const isSelected = selectionRef.current === teamId;
+    const walkPhase = seeded(teamId, 531);
+    const idlePhase = seeded(teamId, 532);
 
     if (walking && clips.walk) {
       walking.enabled = true;
@@ -159,6 +163,7 @@ function RiggedPeter({
       walking.setEffectiveTimeScale(Math.max(0.65, speed * clips.walk.duration / WALK_STRIDE_LENGTH));
       walking.setEffectiveWeight(isSelected && idling ? 0 : 1);
       walking.reset().play();
+      walking.time = clips.walk.duration * walkPhase;
     }
     if (idling) {
       idling.enabled = true;
@@ -167,6 +172,7 @@ function RiggedPeter({
       idling.setEffectiveTimeScale(1);
       idling.setEffectiveWeight(isSelected ? 1 : 0);
       idling.reset().play();
+      if (clips.idle) idling.time = clips.idle.duration * idlePhase;
     }
 
     walkAction.current = walking;
@@ -200,7 +206,9 @@ function RiggedPeter({
           next.stopFading();
           next.enabled = true;
           next.paused = false;
-          next.reset().setEffectiveWeight(1).fadeIn(0.18).play();
+          // Both actions keep advancing in the mixer even at zero weight.
+          // Preserve that phase during selection instead of snapping to frame 0.
+          next.setEffectiveWeight(1).fadeIn(0.18).play();
           activeAction.current = next;
         }
       } else if (walking) {
