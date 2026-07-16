@@ -37,7 +37,8 @@ Three.js와 R3F 관련 라이브러리는 프론트엔드 번들에 포함되므
 
 ## 설치 및 실행
 
-Python 3.9 이상과 Node.js 20 이상이 필요합니다.
+Python 3.9 이상과 Node.js 20.17 이상이 필요합니다. 이 프로젝트는
+`.nvmrc`로 Node.js 24.12.0 LTS를 사용합니다.
 
 ```bash
 python3 -m venv .venv
@@ -82,22 +83,31 @@ npm run dev
 
 기본값은 비용과 현장 안정성을 고려해 다음과 같습니다.
 
-- 모델: `v3.1-20260211` (`TRIPO_MODEL_VERSION`으로 변경 가능)
-- 표준 텍스처, PBR 제외, 압축 출력
+- 입력 이미지 자동 보정(`enable_image_autofix=true`)
+- 기본 프로필: H3.1 `v3.1-20260211` + 생성 단계 Smart Low Poly
+- 비교 프로필: P1 `P1-20260311`(자체 저폴리, Smart Low Poly 중복 적용 안 함)
+- 관리자 화면에서 대표 그림 2~3건만 프로필을 바꿔 비교
+- 표준 텍스처, 원본 이미지 색상 정렬, PBR 제외, 압축 출력
 - 생성 메시 목표 20,000면 (`TRIPO_FACE_LIMIT`으로 변경 가능)
 - 무료 `check_riggable` 선행
-- 사람형 Biped 리깅
-- `Animation.WALK` 하나만 적용
-- 제자리 걷기 GLB 생성
+- 최신 Rig `v2.5-20260210` 사람형 Biped 리깅
+- `Animation.IDLE`과 `Animation.WALK`를 GLB 하나에 적용
+- 제자리 대기·걷기 GLB 생성
+- 단일 이미지가 리깅 불가일 때만 멀티뷰 생성·모델링을 1회 시도
 - 동시 변환 3개 (`PETER3D_WORKERS=1..5`로 변경)
-- 완성 GLB 검수: 리깅·애니메이션 필수, 최대 10MB·100,000 삼각형
+- 완성 GLB 검수: 리깅·애니메이션 2개 필수, 최대 10MB·100,000 삼각형
+- 관리자 화면에 잔여·보류 크레딧과 작업별 실제 소모량 표시
+
+기본 H3 Smart 프로필은 약 85크레딧, P1은 약 95크레딧이 예상됩니다.
+멀티뷰 폴백이 실행되면 추가 크레딧이 사용되며, 실제 금액은 Tripo 작업
+응답의 `consumed_credit`를 저장해 관리자 화면에 표시합니다.
 
 ## 25개 애니메이션 모델 성능 정책
 
 - iPad/터치 기기는 `balanced` 프로필을 자동 적용합니다.
 - GLB 다운로드·파싱은 iPad에서 2개, 고성능 기기에서 3개까지만 동시에 진행합니다.
 - 아직 대기 중인 조는 준비 화면 뒤에서 저비용 데모 캐릭터 상태를 유지합니다.
-- 선택한 조의 대기 모델을 우선 로드하고, 선택 중에는 해당 걷기 애니메이션을 멈춥니다.
+- 선택한 조의 대기 모델을 우선 로드하고, 선택 중에는 이동을 멈춘 채 idle 애니메이션을 재생합니다.
 - 걷기 애니메이션은 iPad 15fps, 고성능 기기 30fps로 갱신합니다.
 - 배회 판단은 iPad 10fps, 고성능 기기 15fps로 낮추되 Rapier 이동은 계속 보간합니다.
 - iPad에서는 30Hz 고정 물리, 낮은 DPR, 그림자·후처리 비활성화로 발열을 줄입니다.
@@ -145,7 +155,7 @@ Vercel Function의 요청 본문 제한을 넘지 않도록 운영 화면은 3.8
 보관해야 한다면 촬영 기기에도 원본을 남겨두세요.
 
 Vercel 프로젝트에는 `DATABASE_URL`(또는 `POSTGRES_URL`),
-`BLOB_READ_WRITE_TOKEN`, `TRIPO_API_KEY`, `TRIPO_MODEL_VERSION`이 설정되어야
+`BLOB_READ_WRITE_TOKEN`, `TRIPO_API_KEY`, `TRIPO_PIPELINE_PROFILE`이 설정되어야
 합니다. 비밀값은 `.env`, `.env.local` 또는 Vercel 환경 변수에만 두고 저장소에
 커밋하지 마세요. `/api/health`의 `persistent_storage`가 `true`이면 두 영구
 저장소가 모두 연결된 상태입니다.

@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from peter3d_storage import POSTGRES_SCHEMA
+from peter3d_storage import JOB_COLUMN_MIGRATIONS, POSTGRES_SCHEMA
 
 
 TEAM_COLUMNS = (
@@ -66,6 +66,15 @@ JOB_COLUMNS = (
     "rig_check_task_id",
     "rig_task_id",
     "animation_task_id",
+    "multiview_task_id",
+    "fallback_model_task_id",
+    "pipeline_profile",
+    "fallback_used",
+    "glb_bytes",
+    "glb_triangles",
+    "glb_animations",
+    "lease_token",
+    "lease_until",
     "created_at",
     "updated_at",
 )
@@ -137,9 +146,10 @@ def main() -> None:
         with postgres_db.cursor() as cur:
             for statement in POSTGRES_SCHEMA:
                 cur.execute(statement)
-            cur.execute(
-                "ALTER TABLE conversion_jobs ADD COLUMN IF NOT EXISTS rig_check_task_id TEXT"
-            )
+            for column, definition in JOB_COLUMN_MIGRATIONS.items():
+                cur.execute(
+                    f"ALTER TABLE conversion_jobs ADD COLUMN IF NOT EXISTS {column} {definition}"
+                )
 
             for team in teams:
                 upsert(cur, "teams", TEAM_COLUMNS, team)
@@ -148,7 +158,10 @@ def main() -> None:
 
             for job in jobs:
                 team_image, team_model = migrated_team_assets.get(int(job["team_id"]), (None, None))
-                job.setdefault("rig_check_task_id", None)
+                for column in JOB_COLUMNS:
+                    job.setdefault(column, None)
+                job["pipeline_profile"] = job["pipeline_profile"] or "h3_smart"
+                job["fallback_used"] = int(job["fallback_used"] or 0)
                 job["image_path"] = team_image or "migrated://source-unavailable"
                 if job["status"] == "done":
                     job["glb_url"] = team_model

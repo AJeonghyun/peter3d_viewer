@@ -24,6 +24,30 @@ export interface ConversionJob {
   status: string;
   error: string | null;
   glb_url: string | null;
+  pipeline_profile?: string | null;
+  credits_used?: number | null;
+  fallback_used?: boolean;
+  metrics?: Record<string, unknown> | null;
+  glb_bytes?: number | null;
+  glb_triangles?: number | null;
+  glb_animations?: number | null;
+}
+
+export interface PipelineProfile {
+  id: string;
+  label: string;
+  description: string;
+  estimated_credits: number;
+}
+
+export interface TripoBilling {
+  configured: boolean;
+  balance: number | null;
+  frozen: number | null;
+  tracked_credits: number;
+  workers: number;
+  profiles: PipelineProfile[];
+  error?: string;
 }
 
 export interface GrowthPayload {

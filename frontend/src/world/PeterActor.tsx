@@ -57,8 +57,22 @@ class ModelErrorBoundary extends Component<ModelBoundaryProps, { failed: boolean
   }
 }
 
-function findWalkClip(animations: THREE.AnimationClip[]) {
-  return animations.find((clip) => /walk|walking|nlatrack/i.test(clip.name)) ?? animations[0] ?? null;
+function findAnimationClips(animations: THREE.AnimationClip[]) {
+  let idle = animations.find((clip) => /idle|standing|stand[-_ ]?still|rest/i.test(clip.name)) ?? null;
+  let walk = animations.find((clip) => /walk|walking|locomotion/i.test(clip.name)) ?? null;
+
+  // Tripo can export generic names such as NlaTrack/NlaTrack.001. The API
+  // request order is fixed to [idle, walk], so preserve that order when names
+  // carry no useful animation hint. A legacy one-clip NlaTrack remains walk.
+  if (!idle && !walk && animations.length >= 2) {
+    [idle, walk] = animations;
+  } else {
+    idle ??= animations.length >= 2
+      ? animations.find((clip) => clip !== walk) ?? null
+      : null;
+    walk ??= animations.find((clip) => clip !== idle) ?? animations[0] ?? null;
+  }
+  return { idle: idle === walk ? null : idle, walk };
 }
 
 function sampleBounds(object: THREE.Object3D, mixer: THREE.AnimationMixer | null, clip: THREE.AnimationClip | null) {
@@ -108,11 +122,12 @@ function RiggedPeter({
     });
     return result;
   }, [scene]);
-  const clip = useMemo(() => findWalkClip(animations), [animations]);
+  const clips = useMemo(() => findAnimationClips(animations), [animations]);
+  const boundsClip = clips.walk ?? clips.idle;
   const fit = useMemo(() => {
-    const sampleMixer = clip ? new THREE.AnimationMixer(clone) : null;
-    if (sampleMixer && clip) sampleMixer.clipAction(clip).play();
-    const bounds = sampleBounds(clone, sampleMixer, clip);
+    const sampleMixer = boundsClip ? new THREE.AnimationMixer(clone) : null;
+    if (sampleMixer && boundsClip) sampleMixer.clipAction(boundsClip).play();
+    const bounds = sampleBounds(clone, sampleMixer, boundsClip);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
     sampleMixer?.setTime(0);
@@ -124,41 +139,80 @@ function RiggedPeter({
       scale: valid ? Math.min(MODEL_TARGET_HEIGHT / size.y, MODEL_TARGET_WIDTH / horizontal) : 1,
       offset: new THREE.Vector3(-center.x, -bounds.min.y, -center.z),
     };
-  }, [clip, clone]);
+  }, [boundsClip, clone]);
   const mixer = useMemo(() => new THREE.AnimationMixer(clone), [clone]);
   const walkAction = useRef<THREE.AnimationAction | null>(null);
-  const animationPaused = useRef(false);
+  const idleAction = useRef<THREE.AnimationAction | null>(null);
+  const activeAction = useRef<THREE.AnimationAction | null>(null);
+  const selectedAnimation = useRef<boolean | null>(null);
   const animationElapsed = useRef(seeded(teamId, 510) / animationFps);
 
   useEffect(() => {
-    const action = clip ? mixer.clipAction(clip, clone) : undefined;
-    if (action && clip) {
-      action.enabled = true;
-      action.clampWhenFinished = false;
-      action.setLoop(THREE.LoopRepeat, Infinity);
-      action.setEffectiveWeight(1);
-      action.setEffectiveTimeScale(Math.max(0.65, speed * clip.duration / WALK_STRIDE_LENGTH));
-      action.reset().play();
+    const walking = clips.walk ? mixer.clipAction(clips.walk, clone) : null;
+    const idling = clips.idle ? mixer.clipAction(clips.idle, clone) : null;
+    const isSelected = selectionRef.current === teamId;
+
+    if (walking && clips.walk) {
+      walking.enabled = true;
+      walking.clampWhenFinished = false;
+      walking.setLoop(THREE.LoopRepeat, Infinity);
+      walking.setEffectiveTimeScale(Math.max(0.65, speed * clips.walk.duration / WALK_STRIDE_LENGTH));
+      walking.setEffectiveWeight(isSelected && idling ? 0 : 1);
+      walking.reset().play();
     }
-    walkAction.current = action ?? null;
+    if (idling) {
+      idling.enabled = true;
+      idling.clampWhenFinished = false;
+      idling.setLoop(THREE.LoopRepeat, Infinity);
+      idling.setEffectiveTimeScale(1);
+      idling.setEffectiveWeight(isSelected ? 1 : 0);
+      idling.reset().play();
+    }
+
+    walkAction.current = walking;
+    idleAction.current = idling;
+    activeAction.current = isSelected && idling ? idling : walking ?? idling;
+    selectedAnimation.current = isSelected;
+    if (!idling && walking) walking.paused = isSelected;
     onReady();
     return () => {
       walkAction.current = null;
-      animationPaused.current = false;
-      action?.stop();
-      if (clip) mixer.uncacheClip(clip);
+      idleAction.current = null;
+      activeAction.current = null;
+      selectedAnimation.current = null;
+      walking?.stop();
+      idling?.stop();
       mixer.uncacheRoot(clone);
     };
-  }, [clip, clone, mixer, onReady, speed]);
+  }, [clips, clone, mixer, onReady, selectionRef, speed, teamId]);
 
   useFrame((_, delta) => {
-    const action = walkAction.current;
-    const shouldPause = selectionRef.current === teamId;
-    if (action && shouldPause !== animationPaused.current) {
-      action.paused = shouldPause;
-      animationPaused.current = shouldPause;
+    const walking = walkAction.current;
+    const idling = idleAction.current;
+    const isSelected = selectionRef.current === teamId;
+
+    if (isSelected !== selectedAnimation.current) {
+      if (walking && idling) {
+        const previous = activeAction.current;
+        const next = isSelected ? idling : walking;
+        if (previous !== next) {
+          previous?.fadeOut(0.18);
+          next.stopFading();
+          next.enabled = true;
+          next.paused = false;
+          next.reset().setEffectiveWeight(1).fadeIn(0.18).play();
+          activeAction.current = next;
+        }
+      } else if (walking) {
+        // Older GLBs only contain a walk clip. Keep their selected pose frozen
+        // instead of making a stationary character continue stepping in place.
+        walking.paused = isSelected;
+      }
+      selectedAnimation.current = isSelected;
     }
-    if (!action || shouldPause) return;
+
+    const action = activeAction.current;
+    if (!action || (isSelected && !idling)) return;
     animationElapsed.current += Math.min(delta, 0.1);
     const interval = 1 / animationFps;
     if (animationElapsed.current < interval) return;
