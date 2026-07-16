@@ -106,8 +106,26 @@ SQLITE_SCHEMA = (
         rig_check_task_id TEXT,
         rig_task_id TEXT,
         animation_task_id TEXT,
+        multiview_task_id TEXT,
+        fallback_model_task_id TEXT,
+        pipeline_profile TEXT NOT NULL DEFAULT 'h3_smart',
+        fallback_used INTEGER NOT NULL DEFAULT 0,
+        glb_bytes INTEGER,
+        glb_triangles INTEGER,
+        glb_animations INTEGER,
+        lease_token TEXT,
+        lease_until TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tripo_task_usage (
+        task_id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL REFERENCES conversion_jobs(id) ON DELETE CASCADE,
+        task_type TEXT NOT NULL,
+        consumed_credit INTEGER NOT NULL DEFAULT 0,
+        recorded_at TEXT NOT NULL
     )
     """,
 )
@@ -159,11 +177,43 @@ POSTGRES_SCHEMA = (
         rig_check_task_id TEXT,
         rig_task_id TEXT,
         animation_task_id TEXT,
+        multiview_task_id TEXT,
+        fallback_model_task_id TEXT,
+        pipeline_profile TEXT NOT NULL DEFAULT 'h3_smart',
+        fallback_used INTEGER NOT NULL DEFAULT 0,
+        glb_bytes INTEGER,
+        glb_triangles INTEGER,
+        glb_animations INTEGER,
+        lease_token TEXT,
+        lease_until TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS tripo_task_usage (
+        task_id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL REFERENCES conversion_jobs(id) ON DELETE CASCADE,
+        task_type TEXT NOT NULL,
+        consumed_credit INTEGER NOT NULL DEFAULT 0,
+        recorded_at TEXT NOT NULL
+    )
+    """,
 )
+
+
+JOB_COLUMN_MIGRATIONS = {
+    "rig_check_task_id": "TEXT",
+    "multiview_task_id": "TEXT",
+    "fallback_model_task_id": "TEXT",
+    "pipeline_profile": "TEXT NOT NULL DEFAULT 'h3_smart'",
+    "fallback_used": "INTEGER NOT NULL DEFAULT 0",
+    "glb_bytes": "INTEGER",
+    "glb_triangles": "INTEGER",
+    "glb_animations": "INTEGER",
+    "lease_token": "TEXT",
+    "lease_until": "TEXT",
+}
 
 
 def initialize_database(sqlite_path: Path, timestamp: str) -> None:
@@ -173,9 +223,10 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
             db.execute(statement)
 
         if db.postgres:
-            db.execute(
-                "ALTER TABLE conversion_jobs ADD COLUMN IF NOT EXISTS rig_check_task_id TEXT"
-            )
+            for column, definition in JOB_COLUMN_MIGRATIONS.items():
+                db.execute(
+                    f"ALTER TABLE conversion_jobs ADD COLUMN IF NOT EXISTS {column} {definition}"
+                )
             for team_id in range(1, 26):
                 db.execute(
                     """
@@ -188,8 +239,9 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
             columns = {
                 row["name"] for row in db.execute("PRAGMA table_info(conversion_jobs)").fetchall()
             }
-            if "rig_check_task_id" not in columns:
-                db.execute("ALTER TABLE conversion_jobs ADD COLUMN rig_check_task_id TEXT")
+            for column, definition in JOB_COLUMN_MIGRATIONS.items():
+                if column not in columns:
+                    db.execute(f"ALTER TABLE conversion_jobs ADD COLUMN {column} {definition}")
             for team_id in range(1, 26):
                 db.execute(
                     "INSERT OR IGNORE INTO teams (id, name, updated_at) VALUES (?, ?, ?)",

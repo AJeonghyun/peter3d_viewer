@@ -10,12 +10,12 @@ import os
 import struct
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -44,7 +44,30 @@ MAX_GLB_TRIANGLES = max(1_000, int(os.getenv("PETER3D_MAX_GLB_TRIANGLES", "10000
 TRIPO_FACE_LIMIT = max(1_000, min(int(os.getenv("TRIPO_FACE_LIMIT", "20000")), 100_000))
 WORKER_COUNT = max(1, min(int(os.getenv("PETER3D_WORKERS", "3")), 5))
 SERVERLESS_RUNTIME = os.getenv("PETER3D_SERVERLESS", "0") == "1"
+TRIPO_RIG_VERSION = os.getenv("TRIPO_RIG_VERSION", "v2.5-20260210")
+TRIPO_API_BASE_URL = os.getenv("TRIPO_API_BASE_URL", "https://api.tripo3d.ai/v2/openapi")
+ENABLE_MULTIVIEW_FALLBACK = os.getenv("TRIPO_MULTIVIEW_FALLBACK", "1") == "1"
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
+
+PIPELINE_PROFILES = {
+    "h3_smart": {
+        "label": "H3.1 + Smart Low Poly",
+        "description": "그림 충실도와 iPad 경량화의 균형",
+        "model_version": "v3.1-20260211",
+        "smart_low_poly": True,
+        "estimated_credits": 85,
+    },
+    "p1": {
+        "label": "P1 Smart Mesh",
+        "description": "더 정돈된 저폴리 토폴로지 비교용",
+        "model_version": "P1-20260311",
+        "smart_low_poly": False,
+        "estimated_credits": 95,
+    },
+}
+DEFAULT_PIPELINE_PROFILE = os.getenv("TRIPO_PIPELINE_PROFILE", "h3_smart")
+if DEFAULT_PIPELINE_PROFILE not in PIPELINE_PROFILES:
+    DEFAULT_PIPELINE_PROFILE = "h3_smart"
 
 for directory in (DB_PATH.parent, MODELS_DIR, UPLOADS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -66,7 +89,7 @@ def row_dict(row: Any) -> dict:
     return dict(row)
 
 
-def inspect_animated_glb(contents: bytes) -> dict:
+def inspect_animated_glb(contents: bytes, *, minimum_animations: int = 1) -> dict:
     """Validate the runtime contract before publishing a generated character."""
     if len(contents) > MAX_GLB_BYTES:
         raise ValueError(f"GLB는 {MAX_GLB_BYTES // (1024 * 1024)}MB 이하여야 합니다")
@@ -104,6 +127,11 @@ def inspect_animated_glb(contents: bytes) -> dict:
         raise ValueError("리깅(스킨) 정보가 없는 GLB입니다")
     if not animations or not any(animation.get("channels") for animation in animations):
         raise ValueError("걷기 애니메이션 채널이 없는 GLB입니다")
+    if len(animations) < minimum_animations:
+        raise ValueError(
+            f"GLB에 애니메이션이 {len(animations)}개만 있습니다 "
+            f"(필요: {minimum_animations}개)"
+        )
     if not meshes:
         raise ValueError("메시가 없는 GLB입니다")
 
@@ -145,6 +173,12 @@ def public_job(row: Any) -> dict:
         "status": job["status"],
         "error": job["error"],
         "glb_url": job["glb_url"],
+        "pipeline_profile": job.get("pipeline_profile") or DEFAULT_PIPELINE_PROFILE,
+        "fallback_used": bool(job.get("fallback_used")),
+        "credits_used": int(job.get("credits_used") or 0),
+        "glb_bytes": job.get("glb_bytes"),
+        "glb_triangles": job.get("glb_triangles"),
+        "glb_animations": job.get("glb_animations"),
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
     }
@@ -187,8 +221,147 @@ class GrowthCreate(BaseModel):
     stats: Dict[str, int] = Field(default_factory=dict)
 
 
+def profile_config(profile: str) -> dict:
+    if profile not in PIPELINE_PROFILES:
+        raise ValueError(f"지원하지 않는 변환 프로필입니다: {profile}")
+    return PIPELINE_PROFILES[profile]
+
+
+def image_model_options(profile: str) -> dict:
+    config = profile_config(profile)
+    options = {
+        "model_version": config["model_version"],
+        "texture": True,
+        "pbr": False,
+        "face_limit": min(TRIPO_FACE_LIMIT, 20_000),
+        "texture_alignment": "original_image",
+        "orientation": "align_image",
+        "enable_image_autofix": True,
+        "export_uv": True,
+    }
+    if profile == "h3_smart":
+        options.update(
+            texture_quality="standard",
+            compress=True,
+            geometry_quality="standard",
+            smart_low_poly=True,
+        )
+    return options
+
+
+def multiview_model_payload(profile: str, multiview_task_id: str) -> dict:
+    config = profile_config(profile)
+    payload = {
+        "type": "multiview_to_model",
+        "original_task_id": multiview_task_id,
+        "model_version": config["model_version"],
+        "texture": True,
+        "pbr": False,
+        "face_limit": min(TRIPO_FACE_LIMIT, 20_000),
+        "texture_alignment": "original_image",
+        "orientation": "align_image",
+        "export_uv": True,
+    }
+    if profile == "h3_smart":
+        payload.update(
+            texture_quality="standard",
+            compress="geometry",
+            geometry_quality="standard",
+            smart_low_poly=True,
+        )
+    return payload
+
+
+async def create_image_model_task(client: TripoClient, image: str, profile: str) -> str:
+    return await client.image_to_model(image=image, **image_model_options(profile))
+
+
+async def create_multiview_model_task(
+    client: TripoClient,
+    multiview_task_id: str,
+    profile: str,
+) -> str:
+    # tripo3d 0.4.2 does not expose original_task_id on multiview_to_model yet.
+    return await client.create_task(multiview_model_payload(profile, multiview_task_id))
+
+
+async def create_rig_task(client: TripoClient, model_task_id: str) -> str:
+    return await client.rig_model(
+        original_model_task_id=model_task_id,
+        model_version=TRIPO_RIG_VERSION,
+        out_format="glb",
+        rig_type=RigType.BIPED,
+    )
+
+
+async def create_animation_task(client: TripoClient, rig_task_id: str) -> str:
+    return await client.retarget_animation(
+        original_model_task_id=rig_task_id,
+        animation=[Animation.IDLE, Animation.WALK],
+        out_format="glb",
+        bake_animation=True,
+        export_with_geometry=True,
+        animate_in_place=True,
+    )
+
+
+async def fetch_tripo_task_usage(task_id: str) -> Optional[dict]:
+    api_key = os.getenv("TRIPO_API_KEY", "")
+    if not api_key.startswith("tsk_"):
+        return None
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        response = await client.get(
+            f"{TRIPO_API_BASE_URL}/task/{task_id}",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        response.raise_for_status()
+    data = response.json().get("data") or {}
+    consumed = data.get("consumed_credit")
+    if consumed is None:
+        return None
+    return {
+        "task_type": str(data.get("type") or "unknown"),
+        "consumed_credit": max(0, int(consumed)),
+    }
+
+
+async def record_task_usage(job_id: str, task_id: Optional[str]) -> None:
+    if not task_id:
+        return
+    with connect_db() as db:
+        existing = db.execute(
+            "SELECT task_id FROM tripo_task_usage WHERE task_id = ?",
+            (task_id,),
+        ).fetchone()
+    if existing:
+        return
+    try:
+        usage = await fetch_tripo_task_usage(task_id)
+    except Exception:  # noqa: BLE001 - billing telemetry must not fail conversion
+        return
+    if not usage:
+        return
+    with connect_db() as db:
+        db.execute(
+            """
+            INSERT INTO tripo_task_usage (
+                task_id, job_id, task_type, consumed_credit, recorded_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (task_id) DO NOTHING
+            """,
+            (
+                task_id,
+                job_id,
+                usage["task_type"],
+                usage["consumed_credit"],
+                now_iso(),
+            ),
+        )
+
+
 job_queue: Optional[asyncio.Queue] = None
 worker_tasks: List[asyncio.Task] = []
+multiview_gate = asyncio.Semaphore(1)
 
 
 def update_job(job_id: str, status: str, **fields: object) -> None:
@@ -199,8 +372,14 @@ def update_job(job_id: str, status: str, **fields: object) -> None:
         "rig_check_task_id",
         "rig_task_id",
         "animation_task_id",
+        "multiview_task_id",
+        "fallback_model_task_id",
+        "fallback_used",
+        "glb_bytes",
+        "glb_triangles",
+        "glb_animations",
     }
-    assignments = ["status = ?", "updated_at = ?"]
+    assignments = ["status = ?", "updated_at = ?", "lease_token = NULL", "lease_until = NULL"]
     values: List[object] = [status, now_iso()]
     for key, value in fields.items():
         if key in allowed:
@@ -220,7 +399,45 @@ def update_job(job_id: str, status: str, **fields: object) -> None:
             )
 
 
-async def upload_generated_glb(team_id: int, job_id: str, source_url: str) -> str:
+def reserve_multiview_slot(job_id: str) -> bool:
+    """Atomically reserve the single provider multiview generation slot."""
+    timestamp = now_iso()
+    with connect_db() as db:
+        if db.postgres:
+            db.execute("SELECT pg_advisory_xact_lock(73190326)")
+        active = db.execute(
+            """
+            SELECT COUNT(*) AS count FROM conversion_jobs
+            WHERE status IN ('multiview_starting', 'multiview_generating')
+              AND id != ?
+            """,
+            (job_id,),
+        ).fetchone()["count"]
+        if active:
+            return False
+        reserved = db.execute(
+            """
+            UPDATE conversion_jobs
+            SET status = 'multiview_starting', fallback_used = 1, updated_at = ?
+            WHERE id = ? AND status = 'rig_check'
+            """,
+            (timestamp, job_id),
+        )
+        if reserved.rowcount != 1:
+            return False
+        team = db.execute(
+            "SELECT team_id FROM conversion_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+        if team:
+            db.execute(
+                "UPDATE teams SET conversion_status = 'multiview_starting', updated_at = ? WHERE id = ?",
+                (timestamp, team["team_id"]),
+            )
+    return True
+
+
+async def upload_generated_glb(team_id: int, job_id: str, source_url: str) -> tuple[str, dict]:
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
         contents = bytearray()
         async with client.stream("GET", source_url) as response:
@@ -232,24 +449,45 @@ async def upload_generated_glb(team_id: int, job_id: str, source_url: str) -> st
                         f"GLB는 {MAX_GLB_BYTES // (1024 * 1024)}MB 이하여야 합니다"
                     )
     glb = bytes(contents)
-    inspect_animated_glb(glb)
-    return await put_public_blob(
+    metrics = inspect_animated_glb(glb, minimum_animations=2)
+    url = await put_public_blob(
         f"teams/{team_id}/models/{job_id}.glb",
         glb,
         content_type="model/gltf-binary",
         multipart=True,
     )
+    return url, metrics
 
 
 def final_model_url(task: Any) -> Optional[str]:
     return task.output.model or task.output.pbr_model or task.output.base_model
 
 
+async def activate_generated_model(job: dict, glb_url: str, metrics: dict) -> None:
+    with connect_db() as db:
+        previous = row_dict(get_team_or_404(db, job["team_id"]))
+        db.execute(
+            "UPDATE teams SET model_url = ?, conversion_status = 'done', updated_at = ? WHERE id = ?",
+            (glb_url, now_iso(), job["team_id"]),
+        )
+    update_job(
+        job["id"],
+        "done",
+        glb_url=glb_url,
+        glb_bytes=metrics["bytes"],
+        glb_triangles=metrics["triangles"],
+        glb_animations=metrics["animations"],
+    )
+    if previous["model_url"] != glb_url:
+        await delete_blob_if_managed(previous["model_url"])
+
+
 async def run_pipeline(job_id: str) -> None:
     with connect_db() as db:
-        job = db.execute("SELECT * FROM conversion_jobs WHERE id = ?", (job_id,)).fetchone()
-    if not job:
+        row = db.execute("SELECT * FROM conversion_jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row:
         return
+    job = row_dict(row)
     api_key = os.getenv("TRIPO_API_KEY", "")
     if not api_key.startswith("tsk_"):
         update_job(job_id, "failed", error="TRIPO_API_KEY에 tsk_로 시작하는 OpenAPI 키가 필요합니다")
@@ -258,51 +496,89 @@ async def run_pipeline(job_id: str) -> None:
     try:
         async with TripoClient() as client:
             update_job(job_id, "modeling")
-            model_task_id = await client.image_to_model(
-                image=job["image_path"],
-                model_version=os.getenv("TRIPO_MODEL_VERSION", "v3.1-20260211"),
-                texture=True,
-                pbr=False,
-                texture_quality="standard",
-                geometry_quality="standard",
-                face_limit=TRIPO_FACE_LIMIT,
-                orientation="align_image",
-                compress=True,
+            profile = job.get("pipeline_profile") or DEFAULT_PIPELINE_PROFILE
+            model_task_id = await create_image_model_task(
+                client,
+                job["image_path"],
+                profile,
             )
             update_job(job_id, "modeling", model_task_id=model_task_id)
             model = await client.wait_for_task(model_task_id)
+            await record_task_usage(job_id, model_task_id)
             if model.status != TaskStatus.SUCCESS:
                 raise RuntimeError(model.error_msg or "3D 모델 생성에 실패했습니다")
 
             update_job(job_id, "rig_check")
             check_task_id = await client.check_riggable(model_task_id)
+            update_job(job_id, "rig_check", rig_check_task_id=check_task_id)
             check = await client.wait_for_task(check_task_id)
-            if check.status != TaskStatus.SUCCESS or not check.output.riggable:
-                raise RuntimeError("사람형 뼈대를 인식하지 못했습니다. 팔다리가 보이도록 다시 촬영해주세요")
+            await record_task_usage(job_id, check_task_id)
+            active_model_task_id = model_task_id
+            if check.status != TaskStatus.SUCCESS:
+                raise RuntimeError(check.error_msg or "리깅 가능 여부 확인에 실패했습니다")
+            if not check.output.riggable:
+                if not ENABLE_MULTIVIEW_FALLBACK:
+                    raise RuntimeError(
+                        "사람형 뼈대를 인식하지 못했습니다. 팔다리가 보이도록 다시 촬영해주세요"
+                    )
+                async with multiview_gate:
+                    update_job(job_id, "multiview_generating", fallback_used=1)
+                    multiview_task_id = await client.generate_multiview_image(job["image_path"])
+                    update_job(
+                        job_id,
+                        "multiview_generating",
+                        multiview_task_id=multiview_task_id,
+                        fallback_used=1,
+                    )
+                    multiview = await client.wait_for_task(multiview_task_id)
+                await record_task_usage(job_id, multiview_task_id)
+                if multiview.status != TaskStatus.SUCCESS:
+                    raise RuntimeError(multiview.error_msg or "멀티뷰 이미지 생성에 실패했습니다")
+
+                update_job(job_id, "multiview_modeling", fallback_used=1)
+                fallback_model_task_id = await create_multiview_model_task(
+                    client,
+                    multiview_task_id,
+                    profile,
+                )
+                update_job(
+                    job_id,
+                    "multiview_modeling",
+                    fallback_model_task_id=fallback_model_task_id,
+                    fallback_used=1,
+                )
+                fallback_model = await client.wait_for_task(fallback_model_task_id)
+                await record_task_usage(job_id, fallback_model_task_id)
+                if fallback_model.status != TaskStatus.SUCCESS:
+                    raise RuntimeError(fallback_model.error_msg or "멀티뷰 3D 생성에 실패했습니다")
+                active_model_task_id = fallback_model_task_id
+
+                update_job(job_id, "rig_check", fallback_used=1)
+                check_task_id = await client.check_riggable(active_model_task_id)
+                update_job(job_id, "rig_check", rig_check_task_id=check_task_id, fallback_used=1)
+                check = await client.wait_for_task(check_task_id)
+                await record_task_usage(job_id, check_task_id)
+                if check.status != TaskStatus.SUCCESS or not check.output.riggable:
+                    raise RuntimeError(
+                        "멀티뷰 재생성 후에도 사람형 뼈대를 인식하지 못했습니다. "
+                        "팔다리가 보이도록 다시 촬영해주세요"
+                    )
 
             update_job(job_id, "rigging")
-            rig_task_id = await client.rig_model(
-                original_model_task_id=model_task_id,
-                out_format="glb",
-                rig_type=RigType.BIPED,
-            )
+            rig_task_id = await create_rig_task(client, active_model_task_id)
             update_job(job_id, "rigging", rig_task_id=rig_task_id)
             rig = await client.wait_for_task(rig_task_id)
+            await record_task_usage(job_id, rig_task_id)
             if rig.status != TaskStatus.SUCCESS:
                 raise RuntimeError(rig.error_msg or "자동 리깅에 실패했습니다")
 
             update_job(job_id, "animating")
-            animation_task_id = await client.retarget_animation(
-                original_model_task_id=rig_task_id,
-                animation=Animation.WALK,
-                out_format="glb",
-                export_with_geometry=True,
-                animate_in_place=True,
-            )
+            animation_task_id = await create_animation_task(client, rig_task_id)
             update_job(job_id, "animating", animation_task_id=animation_task_id)
             animation = await client.wait_for_task(animation_task_id)
+            await record_task_usage(job_id, animation_task_id)
             if animation.status != TaskStatus.SUCCESS:
-                raise RuntimeError(animation.error_msg or "걷기 적용에 실패했습니다")
+                raise RuntimeError(animation.error_msg or "대기·걷기 적용에 실패했습니다")
 
             output_dir = MODELS_DIR / f"team-{job['team_id']}"
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -314,7 +590,7 @@ async def run_pipeline(job_id: str) -> None:
             if glb_path is None:
                 raise RuntimeError("완성된 GLB 파일을 찾지 못했습니다")
             glb_contents = glb_path.read_bytes()
-            inspect_animated_glb(glb_contents)
+            metrics = inspect_animated_glb(glb_contents, minimum_animations=2)
             if blob_configured():
                 glb_url = await put_public_blob(
                     f"teams/{job['team_id']}/models/{job_id}.glb",
@@ -324,15 +600,7 @@ async def run_pipeline(job_id: str) -> None:
                 )
             else:
                 glb_url = f"/static/models/team-{job['team_id']}/{glb_path.name}"
-            update_job(job_id, "done", glb_url=glb_url)
-            with connect_db() as db:
-                previous = row_dict(get_team_or_404(db, job["team_id"]))
-                db.execute(
-                    "UPDATE teams SET model_url = ?, conversion_status = 'done', updated_at = ? WHERE id = ?",
-                    (glb_url, now_iso(), job["team_id"]),
-                )
-            if previous["model_url"] != glb_url:
-                await delete_blob_if_managed(previous["model_url"])
+            await activate_generated_model(job, glb_url, metrics)
     except Exception as exc:  # noqa: BLE001 - user-facing job boundary
         update_job(job_id, "failed", error=str(exc))
 
@@ -345,34 +613,78 @@ async def advance_serverless_job(job_id: str) -> None:
         return
 
     job = row_dict(row)
-    claimed_at = now_iso()
+    claim_token = uuid.uuid4().hex
+    claim_time = now_iso()
+    lease_until = (datetime.now(timezone.utc) + timedelta(seconds=45)).isoformat()
     with connect_db() as db:
+        if job["status"] == "queued":
+            if db.postgres:
+                # Serialize slot allocation across independent Vercel instances.
+                db.execute("SELECT pg_advisory_xact_lock(73190325)")
+            active_count = db.execute(
+                """
+                SELECT COUNT(*) AS count FROM conversion_jobs
+                WHERE status NOT IN ('done', 'failed')
+                  AND (
+                    status != 'queued'
+                    OR (lease_token IS NOT NULL AND lease_until >= ?)
+                  )
+                """,
+                (claim_time,),
+            ).fetchone()["count"]
+            if active_count >= WORKER_COUNT:
+                return
         claimed = db.execute(
             """
-            UPDATE conversion_jobs SET updated_at = ?
+            UPDATE conversion_jobs SET lease_token = ?, lease_until = ?
             WHERE id = ? AND updated_at = ? AND status = ?
+              AND (lease_until IS NULL OR lease_until < ?)
             """,
-            (claimed_at, job_id, job["updated_at"], job["status"]),
+            (
+                claim_token,
+                lease_until,
+                job_id,
+                job["updated_at"],
+                job["status"],
+                claim_time,
+            ),
         )
         if claimed.rowcount != 1:
             return
-    job["updated_at"] = claimed_at
     task_ids = {
         "modeling": job.get("model_task_id"),
         "rig_check": job.get("rig_check_task_id"),
         "rigging": job.get("rig_task_id"),
         "animating": job.get("animation_task_id"),
+        "multiview_generating": job.get("multiview_task_id"),
+        "multiview_modeling": job.get("fallback_model_task_id"),
     }
-    task_id = task_ids.get(job["status"])
-    if not task_id:
-        update_job(job_id, "failed", error="변환 작업 단계 정보가 누락되었습니다")
-        return
 
     try:
         async with TripoClient() as client:
+            profile = job.get("pipeline_profile") or DEFAULT_PIPELINE_PROFILE
+            if job["status"] == "queued":
+                model_id = await create_image_model_task(client, job["image_path"], profile)
+                update_job(job_id, "modeling", model_task_id=model_id)
+                return
+
+            if job["status"] == "multiview_starting":
+                multiview_id = await client.generate_multiview_image(job["image_path"])
+                update_job(
+                    job_id,
+                    "multiview_generating",
+                    multiview_task_id=multiview_id,
+                    fallback_used=1,
+                )
+                return
+
+            task_id = task_ids.get(job["status"])
+            if not task_id:
+                raise RuntimeError("변환 작업 단계 정보가 누락되었습니다")
             task = await client.get_task(task_id)
             if task.status in {TaskStatus.QUEUED, TaskStatus.RUNNING}:
                 return
+            await record_task_usage(job_id, task_id)
             if task.status != TaskStatus.SUCCESS:
                 raise RuntimeError(task.error_msg or f"{job['status']} 단계에 실패했습니다")
 
@@ -383,43 +695,73 @@ async def advance_serverless_job(job_id: str) -> None:
 
             if job["status"] == "rig_check":
                 if not task.output.riggable:
+                    if ENABLE_MULTIVIEW_FALLBACK and not job.get("fallback_used"):
+                        if not reserve_multiview_slot(job_id):
+                            return
+                        multiview_id = await client.generate_multiview_image(job["image_path"])
+                        update_job(
+                            job_id,
+                            "multiview_generating",
+                            multiview_task_id=multiview_id,
+                            fallback_used=1,
+                        )
+                        return
                     raise RuntimeError(
-                        "사람형 뼈대를 인식하지 못했습니다. 팔다리가 보이도록 다시 촬영해주세요"
+                        "멀티뷰 재생성 후에도 사람형 뼈대를 인식하지 못했습니다. "
+                        "팔다리가 보이도록 다시 촬영해주세요"
+                        if job.get("fallback_used")
+                        else "사람형 뼈대를 인식하지 못했습니다. 팔다리가 보이도록 다시 촬영해주세요"
                     )
-                rig_id = await client.rig_model(
-                    original_model_task_id=job["model_task_id"],
-                    out_format="glb",
-                    rig_type=RigType.BIPED,
-                )
+                active_model_id = job.get("fallback_model_task_id") or job["model_task_id"]
+                rig_id = await create_rig_task(client, active_model_id)
                 update_job(job_id, "rigging", rig_task_id=rig_id)
                 return
 
-            if job["status"] == "rigging":
-                animation_id = await client.retarget_animation(
-                    original_model_task_id=job["rig_task_id"],
-                    animation=Animation.WALK,
-                    out_format="glb",
-                    export_with_geometry=True,
-                    animate_in_place=True,
+            if job["status"] == "multiview_generating":
+                fallback_model_id = await create_multiview_model_task(
+                    client,
+                    job["multiview_task_id"],
+                    profile,
                 )
+                update_job(
+                    job_id,
+                    "multiview_modeling",
+                    fallback_model_task_id=fallback_model_id,
+                    fallback_used=1,
+                )
+                return
+
+            if job["status"] == "multiview_modeling":
+                check_id = await client.check_riggable(job["fallback_model_task_id"])
+                update_job(
+                    job_id,
+                    "rig_check",
+                    rig_check_task_id=check_id,
+                    fallback_used=1,
+                )
+                return
+
+            if job["status"] == "rigging":
+                animation_id = await create_animation_task(client, job["rig_task_id"])
                 update_job(job_id, "animating", animation_task_id=animation_id)
                 return
 
             source_url = final_model_url(task)
             if not source_url:
                 raise RuntimeError("완성된 GLB 다운로드 주소를 찾지 못했습니다")
-            glb_url = await upload_generated_glb(job["team_id"], job_id, source_url)
-            with connect_db() as db:
-                previous = row_dict(get_team_or_404(db, job["team_id"]))
-                db.execute(
-                    "UPDATE teams SET model_url = ?, conversion_status = 'done', updated_at = ? WHERE id = ?",
-                    (glb_url, now_iso(), job["team_id"]),
-                )
-            update_job(job_id, "done", glb_url=glb_url)
-            if previous["model_url"] != glb_url:
-                await delete_blob_if_managed(previous["model_url"])
+            glb_url, metrics = await upload_generated_glb(job["team_id"], job_id, source_url)
+            await activate_generated_model(job, glb_url, metrics)
     except Exception as exc:  # noqa: BLE001 - user-facing job boundary
         update_job(job_id, "failed", error=str(exc))
+    finally:
+        with connect_db() as db:
+            db.execute(
+                """
+                UPDATE conversion_jobs SET lease_token = NULL, lease_until = NULL
+                WHERE id = ? AND lease_token = ?
+                """,
+                (job_id, claim_token),
+            )
 
 
 async def conversion_worker() -> None:
@@ -500,6 +842,75 @@ async def health():
         "database": "postgres" if using_postgres() else "sqlite",
         "object_storage": "vercel-blob" if blob_configured() else "local",
     }
+
+
+async def sync_recent_task_usage(limit: int = 25) -> None:
+    task_columns = (
+        "model_task_id",
+        "rig_check_task_id",
+        "rig_task_id",
+        "animation_task_id",
+        "multiview_task_id",
+        "fallback_model_task_id",
+    )
+    with connect_db() as db:
+        jobs = db.execute(
+            "SELECT * FROM conversion_jobs ORDER BY created_at DESC LIMIT 25"
+        ).fetchall()
+        recorded = {
+            row["task_id"] for row in db.execute("SELECT task_id FROM tripo_task_usage").fetchall()
+        }
+    pending = []
+    for row in jobs:
+        for column in task_columns:
+            task_id = row[column]
+            if task_id and task_id not in recorded:
+                pending.append((row["id"], task_id))
+                recorded.add(task_id)
+                if len(pending) >= limit:
+                    break
+        if len(pending) >= limit:
+            break
+    await asyncio.gather(
+        *(record_task_usage(job_id, task_id) for job_id, task_id in pending),
+        return_exceptions=True,
+    )
+
+
+@app.get("/api/tripo/billing")
+async def tripo_billing():
+    configured = os.getenv("TRIPO_API_KEY", "").startswith("tsk_")
+    await sync_recent_task_usage()
+    with connect_db() as db:
+        tracked = db.execute(
+            "SELECT COALESCE(SUM(consumed_credit), 0) AS total FROM tripo_task_usage"
+        ).fetchone()["total"]
+    result = {
+        "configured": configured,
+        "balance": None,
+        "frozen": None,
+        "tracked_credits": int(tracked or 0),
+        "workers": WORKER_COUNT,
+        "rig_version": TRIPO_RIG_VERSION,
+        "profiles": [
+            {
+                "id": profile_id,
+                "label": config["label"],
+                "description": config["description"],
+                "estimated_credits": config["estimated_credits"],
+            }
+            for profile_id, config in PIPELINE_PROFILES.items()
+        ],
+    }
+    if not configured:
+        return result
+    try:
+        async with TripoClient() as client:
+            balance = await client.get_balance()
+        result.update(balance=balance.balance, frozen=balance.frozen)
+    except Exception as exc:  # noqa: BLE001 - admin telemetry remains available
+        result["error"] = str(exc)
+    return result
 
 
 @app.get("/api/teams")
@@ -585,7 +996,11 @@ async def add_growth(team_id: int, payload: GrowthCreate):
 
 
 @app.post("/api/teams/{team_id}/convert", status_code=202)
-async def convert_team(team_id: int, image: UploadFile = File(...)):
+async def convert_team(
+    team_id: int,
+    image: UploadFile = File(...),
+    pipeline_profile: str = Form(DEFAULT_PIPELINE_PROFILE),
+):
     api_key = os.getenv("TRIPO_API_KEY", "")
     if SERVERLESS_RUNTIME and not (using_postgres() and blob_configured()):
         raise HTTPException(
@@ -594,8 +1009,23 @@ async def convert_team(team_id: int, image: UploadFile = File(...)):
         )
     if SERVERLESS_RUNTIME and not api_key.startswith("tsk_"):
         raise HTTPException(status_code=503, detail="TRIPO_API_KEY가 설정되지 않았습니다")
+    if pipeline_profile not in PIPELINE_PROFILES:
+        raise HTTPException(status_code=422, detail="지원하지 않는 변환 프로필입니다")
     with connect_db() as db:
         previous_team = row_dict(get_team_or_404(db, team_id))
+        active_job = db.execute(
+            """
+            SELECT id FROM conversion_jobs
+            WHERE team_id = ? AND status NOT IN ('done', 'failed')
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (team_id,),
+        ).fetchone()
+    if active_job:
+        raise HTTPException(
+            status_code=409,
+            detail=f"이 조는 이미 변환 작업 {active_job['id']}을 진행 중입니다",
+        )
     content_type = (image.content_type or "").lower()
     extensions = {"image/png": ".png", "image/jpeg": ".jpg"}
     if content_type not in extensions:
@@ -631,10 +1061,11 @@ async def convert_team(team_id: int, image: UploadFile = File(...)):
     with connect_db() as db:
         db.execute(
             """
-            INSERT INTO conversion_jobs (id, team_id, status, image_path, created_at, updated_at)
-            VALUES (?, ?, 'queued', ?, ?, ?)
+            INSERT INTO conversion_jobs (
+                id, team_id, status, image_path, pipeline_profile, created_at, updated_at
+            ) VALUES (?, ?, 'queued', ?, ?, ?, ?)
             """,
-            (job_id, team_id, image_job_source, timestamp, timestamp),
+            (job_id, team_id, image_job_source, pipeline_profile, timestamp, timestamp),
         )
         db.execute(
             "UPDATE teams SET image_url = ?, conversion_status = 'queued', updated_at = ? WHERE id = ?",
@@ -644,27 +1075,7 @@ async def convert_team(team_id: int, image: UploadFile = File(...)):
         await delete_blob_if_managed(previous_team["image_url"])
 
     if SERVERLESS_RUNTIME:
-        image_path.write_bytes(contents)
-        try:
-            async with TripoClient() as client:
-                model_task_id = await client.image_to_model(
-                    image=str(image_path),
-                    model_version=os.getenv("TRIPO_MODEL_VERSION", "v3.1-20260211"),
-                    texture=True,
-                    pbr=False,
-                    texture_quality="standard",
-                    geometry_quality="standard",
-                    face_limit=TRIPO_FACE_LIMIT,
-                    orientation="align_image",
-                    compress=True,
-                )
-            update_job(job_id, "modeling", model_task_id=model_task_id)
-        except Exception as exc:  # noqa: BLE001 - external API boundary
-            update_job(job_id, "failed", error=str(exc))
-            raise HTTPException(status_code=502, detail=f"Tripo 작업 생성 실패: {exc}") from exc
-        finally:
-            image_path.unlink(missing_ok=True)
-        return {"job_id": job_id, "team_id": team_id, "status": "modeling"}
+        return {"job_id": job_id, "team_id": team_id, "status": "queued"}
 
     if job_queue is None:
         raise HTTPException(status_code=503, detail="변환 대기열이 준비되지 않았습니다")
@@ -679,17 +1090,34 @@ async def list_jobs():
             active = db.execute(
                 """
                 SELECT id FROM conversion_jobs
-                WHERE status NOT IN ('done', 'failed')
-                ORDER BY updated_at ASC LIMIT 8
-                """
+                WHERE status NOT IN ('queued', 'done', 'failed')
+                ORDER BY updated_at ASC LIMIT ?
+                """,
+                (WORKER_COUNT,),
             ).fetchall()
+            slots = max(0, WORKER_COUNT - len(active))
+            queued = db.execute(
+                """
+                SELECT id FROM conversion_jobs
+                WHERE status = 'queued'
+                ORDER BY created_at ASC LIMIT ?
+                """,
+                (slots,),
+            ).fetchall() if slots else []
         await asyncio.gather(
-            *(advance_serverless_job(row["id"]) for row in active),
+            *(advance_serverless_job(row["id"]) for row in [*active, *queued]),
             return_exceptions=True,
         )
     with connect_db() as db:
         rows = db.execute(
-            "SELECT * FROM conversion_jobs ORDER BY created_at DESC LIMIT 100"
+            """
+            SELECT conversion_jobs.*,
+                COALESCE((
+                    SELECT SUM(consumed_credit) FROM tripo_task_usage
+                    WHERE job_id = conversion_jobs.id
+                ), 0) AS credits_used
+            FROM conversion_jobs ORDER BY created_at DESC LIMIT 100
+            """
         ).fetchall()
         return [public_job(row) for row in rows]
 
@@ -699,7 +1127,17 @@ async def get_job(job_id: str):
     if SERVERLESS_RUNTIME:
         await advance_serverless_job(job_id)
     with connect_db() as db:
-        row = db.execute("SELECT * FROM conversion_jobs WHERE id = ?", (job_id,)).fetchone()
+        row = db.execute(
+            """
+            SELECT conversion_jobs.*,
+                COALESCE((
+                    SELECT SUM(consumed_credit) FROM tripo_task_usage
+                    WHERE job_id = conversion_jobs.id
+                ), 0) AS credits_used
+            FROM conversion_jobs WHERE id = ?
+            """,
+            (job_id,),
+        ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="변환 작업을 찾을 수 없습니다")
         queued_before = db.execute(

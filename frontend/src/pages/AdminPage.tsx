@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { apiRequest } from '../lib/api';
 import { prepareUploadImage } from '../lib/prepareUploadImage';
-import type { ConversionJob, GrowthPayload, StatKey, Team } from '../types/api';
+import type {
+  ConversionJob,
+  GrowthPayload,
+  PipelineProfile,
+  StatKey,
+  Team,
+  TripoBilling,
+} from '../types/api';
 import '../styles/admin.css';
 
 const STAT_FIELDS: ReadonlyArray<{ key: StatKey; label: string }> = [
@@ -46,6 +53,21 @@ interface TeamDraft {
 
 const EMPTY_DRAFT: TeamDraft = { name: '', color: '#67b8c7', symbol: '', identity_text: '' };
 
+const FALLBACK_PIPELINE_PROFILES: PipelineProfile[] = [
+  {
+    id: 'h3_smart',
+    label: 'H3 + 스마트 경량화',
+    description: '품질과 iPad 성능의 균형을 우선하고, 필요한 경우에만 멀티뷰로 보완합니다.',
+    estimated_credits: 0,
+  },
+  {
+    id: 'p1',
+    label: 'P1 Smart Mesh',
+    description: '정돈된 저폴리 토폴로지를 우선하는 대표 샘플 비교용 프로필입니다.',
+    estimated_credits: 0,
+  },
+];
+
 function draftFromTeam(team: Team): TeamDraft {
   return {
     name: team.name,
@@ -56,16 +78,30 @@ function draftFromTeam(team: Team): TeamDraft {
 }
 
 function statusLabel(status: string) {
-  return ({
+  const label = ({
     empty: '그림 없음',
     queued: '대기 중',
     modeling: '3D 생성',
+    multiview: '멀티뷰 준비',
+    multiview_starting: '멀티뷰 대기',
+    multiview_generating: '멀티뷰 이미지 생성',
+    multiview_modeling: '멀티뷰 재생성',
+    multiview_regenerating: '멀티뷰 재생성',
+    fallback_modeling: '멀티뷰 보완',
+    optimizing: '모델 경량화',
+    low_poly: '모델 경량화',
     rig_check: '리깅 검사',
     rigging: '뼈대 적용',
-    animating: '걷기 적용',
+    idle_animating: '대기 동작 적용',
+    walk_animating: '걷기 적용',
+    animating: '대기·걷기 적용',
+    finalizing: 'GLB 마무리',
     done: '완료',
     failed: '실패',
-  } as Record<string, string>)[status] || status;
+  } as Record<string, string>)[status];
+  if (label) return label;
+  if (/multi.?view|fallback/i.test(status)) return '멀티뷰 보완';
+  return status;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -82,9 +118,36 @@ function signed(value: number) {
   return `${value > 0 ? '+' : ''}${value}`;
 }
 
+function formatCredits(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value)
+    ? '확인 중'
+    : `${new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 }).format(value)} cr`;
+}
+
+function formatBytes(bytes: number) {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.round(bytes / 1024)} KB`;
+}
+
+function metricEntries(job: ConversionJob): Array<[string, string | number | boolean]> {
+  const direct: Array<[string, string | number]> = [];
+  if (job.glb_bytes != null) direct.push(['용량', formatBytes(job.glb_bytes)]);
+  if (job.glb_triangles != null) direct.push(['삼각형', job.glb_triangles.toLocaleString('ko-KR')]);
+  if (job.glb_animations != null) direct.push(['애니메이션', job.glb_animations]);
+  const extra = Object.entries(job.metrics ?? {})
+    .filter((entry): entry is [string, string | number | boolean] => (
+      ['string', 'number', 'boolean'].includes(typeof entry[1])
+    ));
+  return [...direct, ...extra].slice(0, 4);
+}
+
 export default function AdminPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [jobs, setJobs] = useState<ConversionJob[]>([]);
+  const [billing, setBilling] = useState<TripoBilling | null>(null);
+  const [billingError, setBillingError] = useState(false);
+  const [pipelineProfile, setPipelineProfile] = useState('h3_smart');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [teamDraft, setTeamDraft] = useState<TeamDraft>(EMPTY_DRAFT);
   const [source, setSource] = useState('');
@@ -101,6 +164,11 @@ export default function AdminPage() {
     () => teams.find((team) => team.id === selectedId) ?? null,
     [teams, selectedId],
   );
+  const pipelineProfiles = billing?.profiles?.length
+    ? billing.profiles
+    : FALLBACK_PIPELINE_PROFILES;
+  const selectedProfile = pipelineProfiles.find((profile) => profile.id === pipelineProfile)
+    ?? pipelineProfiles[0];
 
   function showToast(message: string) {
     setToast(message);
@@ -118,6 +186,23 @@ export default function AdminPage() {
     const fresh = await apiRequest<ConversionJob[]>('/jobs', { cache: 'no-store' });
     setJobs(fresh);
     return fresh;
+  }
+
+  async function refreshBilling() {
+    try {
+      const fresh = await apiRequest<TripoBilling>('/tripo/billing', { cache: 'no-store' });
+      setBilling(fresh);
+      setBillingError(false);
+      setPipelineProfile((current) => (
+        fresh.profiles.some((profile) => profile.id === current)
+          ? current
+          : fresh.profiles[0]?.id ?? current
+      ));
+      return fresh;
+    } catch (error) {
+      setBillingError(true);
+      throw error;
+    }
   }
 
   useEffect(() => {
@@ -139,6 +224,7 @@ export default function AdminPage() {
     }).catch((error: unknown) => {
       if (active) showToast(error instanceof Error ? error.message : '데이터를 불러오지 못했습니다');
     });
+    void refreshBilling().catch(console.warn);
 
     const polling = window.setInterval(() => {
       void refreshJobs().catch(console.warn);
@@ -146,10 +232,14 @@ export default function AdminPage() {
         void refreshTeams().catch(console.warn);
       }
     }, 7000);
+    const billingPolling = window.setInterval(() => {
+      void refreshBilling().catch(console.warn);
+    }, 30000);
 
     return () => {
       active = false;
       window.clearInterval(polling);
+      window.clearInterval(billingPolling);
       if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     };
   }, []);
@@ -230,13 +320,14 @@ export default function AdminPage() {
       const prepared = await prepareUploadImage(image);
       const form = new FormData();
       form.append('image', prepared.file);
+      form.append('pipeline_profile', pipelineProfile);
       const result = await apiRequest<{ job_id: string }>(`/teams/${selected.id}/convert`, {
         method: 'POST',
         body: form,
       });
       if (imageInputRef.current) imageInputRef.current.value = '';
       await Promise.all([refreshTeams(), refreshJobs()]);
-      showToast(`${teamName} 변환 작업 ${result.job_id}를 등록했습니다${prepared.optimized ? ' · 사진 자동 최적화됨' : ''}`);
+      showToast(`${teamName} 변환 작업 ${result.job_id}를 ${selectedProfile?.label ?? pipelineProfile}로 등록했습니다${prepared.optimized ? ' · 사진 자동 최적화됨' : ''}`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '이미지를 등록하지 못했습니다');
     } finally {
@@ -342,8 +433,19 @@ export default function AdminPage() {
           <hr />
           <div className="upload-zone">
             <h2>색칠 그림 → 걷는 베드로</h2>
-            <p className="muted">PNG/JPG. 큰 사진은 iPad에서 자동 최적화한 뒤 무료 리깅 검사와 걷기 생성을 시작합니다.</p>
+            <p className="muted">PNG/JPG. 사진 자동 보정, Rig v2.5, idle·walk 생성과 iPad용 경량화를 순서대로 진행합니다.</p>
             <form onSubmit={uploadImage}>
+              <label className="pipeline-select">
+                생성 프로필
+                <select value={pipelineProfile} onChange={(event) => setPipelineProfile(event.target.value)}>
+                  {pipelineProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.label}{profile.estimated_credits > 0 ? ` · 약 ${profile.estimated_credits} cr` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedProfile && <small>{selectedProfile.description}</small>}
+              </label>
               <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" required />
               <div className="actions">
                 <button className="primary" disabled={!selected || uploading}>{uploading ? '등록 중…' : '변환 대기열에 추가'}</button>
@@ -355,21 +457,54 @@ export default function AdminPage() {
 
         <section className="card jobs-card">
           <h2>3D 변환 작업</h2>
-          <p className="muted">최대 3개씩 처리하며 실패 작업은 원인을 확인하고 다시 업로드할 수 있습니다.</p>
-          <table className="jobs">
-            <thead><tr><th>조</th><th>상태</th><th>결과</th></tr></thead>
-            <tbody>
-              {jobs.length ? jobs.map((job) => (
-                <tr key={job.id}>
-                  <td>{job.team_id}조<br /><span className="muted">{job.id}</span></td>
-                  <td><span className={`status ${job.status}`}>{statusLabel(job.status)}</span></td>
-                  <td>{job.glb_url
-                    ? <a className="result-link" href={job.glb_url} target="_blank" rel="noreferrer">GLB 보기</a>
-                    : job.error ? <span className="error">{job.error}</span> : '—'}</td>
-                </tr>
-              )) : <tr><td colSpan={3} className="muted">아직 변환 작업이 없습니다</td></tr>}
-            </tbody>
-          </table>
+          <section className={`billing-panel ${billingError || billing?.error ? 'unavailable' : ''}`} aria-label="Tripo 크레딧 현황">
+            <div className="billing-title">
+              <strong>Tripo 사용 현황</strong>
+              <span>{billingError || billing?.error ? '조회 실패' : billing ? (billing.configured ? '연결됨' : 'API 미설정') : '연결 확인 중'}</span>
+            </div>
+            <div className="billing-stats">
+              <div><span>사용 가능</span><b>{formatCredits(billing?.balance)}</b></div>
+              <div><span>보류</span><b>{formatCredits(billing?.frozen)}</b></div>
+              <div><span>누적 실사용</span><b>{formatCredits(billing?.tracked_credits)}</b></div>
+              <div><span>동시 처리</span><b>{billing ? `${billing.workers}개` : '확인 중'}</b></div>
+            </div>
+          </section>
+          <p className="muted jobs-guide">
+            서버가 최대 {billing?.workers ?? '설정된 수'}개씩 처리하며, 단일 이미지 결과가 부족한 조만 멀티뷰로 다시 생성합니다.
+          </p>
+          <div className="jobs-scroll">
+            <table className="jobs">
+              <thead><tr><th>조</th><th>상태</th><th>프로필</th><th>사용량</th><th>결과</th></tr></thead>
+              <tbody>
+                {jobs.length ? jobs.map((job) => {
+                  const metrics = metricEntries(job);
+                  return (
+                    <tr key={job.id}>
+                      <td>{job.team_id}조<br /><span className="muted job-id">{job.id}</span></td>
+                      <td>
+                        <span className={`status ${job.status}`}>{statusLabel(job.status)}</span>
+                        {job.fallback_used && <span className="fallback-badge">멀티뷰 보완</span>}
+                        {job.fallback_used === false && <span className="fallback-badge normal">기본 경로</span>}
+                      </td>
+                      <td>{pipelineProfiles.find((profile) => profile.id === job.pipeline_profile)?.label ?? job.pipeline_profile ?? '기본'}</td>
+                      <td>
+                        <strong className="credit-used">{formatCredits(job.credits_used)}</strong>
+                        {metrics.length > 0 && (
+                          <details className="job-metrics">
+                            <summary>세부 지표</summary>
+                            {metrics.map(([key, value]) => <span key={key}>{key}: {String(value)}</span>)}
+                          </details>
+                        )}
+                      </td>
+                      <td>{job.glb_url
+                        ? <a className="result-link" href={job.glb_url} target="_blank" rel="noreferrer">GLB 보기</a>
+                        : job.error ? <span className="error">{job.error}</span> : '—'}</td>
+                    </tr>
+                  );
+                }) : <tr><td colSpan={5} className="muted">아직 변환 작업이 없습니다</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
 

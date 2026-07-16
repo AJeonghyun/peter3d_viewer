@@ -4,6 +4,7 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -44,6 +45,74 @@ class Peter3DBackendTests(unittest.TestCase):
         with backend_main.connect_db() as db:
             count = db.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
         self.assertEqual(count, 25)
+
+    def test_initializes_pipeline_metadata_and_credit_ledger(self):
+        with backend_main.connect_db() as db:
+            columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(conversion_jobs)").fetchall()
+            }
+            usage_table = db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tripo_task_usage'"
+            ).fetchone()
+
+        self.assertTrue({
+            "pipeline_profile",
+            "multiview_task_id",
+            "fallback_model_task_id",
+            "fallback_used",
+            "glb_bytes",
+            "glb_triangles",
+            "glb_animations",
+            "lease_token",
+            "lease_until",
+        }.issubset(columns))
+        self.assertIsNotNone(usage_table)
+
+    def test_generation_profiles_enable_autofix_without_invalid_p1_flags(self):
+        h3 = backend_main.image_model_options("h3_smart")
+        p1 = backend_main.image_model_options("p1")
+
+        self.assertTrue(h3["enable_image_autofix"])
+        self.assertTrue(h3["smart_low_poly"])
+        self.assertEqual(h3["model_version"], "v3.1-20260211")
+        self.assertTrue(p1["enable_image_autofix"])
+        self.assertEqual(p1["model_version"], "P1-20260311")
+        self.assertNotIn("smart_low_poly", p1)
+        self.assertNotIn("geometry_quality", p1)
+        self.assertNotIn("texture_quality", p1)
+        self.assertNotIn("compress", p1)
+
+    def test_multiview_fallback_reuses_generated_views(self):
+        payload = backend_main.multiview_model_payload("h3_smart", "views-task")
+
+        self.assertEqual(payload["type"], "multiview_to_model")
+        self.assertEqual(payload["original_task_id"], "views-task")
+        self.assertTrue(payload["smart_low_poly"])
+
+    def test_rig_and_animation_tasks_use_latest_rig_and_two_clips(self):
+        class FakeClient:
+            def __init__(self):
+                self.rig_kwargs = None
+                self.animation_kwargs = None
+
+            async def rig_model(self, **kwargs):
+                self.rig_kwargs = kwargs
+                return "rig-task"
+
+            async def retarget_animation(self, **kwargs):
+                self.animation_kwargs = kwargs
+                return "animation-task"
+
+        client = FakeClient()
+        rig_id = asyncio.run(backend_main.create_rig_task(client, "model-task"))
+        animation_id = asyncio.run(backend_main.create_animation_task(client, rig_id))
+
+        self.assertEqual(client.rig_kwargs["model_version"], "v2.5-20260210")
+        self.assertEqual(
+            client.animation_kwargs["animation"],
+            [backend_main.Animation.IDLE, backend_main.Animation.WALK],
+        )
+        self.assertEqual(animation_id, "animation-task")
 
     def test_growth_updates_stats_talents_and_title(self):
         result = asyncio.run(
@@ -144,6 +213,108 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(result["triangles"], 20000)
         self.assertEqual(result["animations"], 1)
         self.assertEqual(result["skins"], 1)
+
+    def test_production_validation_requires_idle_and_walk_outputs(self):
+        contents = make_glb({
+            "asset": {"version": "2.0"},
+            "accessors": [{"count": 3000}],
+            "meshes": [{"primitives": [{"indices": 0}]}],
+            "skins": [{"joints": [0]}],
+            "animations": [{"channels": [{"sampler": 0, "target": {"node": 0}}]}],
+        })
+
+        with self.assertRaisesRegex(ValueError, "필요: 2개"):
+            backend_main.inspect_animated_glb(contents, minimum_animations=2)
+
+    def test_serverless_queue_does_not_start_beyond_worker_limit(self):
+        timestamp = backend_main.now_iso()
+        with backend_main.connect_db() as db:
+            for index in range(backend_main.WORKER_COUNT):
+                db.execute(
+                    """
+                    INSERT INTO conversion_jobs (
+                        id, team_id, status, image_path, created_at, updated_at
+                    ) VALUES (?, ?, 'modeling', ?, ?, ?)
+                    """,
+                    (f"active-{index}", index + 1, f"active-{index}.png", timestamp, timestamp),
+                )
+            db.execute(
+                """
+                INSERT INTO conversion_jobs (
+                    id, team_id, status, image_path, created_at, updated_at
+                ) VALUES ('queued-job', 25, 'queued', 'queued.png', ?, ?)
+                """,
+                (timestamp, timestamp),
+            )
+
+        with patch.object(backend_main, "TripoClient") as client:
+            asyncio.run(backend_main.advance_serverless_job("queued-job"))
+
+        client.assert_not_called()
+        with backend_main.connect_db() as db:
+            row = db.execute(
+                "SELECT status, lease_token FROM conversion_jobs WHERE id = 'queued-job'"
+            ).fetchone()
+        self.assertEqual(row["status"], "queued")
+        self.assertIsNone(row["lease_token"])
+
+    def test_serverless_queue_counts_a_leased_queued_job_as_active(self):
+        timestamp = backend_main.now_iso()
+        lease_until = "2999-01-01T00:00:00+00:00"
+        with backend_main.connect_db() as db:
+            db.execute(
+                """
+                INSERT INTO conversion_jobs (
+                    id, team_id, status, image_path, lease_token, lease_until,
+                    created_at, updated_at
+                ) VALUES ('leased-job', 1, 'queued', 'leased.png', 'lease', ?, ?, ?)
+                """,
+                (lease_until, timestamp, timestamp),
+            )
+            db.execute(
+                """
+                INSERT INTO conversion_jobs (
+                    id, team_id, status, image_path, created_at, updated_at
+                ) VALUES ('waiting-job', 2, 'queued', 'waiting.png', ?, ?)
+                """,
+                (timestamp, timestamp),
+            )
+
+        original_workers = backend_main.WORKER_COUNT
+        backend_main.WORKER_COUNT = 1
+        try:
+            with patch.object(backend_main, "TripoClient") as client:
+                asyncio.run(backend_main.advance_serverless_job("waiting-job"))
+            client.assert_not_called()
+        finally:
+            backend_main.WORKER_COUNT = original_workers
+
+    def test_multiview_slot_allows_only_one_starting_job(self):
+        timestamp = backend_main.now_iso()
+        with backend_main.connect_db() as db:
+            for team_id in (1, 2):
+                db.execute(
+                    """
+                    INSERT INTO conversion_jobs (
+                        id, team_id, status, image_path, created_at, updated_at
+                    ) VALUES (?, ?, 'rig_check', ?, ?, ?)
+                    """,
+                    (f"rig-{team_id}", team_id, f"rig-{team_id}.png", timestamp, timestamp),
+                )
+
+        self.assertTrue(backend_main.reserve_multiview_slot("rig-1"))
+        self.assertFalse(backend_main.reserve_multiview_slot("rig-2"))
+        with backend_main.connect_db() as db:
+            first = db.execute(
+                "SELECT status, fallback_used FROM conversion_jobs WHERE id = 'rig-1'"
+            ).fetchone()
+            second = db.execute(
+                "SELECT status, fallback_used FROM conversion_jobs WHERE id = 'rig-2'"
+            ).fetchone()
+        self.assertEqual(first["status"], "multiview_starting")
+        self.assertEqual(first["fallback_used"], 1)
+        self.assertEqual(second["status"], "rig_check")
+        self.assertEqual(second["fallback_used"], 0)
 
     def test_rejects_a_glb_without_walk_animation_channels(self):
         contents = make_glb({
