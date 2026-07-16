@@ -1,4 +1,5 @@
 import asyncio
+import io
 import json
 import struct
 import tempfile
@@ -7,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from starlette.datastructures import Headers
 
 import backend_main
 
@@ -288,6 +290,51 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertTrue(all(row["model_asset_id"] == "reusable" for row in teams))
         self.assertTrue(all(row["model_url"].endswith("reusable.glb") for row in teams))
         self.assertIsNone(untouched["model_url"])
+
+    def test_existing_glb_can_be_uploaded_to_the_model_library(self):
+        contents = make_glb({
+            "asset": {"version": "2.0"},
+            "accessors": [{"count": 60000}],
+            "meshes": [{"primitives": [{"indices": 0}]}],
+            "skins": [{"joints": [0]}],
+            "animations": [{"channels": [{"sampler": 0, "target": {"node": 0}}]}],
+        })
+        upload = backend_main.UploadFile(
+            filename="existing-peter.glb",
+            file=io.BytesIO(contents),
+            headers=Headers({"content-type": "model/gltf-binary"}),
+        )
+
+        with patch.object(
+            backend_main,
+            "persist_uploaded_glb",
+            return_value="https://assets.example/uploaded.glb",
+        ):
+            asset = asyncio.run(backend_main.upload_model_asset(upload, "기존 베드로"))
+
+        self.assertEqual(asset["name"], "기존 베드로")
+        self.assertEqual(asset["pipeline_profile"], "uploaded_glb")
+        self.assertEqual(asset["glb_triangles"], 20000)
+        self.assertEqual(asset["glb_animations"], 1)
+        self.assertEqual(asset["team_ids"], [])
+
+    def test_existing_glb_upload_rejects_a_static_model(self):
+        contents = make_glb({
+            "asset": {"version": "2.0"},
+            "accessors": [{"count": 3000}],
+            "meshes": [{"primitives": [{"indices": 0}]}],
+        })
+        upload = backend_main.UploadFile(
+            filename="static.glb",
+            file=io.BytesIO(contents),
+            headers=Headers({"content-type": "model/gltf-binary"}),
+        )
+
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(backend_main.upload_model_asset(upload, "정적 모델"))
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("리깅", caught.exception.detail)
 
     def test_accepts_a_bounded_rigged_animated_glb(self):
         contents = make_glb({
