@@ -1114,6 +1114,50 @@ async def validated_image_upload(image: UploadFile) -> tuple[bytes, str, str]:
     return contents, content_type, extensions[content_type]
 
 
+async def validated_glb_upload(glb: UploadFile) -> tuple[bytes, dict]:
+    filename = (glb.filename or "").strip()
+    if Path(filename).suffix.lower() != ".glb":
+        raise HTTPException(status_code=415, detail=".glb 파일만 등록할 수 있습니다")
+    contents = await glb.read(MAX_GLB_BYTES + 1)
+    if len(contents) > MAX_GLB_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"GLB는 {MAX_GLB_BYTES // (1024 * 1024)}MB 이하여야 합니다",
+        )
+    if not contents:
+        raise HTTPException(status_code=422, detail="빈 GLB 파일은 등록할 수 없습니다")
+    try:
+        metrics = inspect_animated_glb(contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return contents, metrics
+
+
+async def persist_uploaded_glb(asset_id: str, contents: bytes) -> str:
+    if blob_configured():
+        return await put_public_blob(
+            f"model-assets/{asset_id}/model.glb",
+            contents,
+            content_type="model/gltf-binary",
+            multipart=True,
+        )
+    if SERVERLESS_RUNTIME:
+        raise HTTPException(status_code=503, detail="Vercel Blob 연결이 필요합니다")
+
+    target = MODELS_DIR / "model-assets" / asset_id / "model.glb"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(contents)
+    try:
+        public_path = target.resolve().relative_to((ROOT / "static").resolve())
+    except ValueError as exc:
+        target.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=503,
+            detail="로컬 모델 폴더가 static 폴더 안에 있어야 합니다",
+        ) from exc
+    return f"/static/{public_path.as_posix()}"
+
+
 async def enqueue_conversion(job_id: str) -> None:
     if SERVERLESS_RUNTIME:
         return
@@ -1184,6 +1228,56 @@ async def generate_model_asset(
         )
     await enqueue_conversion(job_id)
     return {"job_id": job_id, "status": "queued", "asset_name": asset_name}
+
+
+@app.post("/api/model-assets/upload", status_code=201)
+async def upload_model_asset(
+    glb: UploadFile = File(...),
+    name: str = Form(...),
+):
+    if SERVERLESS_RUNTIME and not (using_postgres() and blob_configured()):
+        raise HTTPException(
+            status_code=503,
+            detail="Neon Postgres와 Vercel Blob 연결이 필요합니다.",
+        )
+    asset_name = name.strip()
+    if not asset_name or len(asset_name) > 60:
+        raise HTTPException(status_code=422, detail="모델 이름은 1~60자로 입력해주세요")
+    contents, metrics = await validated_glb_upload(glb)
+    asset_id = uuid.uuid4().hex[:12]
+    glb_url = await persist_uploaded_glb(asset_id, contents)
+    timestamp = now_iso()
+    try:
+        with connect_db() as db:
+            db.execute(
+                """
+                INSERT INTO model_assets (
+                    id, name, source_image_url, glb_url, pipeline_profile,
+                    glb_bytes, glb_triangles, glb_animations, created_at, updated_at
+                ) VALUES (?, ?, NULL, ?, 'uploaded_glb', ?, ?, ?, ?, ?)
+                """,
+                (
+                    asset_id,
+                    asset_name,
+                    glb_url,
+                    metrics["bytes"],
+                    metrics["triangles"],
+                    metrics["animations"],
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            asset = row_dict(db.execute(
+                "SELECT * FROM model_assets WHERE id = ?",
+                (asset_id,),
+            ).fetchone())
+    except Exception:
+        await delete_blob_if_managed(glb_url)
+        if glb_url.startswith("/static/"):
+            (ROOT / glb_url.removeprefix("/")).unlink(missing_ok=True)
+        raise
+    asset["team_ids"] = ""
+    return public_model_asset(asset)
 
 
 @app.post("/api/model-assets/{asset_id}/apply")

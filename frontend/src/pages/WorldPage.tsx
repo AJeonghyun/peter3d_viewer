@@ -310,9 +310,12 @@ export default function WorldPage() {
           <span className="brand-mark">153</span>
           <div><strong>베드로 키우기</strong><small>우리의 믿음이 자라는 갈릴리</small></div>
         </div>
-        <button id="findTeamBtn" className="primary-button" onClick={() => { setFinderOpen(true); scheduleReset(); }}>
-          <span>⌕</span> 우리 조 찾기
-        </button>
+        <div className="topbar-actions">
+          <a className="admin-entry" href="/admin" aria-label="운영진 관리 페이지로 이동"><span>⚙</span> 운영실</a>
+          <button id="findTeamBtn" className="primary-button" onClick={() => { setFinderOpen(true); scheduleReset(); }}>
+            <span>⌕</span> 우리 조 찾기
+          </button>
+        </div>
       </header>
 
       <section className={`world-hint glass${selectedTeam ? ' hide' : ''}`} id="worldHint">

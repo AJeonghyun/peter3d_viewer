@@ -151,6 +151,7 @@ export default function AdminPage() {
   const [billingError, setBillingError] = useState(false);
   const [pipelineProfile, setPipelineProfile] = useState('h3_smart');
   const [assetName, setAssetName] = useState('');
+  const [uploadedAssetName, setUploadedAssetName] = useState('');
   const [applyTeamIds, setApplyTeamIds] = useState<number[]>([]);
   const [applyingAssetId, setApplyingAssetId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -162,7 +163,9 @@ export default function AdminPage() {
   const [savingTeam, setSavingTeam] = useState(false);
   const [savingGrowth, setSavingGrowth] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingGlb, setUploadingGlb] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const glbInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
 
   const selected = useMemo(
@@ -350,6 +353,39 @@ export default function AdminPage() {
     }
   }
 
+  async function uploadExistingGlb(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const glb = glbInputRef.current?.files?.[0];
+    const name = uploadedAssetName.trim();
+    if (!glb || !name) return;
+    if (!glb.name.toLowerCase().endsWith('.glb')) {
+      showToast('.glb 파일을 선택해주세요');
+      return;
+    }
+    if (glb.size > 10 * 1024 * 1024) {
+      showToast('GLB는 10MB 이하여야 합니다');
+      return;
+    }
+    setUploadingGlb(true);
+    try {
+      const form = new FormData();
+      form.append('glb', glb);
+      form.append('name', name);
+      const asset = await apiRequest<ModelAsset>('/model-assets/upload', {
+        method: 'POST',
+        body: form,
+      });
+      if (glbInputRef.current) glbInputRef.current.value = '';
+      setUploadedAssetName('');
+      await refreshModelAssets();
+      showToast(`${asset.name} GLB를 모델 보관함에 등록했습니다`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'GLB를 등록하지 못했습니다');
+    } finally {
+      setUploadingGlb(false);
+    }
+  }
+
   function toggleApplyTeam(teamId: number) {
     setApplyTeamIds((current) => current.includes(teamId)
       ? current.filter((id) => id !== teamId)
@@ -390,7 +426,7 @@ export default function AdminPage() {
     <div className="admin-page">
       <header className="admin-header">
         <div><h1>베드로 키우기 운영실</h1><small>조 정보 · 달란트 · 성품 · 3D 변환</small></div>
-        <a href="/" target="_blank" rel="noreferrer">갈릴리 월드 열기 ↗</a>
+        <a href="/">← 갈릴리 월드로 돌아가기</a>
       </header>
 
       <main className="admin-layout">
@@ -478,27 +514,46 @@ export default function AdminPage() {
           <section className="model-workspace">
             <div className="workspace-step">
               <span>1</span>
-              <div><h2>공용 GLB 모델 만들기</h2><p className="muted">조를 고르지 않고 먼저 모델을 생성해 보관합니다.</p></div>
+              <div><h2>모델 보관함에 추가</h2><p className="muted">그림으로 새로 만들거나, 가지고 있는 GLB를 바로 등록합니다.</p></div>
             </div>
-            <form className="asset-generation-form" onSubmit={generateModelAsset}>
-              <label>
-                모델 이름
-                <input value={assetName} maxLength={60} placeholder="예: 파란 구름 베드로" required onChange={(event) => setAssetName(event.target.value)} />
-              </label>
-              <label className="pipeline-select">
-                생성 프로필
-                <select value={pipelineProfile} onChange={(event) => setPipelineProfile(event.target.value)}>
-                  {pipelineProfiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.label}{profile.estimated_credits > 0 ? ` · 약 ${profile.estimated_credits} cr` : ''}
-                    </option>
-                  ))}
-                </select>
-                {selectedProfile && <small>{selectedProfile.description}</small>}
-              </label>
-              <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" required />
-              <button className="primary" disabled={uploading}>{uploading ? '등록 중…' : '모델 생성 대기열에 추가'}</button>
-            </form>
+            <div className="asset-source-grid">
+              <section className="asset-source-card">
+                <h3>그림으로 새 모델 생성</h3>
+                <p className="muted">Tripo 크레딧을 사용해 모델·리깅·동작을 만듭니다.</p>
+                <form className="asset-generation-form" onSubmit={generateModelAsset}>
+                  <label>
+                    모델 이름
+                    <input value={assetName} maxLength={60} placeholder="예: 파란 구름 베드로" required onChange={(event) => setAssetName(event.target.value)} />
+                  </label>
+                  <label className="pipeline-select">
+                    생성 프로필
+                    <select value={pipelineProfile} onChange={(event) => setPipelineProfile(event.target.value)}>
+                      {pipelineProfiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.label}{profile.estimated_credits > 0 ? ` · 약 ${profile.estimated_credits} cr` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedProfile && <small>{selectedProfile.description}</small>}
+                  </label>
+                  <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" required />
+                  <button className="primary" disabled={uploading}>{uploading ? '등록 중…' : '모델 생성 대기열에 추가'}</button>
+                </form>
+              </section>
+
+              <section className="asset-source-card imported-glb-card">
+                <h3>기존 GLB 파일 등록</h3>
+                <p className="muted">10MB 이하 · 스켈레톤과 애니메이션 1개 이상이 필요합니다.</p>
+                <form className="asset-generation-form" onSubmit={uploadExistingGlb}>
+                  <label>
+                    모델 이름
+                    <input value={uploadedAssetName} maxLength={60} placeholder="예: 완성된 4조 베드로" required onChange={(event) => setUploadedAssetName(event.target.value)} />
+                  </label>
+                  <input ref={glbInputRef} type="file" accept=".glb,model/gltf-binary" required />
+                  <button className="primary" disabled={uploadingGlb}>{uploadingGlb ? '검사·업로드 중…' : 'GLB 모델 보관함에 등록'}</button>
+                </form>
+              </section>
+            </div>
 
             <div className="workspace-step apply-step">
               <span>2</span>
@@ -522,7 +577,10 @@ export default function AdminPage() {
               {modelAssets.length ? modelAssets.map((asset) => (
                 <article className="asset-card" key={asset.id}>
                   <div className="asset-card-head">
-                    <div><strong>{asset.name}</strong><span>{asset.team_ids.length ? `${asset.team_ids.join(', ')}조 적용 중` : '아직 적용된 조 없음'}</span></div>
+                    <div>
+                      <strong>{asset.name}{asset.pipeline_profile === 'uploaded_glb' && <em className="imported-badge">직접 업로드</em>}</strong>
+                      <span>{asset.team_ids.length ? `${asset.team_ids.join(', ')}조 적용 중` : '아직 적용된 조 없음'}</span>
+                    </div>
                     <a href={asset.glb_url} target="_blank" rel="noreferrer">GLB 확인</a>
                   </div>
                   <div className="asset-metrics">
