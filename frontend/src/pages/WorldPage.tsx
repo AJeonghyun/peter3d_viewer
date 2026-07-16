@@ -279,6 +279,7 @@ export default function WorldPage() {
   const stats = selectedTeam
     ? [selectedTeam.courage, selectedTeam.wisdom, selectedTeam.faith, selectedTeam.love]
     : [10, 10, 10, 10];
+  const symbolText = Array.from((selectedTeam?.symbol || '물고기').trim()).slice(0, 3).join('');
   const radarPoints = stats.map((value, index) => radarPoint(value, index));
   const teamColor = selectedTeam?.color || '#67b8c7';
   const level = selectedTeam
@@ -325,7 +326,7 @@ export default function WorldPage() {
         <button id="closePanelBtn" className="panel-close" aria-label="정보 닫기" onClick={closeTeamPanel}>×</button>
         <div className="panel-eyebrow">OUR PETER</div>
         <div className="team-heading">
-          <div id="teamSymbol" className="team-symbol">{(selectedTeam?.symbol || '물고기').slice(0, 2)}</div>
+          <div id="teamSymbol" className="team-symbol" data-length={symbolText.length}>{symbolText}</div>
           <div>
             <h1 id="teamName">{selectedTeam?.name || '1조'}</h1>
             <p id="teamIdentity">{selectedTeam?.identity_text || '우리 조가 키워가는 베드로'}</p>
@@ -408,7 +409,11 @@ export default function WorldPage() {
         id="loading"
         className={`loading-screen${sceneReady && modelLoadProgress.waiting === 0 && modelLoadProgress.active === 0 ? ' hide' : ''}`}
       >
-        <div className="fish-loader">◇</div>
+        <svg className="fish-loader" viewBox="0 0 88 44" aria-hidden="true">
+          <path pathLength={1} d="M4 22 C 20 5, 48 5, 66 22 C 48 39, 20 39, 4 22 Z" />
+          <path pathLength={1} d="M66 22 L 83 9 M66 22 L 83 35" />
+          <circle cx="18" cy="19" r="2.4" />
+        </svg>
         <strong>갈릴리 호숫가를 준비하고 있어요</strong>
         <small id="loadingStatus">
           {teams.length
