@@ -53,17 +53,17 @@ STAT_KEYS = ("courage", "wisdom", "faith", "love")
 
 PIPELINE_PROFILES = {
     "h3_smart": {
-        "label": "H3.1 + Smart Low Poly",
-        "description": "그림 충실도와 iPad 경량화의 균형",
+        "label": "H3.1 40K Detail",
+        "description": "40,000면으로 그림 디테일을 보존하는 iPad용 프로필",
         "model_version": "v3.1-20260211",
-        "smart_low_poly": True,
+        "max_face_limit": 40_000,
         "estimated_credits": 85,
     },
     "p1": {
         "label": "P1 Smart Mesh",
         "description": "더 정돈된 저폴리 토폴로지 비교용",
         "model_version": "P1-20260311",
-        "smart_low_poly": False,
+        "max_face_limit": 20_000,
         "estimated_credits": 95,
     },
 }
@@ -253,13 +253,26 @@ def profile_config(profile: str) -> dict:
     return PIPELINE_PROFILES[profile]
 
 
+def task_failure_message(task: Any, fallback: str) -> str:
+    """Keep provider error codes visible in job history when no message is returned."""
+    code = getattr(task, "error_code", None)
+    message = getattr(task, "error_msg", None)
+    if code is not None and message:
+        return f"[Tripo {code}] {message}"
+    if message:
+        return str(message)
+    if code is not None:
+        return f"{fallback} (Tripo 오류 코드: {code})"
+    return fallback
+
+
 def image_model_options(profile: str) -> dict:
     config = profile_config(profile)
     options = {
         "model_version": config["model_version"],
         "texture": True,
         "pbr": False,
-        "face_limit": min(TRIPO_FACE_LIMIT, 40_000),
+        "face_limit": min(TRIPO_FACE_LIMIT, config["max_face_limit"]),
         "texture_alignment": "original_image",
         "orientation": "align_image",
         "enable_image_autofix": True,
@@ -270,7 +283,6 @@ def image_model_options(profile: str) -> dict:
             texture_quality="standard",
             compress=True,
             geometry_quality="standard",
-            smart_low_poly=True,
         )
     return options
 
@@ -283,7 +295,7 @@ def multiview_model_payload(profile: str, multiview_task_id: str) -> dict:
         "model_version": config["model_version"],
         "texture": True,
         "pbr": False,
-        "face_limit": min(TRIPO_FACE_LIMIT, 40_000),
+        "face_limit": min(TRIPO_FACE_LIMIT, config["max_face_limit"]),
         "texture_alignment": "original_image",
         "orientation": "align_image",
         "export_uv": True,
@@ -293,7 +305,6 @@ def multiview_model_payload(profile: str, multiview_task_id: str) -> dict:
             texture_quality="standard",
             compress="geometry",
             geometry_quality="standard",
-            smart_low_poly=True,
         )
     return payload
 
@@ -573,7 +584,7 @@ async def run_pipeline(job_id: str) -> None:
             model = await client.wait_for_task(model_task_id)
             await record_task_usage(job_id, model_task_id)
             if model.status != TaskStatus.SUCCESS:
-                raise RuntimeError(model.error_msg or "3D 모델 생성에 실패했습니다")
+                raise RuntimeError(task_failure_message(model, "3D 모델 생성에 실패했습니다"))
 
             update_job(job_id, "rig_check")
             check_task_id = await client.check_riggable(model_task_id)
@@ -582,7 +593,7 @@ async def run_pipeline(job_id: str) -> None:
             await record_task_usage(job_id, check_task_id)
             active_model_task_id = model_task_id
             if check.status != TaskStatus.SUCCESS:
-                raise RuntimeError(check.error_msg or "리깅 가능 여부 확인에 실패했습니다")
+                raise RuntimeError(task_failure_message(check, "리깅 가능 여부 확인에 실패했습니다"))
             if not check.output.riggable:
                 if not ENABLE_MULTIVIEW_FALLBACK:
                     raise RuntimeError(
@@ -600,7 +611,9 @@ async def run_pipeline(job_id: str) -> None:
                     multiview = await client.wait_for_task(multiview_task_id)
                 await record_task_usage(job_id, multiview_task_id)
                 if multiview.status != TaskStatus.SUCCESS:
-                    raise RuntimeError(multiview.error_msg or "멀티뷰 이미지 생성에 실패했습니다")
+                    raise RuntimeError(
+                        task_failure_message(multiview, "멀티뷰 이미지 생성에 실패했습니다")
+                    )
 
                 update_job(job_id, "multiview_modeling", fallback_used=1)
                 fallback_model_task_id = await create_multiview_model_task(
@@ -617,7 +630,9 @@ async def run_pipeline(job_id: str) -> None:
                 fallback_model = await client.wait_for_task(fallback_model_task_id)
                 await record_task_usage(job_id, fallback_model_task_id)
                 if fallback_model.status != TaskStatus.SUCCESS:
-                    raise RuntimeError(fallback_model.error_msg or "멀티뷰 3D 생성에 실패했습니다")
+                    raise RuntimeError(
+                        task_failure_message(fallback_model, "멀티뷰 3D 생성에 실패했습니다")
+                    )
                 active_model_task_id = fallback_model_task_id
 
                 update_job(job_id, "rig_check", fallback_used=1)
@@ -637,7 +652,7 @@ async def run_pipeline(job_id: str) -> None:
             rig = await client.wait_for_task(rig_task_id)
             await record_task_usage(job_id, rig_task_id)
             if rig.status != TaskStatus.SUCCESS:
-                raise RuntimeError(rig.error_msg or "자동 리깅에 실패했습니다")
+                raise RuntimeError(task_failure_message(rig, "자동 리깅에 실패했습니다"))
 
             update_job(job_id, "animating")
             animation_task_id = await create_animation_task(client, rig_task_id)
@@ -645,7 +660,7 @@ async def run_pipeline(job_id: str) -> None:
             animation = await client.wait_for_task(animation_task_id)
             await record_task_usage(job_id, animation_task_id)
             if animation.status != TaskStatus.SUCCESS:
-                raise RuntimeError(animation.error_msg or "대기·걷기 적용에 실패했습니다")
+                raise RuntimeError(task_failure_message(animation, "대기·걷기 적용에 실패했습니다"))
 
             output_dir = MODELS_DIR / (
                 f"asset-{job['id']}" if job.get("asset_only") else f"team-{job['team_id']}"
@@ -756,7 +771,9 @@ async def advance_serverless_job(job_id: str) -> None:
                 return
             await record_task_usage(job_id, task_id)
             if task.status != TaskStatus.SUCCESS:
-                raise RuntimeError(task.error_msg or f"{job['status']} 단계에 실패했습니다")
+                raise RuntimeError(
+                    task_failure_message(task, f"{job['status']} 단계에 실패했습니다")
+                )
 
             if job["status"] == "modeling":
                 check_id = await client.check_riggable(job["model_task_id"])

@@ -80,17 +80,17 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("model_asset_id", team_columns)
         self.assertIsNotNone(asset_table)
 
-    def test_generation_profiles_enable_autofix_without_invalid_p1_flags(self):
+    def test_generation_profiles_keep_provider_face_limits_valid(self):
         h3 = backend_main.image_model_options("h3_smart")
         p1 = backend_main.image_model_options("p1")
 
         self.assertTrue(h3["enable_image_autofix"])
-        self.assertTrue(h3["smart_low_poly"])
         self.assertEqual(h3["model_version"], "v3.1-20260211")
         self.assertEqual(h3["face_limit"], 40_000)
+        self.assertNotIn("smart_low_poly", h3)
         self.assertTrue(p1["enable_image_autofix"])
         self.assertEqual(p1["model_version"], "P1-20260311")
-        self.assertEqual(p1["face_limit"], 40_000)
+        self.assertEqual(p1["face_limit"], 20_000)
         self.assertNotIn("smart_low_poly", p1)
         self.assertNotIn("geometry_quality", p1)
         self.assertNotIn("texture_quality", p1)
@@ -101,8 +101,16 @@ class Peter3DBackendTests(unittest.TestCase):
 
         self.assertEqual(payload["type"], "multiview_to_model")
         self.assertEqual(payload["original_task_id"], "views-task")
-        self.assertTrue(payload["smart_low_poly"])
         self.assertEqual(payload["face_limit"], 40_000)
+        self.assertNotIn("smart_low_poly", payload)
+
+    def test_task_failure_message_keeps_provider_error_code(self):
+        task = type("FailedTask", (), {"error_code": 1004, "error_msg": None})()
+
+        self.assertEqual(
+            backend_main.task_failure_message(task, "모델링 실패"),
+            "모델링 실패 (Tripo 오류 코드: 1004)",
+        )
 
     def test_rig_and_animation_tasks_use_biped_v1_and_two_clips(self):
         class FakeClient:
