@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from tripo3d import TaskStatus, TripoClient
-from tripo3d.models import Animation, RigType
+from tripo3d.models import RigType
 
 from peter3d_storage import (
     blob_configured,
@@ -41,10 +41,12 @@ DB_PATH = Path(os.getenv("PETER3D_DB_PATH", DATA_DIR / "peter3d.db"))
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_GLB_BYTES = max(1, int(os.getenv("PETER3D_MAX_GLB_MB", "10"))) * 1024 * 1024
 MAX_GLB_TRIANGLES = max(1_000, int(os.getenv("PETER3D_MAX_GLB_TRIANGLES", "100000")))
-TRIPO_FACE_LIMIT = max(1_000, min(int(os.getenv("TRIPO_FACE_LIMIT", "20000")), 100_000))
+TRIPO_FACE_LIMIT = max(1_000, min(int(os.getenv("TRIPO_FACE_LIMIT", "40000")), 100_000))
 WORKER_COUNT = max(1, min(int(os.getenv("PETER3D_WORKERS", "3")), 5))
 SERVERLESS_RUNTIME = os.getenv("PETER3D_SERVERLESS", "0") == "1"
-TRIPO_RIG_VERSION = os.getenv("TRIPO_RIG_VERSION", "v2.5-20260210")
+TRIPO_RIG_VERSION = os.getenv("TRIPO_RIG_VERSION", "v1.0-20240301")
+TRIPO_IDLE_ANIMATION = "preset:biped:standing_relax"
+TRIPO_WALK_ANIMATION = "preset:biped:walk"
 TRIPO_API_BASE_URL = os.getenv("TRIPO_API_BASE_URL", "https://api.tripo3d.ai/v2/openapi")
 ENABLE_MULTIVIEW_FALLBACK = os.getenv("TRIPO_MULTIVIEW_FALLBACK", "1") == "1"
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
@@ -257,7 +259,7 @@ def image_model_options(profile: str) -> dict:
         "model_version": config["model_version"],
         "texture": True,
         "pbr": False,
-        "face_limit": min(TRIPO_FACE_LIMIT, 20_000),
+        "face_limit": min(TRIPO_FACE_LIMIT, 40_000),
         "texture_alignment": "original_image",
         "orientation": "align_image",
         "enable_image_autofix": True,
@@ -281,7 +283,7 @@ def multiview_model_payload(profile: str, multiview_task_id: str) -> dict:
         "model_version": config["model_version"],
         "texture": True,
         "pbr": False,
-        "face_limit": min(TRIPO_FACE_LIMIT, 20_000),
+        "face_limit": min(TRIPO_FACE_LIMIT, 40_000),
         "texture_alignment": "original_image",
         "orientation": "align_image",
         "export_uv": True,
@@ -321,7 +323,7 @@ async def create_rig_task(client: TripoClient, model_task_id: str) -> str:
 async def create_animation_task(client: TripoClient, rig_task_id: str) -> str:
     return await client.retarget_animation(
         original_model_task_id=rig_task_id,
-        animation=[Animation.IDLE, Animation.WALK],
+        animation=[TRIPO_IDLE_ANIMATION, TRIPO_WALK_ANIMATION],
         out_format="glb",
         bake_animation=True,
         export_with_geometry=True,
