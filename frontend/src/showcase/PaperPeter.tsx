@@ -1,0 +1,163 @@
+import { memo, useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
+import type { Team } from '../types/api';
+import { prepareCharacterImage } from './characterImage';
+import { prepareSpriteAtlas } from './spriteAtlas';
+import type { PreparedSpriteAtlas } from './spriteAtlas';
+
+export type ActorPhase = 'entering' | 'arriving' | 'active' | 'exiting';
+
+export interface StageSlot {
+  id: number;
+  x: number;
+  y: number;
+  scale: number;
+  layer: number;
+  roam?: number;
+}
+
+interface PaperPeterProps {
+  team: Team;
+  phase: ActorPhase;
+  slot: StageSlot;
+  layout?: 'gallery' | 'tier';
+  compact?: boolean;
+}
+
+const SAMPLE_CHARACTER_URL = '/assets/showcase/peter-template.png';
+
+function PaperPeterComponent({
+  team,
+  phase,
+  slot,
+  layout = 'gallery',
+  compact = false,
+}: PaperPeterProps) {
+  const source = team.showcase_image_url || team.image_url || SAMPLE_CHARACTER_URL;
+  const [imageSource, setImageSource] = useState(SAMPLE_CHARACTER_URL);
+  const [nicknameSource, setNicknameSource] = useState<string | null>(null);
+  const [sprite, setSprite] = useState<PreparedSpriteAtlas | null>(null);
+  const [gesture, setGesture] = useState<'idle' | 'wave' | 'step'>('idle');
+  const [roamOffset, setRoamOffset] = useState(0);
+  const [travelDirection, setTravelDirection] = useState<1 | -1>(
+    team.id % 2 === 0 ? 1 : -1,
+  );
+
+  useEffect(() => {
+    let active = true;
+    void prepareCharacterImage(source).then((prepared) => {
+      if (!active) return;
+      setImageSource(prepared.characterUrl);
+      setNicknameSource(prepared.nicknameUrl);
+    });
+    return () => { active = false; };
+  }, [source]);
+
+  useEffect(() => {
+    let active = true;
+    const spriteUrl = team.showcase_sprite_url;
+    if (!spriteUrl) {
+      setSprite(null);
+      return () => { active = false; };
+    }
+    void prepareSpriteAtlas(spriteUrl).then((prepared) => {
+      if (active) setSprite(prepared);
+    });
+    return () => { active = false; };
+  }, [team.showcase_sprite_url]);
+
+  useEffect(() => {
+    if (phase !== 'active') {
+      setGesture('idle');
+      setRoamOffset(0);
+      return undefined;
+    }
+    let actionTimer: number | undefined;
+    let actionEndTimer: number | undefined;
+    let currentOffset = 0;
+    let nextDirection: 1 | -1 = team.id % 2 === 0 ? 1 : -1;
+
+    const schedule = () => {
+      actionTimer = window.setTimeout(() => {
+        const canRoam = layout === 'tier' && Boolean(slot.roam);
+        const nextGesture = canRoam && Math.random() < 0.72
+          ? 'step'
+          : 'wave';
+
+        if (nextGesture === 'step') {
+          const nextOffset = nextDirection * (slot.roam ?? 0);
+          setTravelDirection(nextOffset > currentOffset ? 1 : -1);
+          setRoamOffset(nextOffset);
+          currentOffset = nextOffset;
+          nextDirection = nextDirection === 1 ? -1 : 1;
+        }
+
+        setGesture(nextGesture);
+        actionEndTimer = window.setTimeout(() => {
+          setGesture('idle');
+          schedule();
+        }, nextGesture === 'wave' ? 1800 : 2800);
+      }, 2200 + Math.random() * 3600);
+    };
+
+    schedule();
+    return () => {
+      if (actionTimer) window.clearTimeout(actionTimer);
+      if (actionEndTimer) window.clearTimeout(actionEndTimer);
+    };
+  }, [layout, phase, slot.roam, team.id]);
+
+  const actorStyle = {
+    '--actor-x': `${slot.x}%`,
+    '--actor-y': `${slot.y}%`,
+    '--actor-scale': slot.scale,
+    '--actor-layer': slot.layer,
+    '--team-color': team.color,
+    '--motion-delay': `${-(team.id % 7) * 0.11}s`,
+    '--travel-direction': travelDirection,
+    '--roam-x': `${roamOffset}cqw`,
+    '--entry-x': slot.x < 50 ? '-72vw' : '72vw',
+    '--exit-x': slot.x < 50 ? '72vw' : '-72vw',
+    '--sprite-cell-ratio': sprite?.cellAspect ?? 1.125,
+    '--sprite-row': phase === 'active'
+      ? gesture === 'wave' ? 2 : gesture === 'step' ? 1 : 0
+      : 1,
+  } as CSSProperties;
+
+  return (
+    <article
+      className="paper-peter"
+      data-phase={phase}
+      data-gesture={gesture}
+      data-render={sprite ? 'sprite' : 'paper'}
+      data-layout={layout}
+      data-compact={compact ? 'true' : 'false'}
+      style={actorStyle}
+      aria-label={`${team.name} 베드로`}
+    >
+      {sprite ? (
+        <div className="sprite-peter__figure" role="img" aria-label={`${team.name}의 AI 게임 캐릭터`}>
+          <div className="sprite-peter__viewport">
+            <img className="sprite-peter__atlas" src={sprite.url} alt="" />
+          </div>
+        </div>
+      ) : (
+        <div className="paper-peter__figure" role="img" aria-label={`${team.name}에서 만든 베드로`}>
+          <img className="paper-peter__part paper-peter__left-leg" src={imageSource} alt="" />
+          <img className="paper-peter__part paper-peter__right-leg" src={imageSource} alt="" />
+          <img className="paper-peter__part paper-peter__left-arm" src={imageSource} alt="" />
+          <img className="paper-peter__part paper-peter__right-arm" src={imageSource} alt="" />
+          <img className="paper-peter__part paper-peter__torso" src={imageSource} alt="" />
+          <img className="paper-peter__part paper-peter__head" src={imageSource} alt="" />
+        </div>
+      )}
+      <div className="paper-peter__name" data-has-art={nicknameSource ? 'true' : 'false'}>
+        {nicknameSource
+          ? <img src={nicknameSource} alt={`${team.name}에서 만든 닉네임창`} />
+          : <span>{team.name}</span>}
+      </div>
+    </article>
+  );
+}
+
+export const PaperPeter = memo(PaperPeterComponent);

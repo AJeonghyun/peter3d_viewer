@@ -5,6 +5,7 @@ uploaded images and generated GLBs in Vercel Blob when configured.
 """
 
 import asyncio
+import base64
 import json
 import os
 import struct
@@ -41,6 +42,7 @@ DB_PATH = Path(os.getenv("PETER3D_DB_PATH", DATA_DIR / "peter3d.db"))
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_GLB_BYTES = max(1, int(os.getenv("PETER3D_MAX_GLB_MB", "10"))) * 1024 * 1024
 MAX_GLB_TRIANGLES = max(1_000, int(os.getenv("PETER3D_MAX_GLB_TRIANGLES", "100000")))
+MAX_SPRITE_BYTES = 25 * 1024 * 1024
 TRIPO_FACE_LIMIT = max(1_000, min(int(os.getenv("TRIPO_FACE_LIMIT", "40000")), 100_000))
 WORKER_COUNT = max(1, min(int(os.getenv("PETER3D_WORKERS", "3")), 5))
 SERVERLESS_RUNTIME = os.getenv("PETER3D_SERVERLESS", "0") == "1"
@@ -49,7 +51,29 @@ TRIPO_IDLE_ANIMATION = "preset:biped:standing_relax"
 TRIPO_WALK_ANIMATION = "preset:biped:walk"
 TRIPO_API_BASE_URL = os.getenv("TRIPO_API_BASE_URL", "https://api.tripo3d.ai/v2/openapi")
 ENABLE_MULTIVIEW_FALLBACK = os.getenv("TRIPO_MULTIVIEW_FALLBACK", "1") == "1"
+OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
+OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
+OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/edits"
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
+
+SHOWCASE_SPRITE_PROMPT = """
+Transform the supplied student-designed Peter character into one consistent,
+polished 2D mobile-RPG chibi character sprite sheet. Preserve the input
+character's exact identity, face, hair, skin tone, clothing colors, hand-drawn
+patterns, shoes, and other distinctive design choices. Clean and professionally
+recolor the artwork with crisp dark outlines, balanced cel shading, soft
+highlights, and game-ready proportions. Do not retain crayon or colored-pencil
+texture, but do retain every intentional color and motif from the reference.
+
+Create exactly 12 separate full-body frames in a strict 4-column by 3-row grid.
+All cells must have identical dimensions, scale, camera, character proportions,
+ground level, and generous padding. Row 1: four subtle front-facing idle frames.
+Row 2: four side-view walking-right frames with correctly alternating arms and
+legs. Row 3: four front-facing friendly wave frames. Keep the same character in
+every frame. Use a perfectly flat, uniform very light warm-gray background in
+every cell. No transparency, scenery, cast shadows, grid lines, borders, text,
+captions, logos, extra people, duplicated limbs, or cropped body parts.
+""".strip()
 
 PIPELINE_PROFILES = {
     "h3_smart": {
@@ -917,14 +941,22 @@ async def admin_page():
     return frontend_index()
 
 
+@app.get("/world-3d")
+async def legacy_world_page():
+    return frontend_index()
+
+
 @app.get("/api/health")
 async def health():
     api_key = os.getenv("TRIPO_API_KEY", "")
+    openai_key = os.getenv("OPENAI_API_KEY", "")
     persistent = using_postgres() and blob_configured()
     return {
         "ok": True,
         "workers": 0 if SERVERLESS_RUNTIME else WORKER_COUNT,
         "tripo_configured": api_key.startswith("tsk_"),
+        "openai_configured": openai_key.startswith("sk-"),
+        "openai_image_model": OPENAI_IMAGE_MODEL,
         "persistent_storage": persistent if SERVERLESS_RUNTIME else True,
         "database": "postgres" if using_postgres() else "sqlite",
         "object_storage": "vercel-blob" if blob_configured() else "local",
@@ -1112,6 +1144,222 @@ async def validated_image_upload(image: UploadFile) -> tuple[bytes, str, str]:
     if not signatures[content_type]:
         raise HTTPException(status_code=422, detail="파일 내용이 올바른 이미지 형식이 아닙니다")
     return contents, content_type, extensions[content_type]
+
+
+def openai_error_detail(response: httpx.Response) -> str:
+    try:
+        message = response.json().get("error", {}).get("message")
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        message = None
+    if response.status_code == 429:
+        return "OpenAI 이미지 생성 한도에 도달했습니다. 잠시 후 다시 시도해주세요."
+    if response.status_code in (401, 403):
+        return "OpenAI API 인증을 확인해주세요."
+    if isinstance(message, str) and message.strip():
+        return f"OpenAI 이미지 생성 실패: {message.strip()[:240]}"
+    return f"OpenAI 이미지 생성 실패 ({response.status_code})"
+
+
+async def request_showcase_sprite(
+    reference: bytes,
+    content_type: str,
+    filename: str,
+) -> bytes:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key.startswith("sk-"):
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY가 설정되지 않았습니다")
+
+    files = [
+        ("image[]", (filename, reference, content_type)),
+    ]
+    data = {
+        "model": OPENAI_IMAGE_MODEL,
+        "prompt": SHOWCASE_SPRITE_PROMPT,
+        "size": "1536x1024",
+        "quality": OPENAI_IMAGE_QUALITY,
+        "output_format": "png",
+        "background": "opaque",
+        "n": "1",
+    }
+    try:
+        timeout = httpx.Timeout(150.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                OPENAI_IMAGE_API_URL,
+                headers={"Authorization": f"Bearer {api_key}"},
+                data=data,
+                files=files,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="AI 캐릭터 생성 시간이 초과되었습니다. 다시 시도해주세요.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenAI 이미지 생성 서버에 연결하지 못했습니다.",
+        ) from exc
+
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=response.status_code if response.status_code < 500 else 502,
+            detail=openai_error_detail(response),
+        )
+    try:
+        encoded = response.json()["data"][0]["b64_json"]
+        sprite = base64.b64decode(encoded, validate=True)
+    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail="AI 스프라이트 응답을 읽지 못했습니다") from exc
+    if not sprite.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=502, detail="AI가 올바른 PNG 스프라이트를 반환하지 않았습니다")
+    if len(sprite) > MAX_SPRITE_BYTES:
+        raise HTTPException(status_code=502, detail="AI 스프라이트 파일이 너무 큽니다")
+    return sprite
+
+
+async def persist_showcase_sprite(team_id: int, sprite: bytes) -> str:
+    sprite_id = uuid.uuid4().hex[:12]
+    if blob_configured():
+        return await put_public_blob(
+            f"teams/{team_id}/sprites/showcase-{sprite_id}.png",
+            sprite,
+            content_type="image/png",
+        )
+    if SERVERLESS_RUNTIME:
+        raise HTTPException(
+            status_code=503,
+            detail="배포 환경에서 AI 스프라이트를 저장하려면 Vercel Blob 연결이 필요합니다",
+        )
+    filename = f"team-{team_id}-sprite-{sprite_id}.png"
+    (UPLOADS_DIR / filename).write_bytes(sprite)
+    return f"/uploads/{filename}"
+
+
+def update_showcase_sprite_status(
+    team_id: int,
+    status: str,
+    *,
+    url: Optional[str] = None,
+    error: Optional[str] = None,
+) -> dict:
+    timestamp = now_iso()
+    with connect_db() as db:
+        get_team_or_404(db, team_id)
+        if url is None:
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_status = ?, showcase_sprite_error = ?,
+                    showcase_sprite_updated_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, error, timestamp, timestamp, team_id),
+            )
+        else:
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_url = ?, showcase_sprite_status = ?,
+                    showcase_sprite_error = ?, showcase_sprite_model = ?,
+                    showcase_sprite_updated_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    url,
+                    status,
+                    error,
+                    OPENAI_IMAGE_MODEL,
+                    timestamp,
+                    timestamp,
+                    team_id,
+                ),
+            )
+        return row_dict(get_team_or_404(db, team_id))
+
+
+@app.post("/api/teams/{team_id}/image")
+async def upload_team_image(team_id: int, image: UploadFile = File(...)):
+    if SERVERLESS_RUNTIME and not blob_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="배포 환경에서 캐릭터 사진을 저장하려면 Vercel Blob 연결이 필요합니다",
+        )
+    with connect_db() as db:
+        previous_team = row_dict(get_team_or_404(db, team_id))
+    contents, content_type, extension = await validated_image_upload(image)
+
+    image_id = uuid.uuid4().hex[:12]
+    filename = f"team-{team_id}-showcase-{image_id}{extension}"
+    image_path = UPLOADS_DIR / filename
+    if blob_configured():
+        image_url = await put_public_blob(
+            f"teams/{team_id}/images/showcase-{image_id}{extension}",
+            contents,
+            content_type=content_type,
+        )
+        if not SERVERLESS_RUNTIME:
+            image_path.write_bytes(contents)
+    else:
+        image_path.write_bytes(contents)
+        image_url = f"/uploads/{filename}"
+
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_image_url = ?, showcase_sprite_url = NULL,
+                showcase_sprite_status = 'empty', showcase_sprite_error = NULL,
+                showcase_sprite_model = NULL, showcase_sprite_updated_at = NULL,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (image_url, now_iso(), team_id),
+        )
+        updated = row_dict(get_team_or_404(db, team_id))
+    if previous_team["showcase_image_url"] != image_url:
+        await delete_blob_if_managed(previous_team["showcase_image_url"])
+    if previous_team["showcase_sprite_url"]:
+        await delete_blob_if_managed(previous_team["showcase_sprite_url"])
+    return updated
+
+
+@app.post("/api/teams/{team_id}/showcase-sprite")
+async def generate_showcase_sprite(team_id: int, reference: UploadFile = File(...)):
+    if SERVERLESS_RUNTIME and not blob_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="배포 환경에서 AI 스프라이트를 저장하려면 Vercel Blob 연결이 필요합니다",
+        )
+    with connect_db() as db:
+        previous_team = row_dict(get_team_or_404(db, team_id))
+    if not previous_team["showcase_image_url"]:
+        raise HTTPException(status_code=409, detail="먼저 이 조의 2D 캐릭터 사진을 등록해주세요")
+
+    contents, content_type, _ = await validated_image_upload(reference)
+    update_showcase_sprite_status(team_id, "generating", error=None)
+    try:
+        sprite = await request_showcase_sprite(
+            contents,
+            content_type,
+            reference.filename or "peter-reference.png",
+        )
+        sprite_url = await persist_showcase_sprite(team_id, sprite)
+        updated = update_showcase_sprite_status(team_id, "ready", url=sprite_url, error=None)
+    except HTTPException as exc:
+        update_showcase_sprite_status(team_id, "failed", error=str(exc.detail)[:300])
+        raise
+    except Exception as exc:  # noqa: BLE001 - external generation boundary
+        update_showcase_sprite_status(team_id, "failed", error="AI 캐릭터 생성 중 오류가 발생했습니다")
+        raise HTTPException(
+            status_code=502,
+            detail="AI 캐릭터 생성 중 오류가 발생했습니다",
+        ) from exc
+
+    previous_url = previous_team["showcase_sprite_url"]
+    if previous_url and previous_url != sprite_url:
+        await delete_blob_if_managed(previous_url)
+    return updated
 
 
 async def validated_glb_upload(glb: UploadFile) -> tuple[bytes, dict]:

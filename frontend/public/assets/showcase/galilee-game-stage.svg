@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="갈릴리 호수의 밝은 게임 무대">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9ddced"/>
+      <stop offset=".72" stop-color="#eaf3dc"/>
+      <stop offset="1" stop-color="#f4d99c"/>
+    </linearGradient>
+    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#62bdd0"/>
+      <stop offset="1" stop-color="#3194b1"/>
+    </linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#efcc88"/>
+      <stop offset="1" stop-color="#d9a95f"/>
+    </linearGradient>
+    <filter id="soft" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <pattern id="sand-grain" width="64" height="42" patternUnits="userSpaceOnUse">
+      <path d="M6 15c7-3 13-3 20 0M42 31c5-2 10-2 15 0" fill="none" stroke="#a8783f" stroke-width="2" stroke-linecap="round" opacity=".22"/>
+      <circle cx="32" cy="8" r="2" fill="#fff0c3" opacity=".25"/>
+    </pattern>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <circle cx="1550" cy="168" r="104" fill="#fff7cd" opacity=".72"/>
+  <ellipse cx="1515" cy="192" rx="178" ry="40" fill="#fff4bc" opacity=".25" filter="url(#soft)"/>
+
+  <path d="M0 392 0 316 166 225 328 326 508 196 684 333 886 174 1086 330 1262 225 1435 320 1624 193 1920 341 1920 392Z" fill="#608e7b"/>
+  <path d="M0 397 0 351 199 278 354 363 535 262 711 370 903 241 1097 360 1283 294 1459 371 1655 258 1920 374 1920 397Z" fill="#86ac87"/>
+  <path d="M0 395h1920v282H0z" fill="url(#lake)"/>
+  <path d="M0 456c217 24 356-21 562 3 216 25 354 77 602 30 255-49 452 1 756-28" fill="none" stroke="#bce9e8" stroke-width="12" stroke-linecap="round" opacity=".48"/>
+  <path d="M66 548c190-28 341 30 540 6m145-18c166-31 273 30 437 4m151-31c175-30 324 18 509-3" fill="none" stroke="#e6f4dd" stroke-width="7" stroke-linecap="round" opacity=".42"/>
+  <path d="M0 642c258-46 473 21 725-12 312-42 504 17 764-9 186-19 299-8 431 25v434H0Z" fill="url(#sand)"/>
+  <path d="M0 642c258-46 473 21 725-12 312-42 504 17 764-9 186-19 299-8 431 25" fill="none" stroke="#fff0bd" stroke-width="18" opacity=".72"/>
+  <path d="M0 650h1920v430H0z" fill="url(#sand-grain)"/>
+
+  <g transform="translate(44 420)" stroke="#4e443c" stroke-linejoin="round">
+    <path d="M0 112h210l-34 43H43Z" fill="#89512f" stroke-width="8"/>
+    <path d="M23 114c44 20 115 20 168 0" fill="none" stroke="#efb66b" stroke-width="5"/>
+    <path d="M105 108V5" fill="none" stroke-width="9" stroke-linecap="round"/>
+    <path d="m111 9 80 74h-80Z" fill="#f2dfae" stroke-width="7"/>
+    <path d="m98 25-60 61h60Z" fill="#f6c66f" stroke-width="7"/>
+  </g>
+
+  <g transform="translate(1650 600)" fill="none" stroke="#675449" stroke-linecap="round">
+    <path d="M56 38c72 72 116 153 132 256M97 12c32 78 51 169 56 285M24 85c74 44 132 113 164 209" stroke-width="8"/>
+    <path d="M53 79c34 21 62 48 87 80M72 132c35 23 63 52 86 88M98 196c30 17 52 39 70 66" stroke="#bd9b69" stroke-width="4"/>
+  </g>
+
+  <g transform="translate(58 886)">
+    <ellipse cx="104" cy="86" rx="118" ry="26" fill="#8e6037" opacity=".24"/>
+    <path d="M17 63c13-40 51-62 87-62 39 0 75 22 89 62" fill="#687f48" stroke="#45563c" stroke-width="8"/>
+    <circle cx="51" cy="60" r="22" fill="#d5963e"/>
+    <circle cx="88" cy="47" r="26" fill="#e6b258"/>
+    <circle cx="125" cy="54" r="22" fill="#ca7936"/>
+    <circle cx="157" cy="64" r="18" fill="#edc46a"/>
+  </g>
+
+  <g transform="translate(775 752)" opacity=".4" fill="none" stroke="#9b6c3e" stroke-width="6" stroke-linecap="round">
+    <path d="M0 0c72 25 136 24 205 0M310 72c69 23 126 23 188 0M665 10c52 18 99 18 150 0"/>
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { apiRequest } from '../lib/api';
-import { prepareUploadImage } from '../lib/prepareUploadImage';
+import { prepareCharacterUploadImage, prepareUploadImage } from '../lib/prepareUploadImage';
+import { prepareCharacterImage } from '../showcase/characterImage';
 import type {
   ConversionJob,
   GrowthPayload,
@@ -105,6 +106,15 @@ function statusLabel(status: string) {
   return status;
 }
 
+function spriteStatusLabel(status: Team['showcase_sprite_status']) {
+  return ({
+    empty: 'AI 캐릭터 미생성',
+    generating: 'AI 캐릭터 생성 중',
+    ready: 'AI 캐릭터 사용 중',
+    failed: 'AI 캐릭터 생성 실패',
+  } as const)[status];
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Number.isFinite(value) ? value : 0));
 }
@@ -162,9 +172,12 @@ export default function AdminPage() {
   const [toast, setToast] = useState('');
   const [savingTeam, setSavingTeam] = useState(false);
   const [savingGrowth, setSavingGrowth] = useState(false);
+  const [uploadingCharacter, setUploadingCharacter] = useState(false);
+  const [generatingSprite, setGeneratingSprite] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadingGlb, setUploadingGlb] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const characterInputRef = useRef<HTMLInputElement>(null);
   const glbInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -220,7 +233,7 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    document.title = '베드로 키우기 — 운영진';
+    document.title = '베드로 키우기 | 운영진';
     let active = true;
 
     void Promise.all([
@@ -327,6 +340,70 @@ export default function AdminPage() {
     }
   }
 
+  async function uploadCharacterImage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const image = characterInputRef.current?.files?.[0];
+    if (!selected || !image) return;
+    setUploadingCharacter(true);
+    try {
+      const prepared = await prepareCharacterUploadImage(image);
+      const form = new FormData();
+      form.append('image', prepared.file);
+      const updated = await apiRequest<Team>(`/teams/${selected.id}/image`, {
+        method: 'POST',
+        body: form,
+      });
+      setTeams((current) => current.map((team) => team.id === updated.id ? updated : team));
+      if (characterInputRef.current) characterInputRef.current.value = '';
+      showToast(`2D 캐릭터 사진을 등록했습니다${prepared.optimized ? ' · PNG 자동 최적화됨' : ''}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '2D 캐릭터 사진을 등록하지 못했습니다');
+    } finally {
+      setUploadingCharacter(false);
+    }
+  }
+
+  async function generateShowcaseSprite() {
+    if (!selected?.showcase_image_url) return;
+    if (!window.confirm(
+      `${selected.name} 사진을 OpenAI로 게임 캐릭터 12컷으로 변환합니다. 유료 API 사용량이 발생합니다.`,
+    )) return;
+
+    setGeneratingSprite(true);
+    setTeams((current) => current.map((team) => (
+      team.id === selected.id
+        ? { ...team, showcase_sprite_status: 'generating', showcase_sprite_error: null }
+        : team
+    )));
+    try {
+      const prepared = await prepareCharacterImage(selected.showcase_image_url);
+      const response = await fetch(prepared.characterUrl);
+      if (!response.ok) throw new Error('분리된 캐릭터 이미지를 준비하지 못했습니다');
+      const reference = await response.blob();
+      const form = new FormData();
+      form.append(
+        'reference',
+        new File([reference], `team-${selected.id}-peter.png`, { type: 'image/png' }),
+      );
+      const updated = await apiRequest<Team>(`/teams/${selected.id}/showcase-sprite`, {
+        method: 'POST',
+        body: form,
+      });
+      setTeams((current) => current.map((team) => team.id === updated.id ? updated : team));
+      showToast(`${updated.name}의 게임 캐릭터 12컷을 만들었습니다`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI 캐릭터를 만들지 못했습니다';
+      setTeams((current) => current.map((team) => (
+        team.id === selected.id
+          ? { ...team, showcase_sprite_status: 'failed', showcase_sprite_error: message }
+          : team
+      )));
+      showToast(message);
+    } finally {
+      setGeneratingSprite(false);
+    }
+  }
+
   async function generateModelAsset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const image = imageInputRef.current?.files?.[0];
@@ -425,8 +502,8 @@ export default function AdminPage() {
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <div><h1>베드로 키우기 운영실</h1><small>조 정보 · 달란트 · 성품 · 3D 변환</small></div>
-        <a href="/">← 갈릴리 월드로 돌아가기</a>
+        <div><h1>베드로 키우기 운영실</h1><small>AI 캐릭터 · 조 정보 · 달란트 · 성품 · 3D 보관함</small></div>
+        <a href="/">← 갈릴리 마당으로 돌아가기</a>
       </header>
 
       <main className="admin-layout">
@@ -455,6 +532,84 @@ export default function AdminPage() {
             <label className="full">조 아이덴티티<textarea value={teamDraft.identity_text} maxLength={120} onChange={(event) => setTeamDraft({ ...teamDraft, identity_text: event.target.value })} /></label>
             <div className="full actions"><button className="primary" disabled={!selected || savingTeam}>{savingTeam ? '저장 중…' : '조 정보 저장'}</button></div>
           </form>
+
+          <section className="character-upload-card">
+            <div className="character-preview-stack">
+              <div className="character-preview">
+                <span>촬영 원본</span>
+                <img
+                  src={selected?.showcase_image_url || selected?.image_url || '/assets/showcase/peter-template.png'}
+                  alt={selected ? `${selected.name} 베드로 원본` : '기본 베드로'}
+                />
+              </div>
+              {selected?.showcase_sprite_url && (
+                <a
+                  className="sprite-sheet-preview"
+                  href={selected.showcase_sprite_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span>AI 12컷 결과</span>
+                  <img src={selected.showcase_sprite_url} alt={`${selected.name} AI 스프라이트 시트`} />
+                </a>
+              )}
+            </div>
+            <div className="character-workflow">
+              <form onSubmit={uploadCharacterImage}>
+                <div>
+                  <h3>1. 학생 그림 등록</h3>
+                  <p className="muted">
+                    베드로와 학생이 만든 닉네임창을 한 장에 담아 등록하세요.
+                    촬영판 기준점으로 캐릭터와 닉네임창을 자동 분리합니다.
+                  </p>
+                </div>
+                <input ref={characterInputRef} type="file" accept="image/png,image/jpeg" required />
+                <div className="character-upload-actions">
+                  <button className="primary" disabled={!selected || uploadingCharacter}>
+                    {uploadingCharacter ? '사진 등록 중…' : '이 조의 사진 등록'}
+                  </button>
+                  <a
+                    className="capture-guide-link"
+                    href="/assets/showcase/capture-board.svg"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    2:3 촬영판 가이드
+                  </a>
+                </div>
+              </form>
+              <section
+                className="sprite-generation-panel"
+                data-status={selected?.showcase_sprite_status ?? 'empty'}
+                aria-live="polite"
+              >
+                <div className="sprite-generation-heading">
+                  <div>
+                    <h3>2. 게임 캐릭터 12컷 생성</h3>
+                    <p className="muted">
+                      색연필 질감은 정돈하고, 학생이 고른 색과 옷 무늬는 유지해
+                      대기·걷기·손 흔들기 동작을 만듭니다.
+                    </p>
+                  </div>
+                  <span>{spriteStatusLabel(selected?.showcase_sprite_status ?? 'empty')}</span>
+                </div>
+                <button
+                  type="button"
+                  className="secondary sprite-generate-button"
+                  disabled={!selected?.showcase_image_url || generatingSprite}
+                  onClick={() => { void generateShowcaseSprite(); }}
+                >
+                  {generatingSprite ? 'AI 캐릭터 생성 중…' : selected?.showcase_sprite_url ? '12컷 다시 생성' : 'AI로 12컷 생성'}
+                </button>
+                {selected?.showcase_sprite_error && (
+                  <p className="sprite-generation-error">{selected.showcase_sprite_error}</p>
+                )}
+                {!selected?.showcase_image_url && (
+                  <p className="sprite-generation-help">먼저 위에서 학생 그림을 등록해주세요.</p>
+                )}
+              </section>
+            </div>
+          </section>
 
           <div className="stats">
             {STAT_FIELDS.map(({ key, label }) => <div className="stat" key={key}><span>{label}</span><b>{selected?.[key] ?? 0}</b></div>)}
@@ -639,7 +794,7 @@ export default function AdminPage() {
                       </td>
                       <td>{job.glb_url
                         ? <a className="result-link" href={job.glb_url} target="_blank" rel="noreferrer">GLB 보기</a>
-                        : job.error ? <span className="error">{job.error}</span> : '—'}</td>
+                        : job.error ? <span className="error">{job.error}</span> : '없음'}</td>
                     </tr>
                   );
                 }) : <tr><td colSpan={5} className="muted">아직 변환 작업이 없습니다</td></tr>}

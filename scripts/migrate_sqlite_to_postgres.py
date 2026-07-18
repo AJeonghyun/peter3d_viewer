@@ -36,6 +36,12 @@ TEAM_COLUMNS = (
     "love",
     "talents",
     "title",
+    "showcase_image_url",
+    "showcase_sprite_url",
+    "showcase_sprite_status",
+    "showcase_sprite_error",
+    "showcase_sprite_model",
+    "showcase_sprite_updated_at",
     "image_url",
     "model_url",
     "model_asset_id",
@@ -142,6 +148,24 @@ def main() -> None:
     migrated_team_assets: dict[int, tuple[Any, Any]] = {}
     for team in teams:
         team_id = int(team["id"])
+        team.setdefault("showcase_image_url", None)
+        team.setdefault("showcase_sprite_url", None)
+        team.setdefault("showcase_sprite_status", "empty")
+        team.setdefault("showcase_sprite_error", None)
+        team.setdefault("showcase_sprite_model", None)
+        team.setdefault("showcase_sprite_updated_at", None)
+        team["showcase_image_url"] = local_asset_url(
+            team["showcase_image_url"],
+            team_id,
+            "images",
+            blob_base_url,
+        )
+        team["showcase_sprite_url"] = local_asset_url(
+            team["showcase_sprite_url"],
+            team_id,
+            "sprites",
+            blob_base_url,
+        )
         team["image_url"] = local_asset_url(team["image_url"], team_id, "images", blob_base_url)
         team["model_url"] = local_asset_url(team["model_url"], team_id, "models", blob_base_url)
         migrated_team_assets[team_id] = (team["image_url"], team["model_url"])

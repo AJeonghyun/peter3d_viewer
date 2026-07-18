@@ -5,7 +5,7 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 from starlette.datastructures import Headers
@@ -25,11 +25,14 @@ class Peter3DBackendTests(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.original_db_path = backend_main.DB_PATH
         self.original_models_dir = backend_main.MODELS_DIR
+        self.original_uploads_dir = backend_main.UPLOADS_DIR
         self.original_frontend_dist = backend_main.FRONTEND_DIST
         backend_main.DB_PATH = Path(self.tempdir.name) / "test.db"
         backend_main.MODELS_DIR = Path(self.tempdir.name) / "models"
+        backend_main.UPLOADS_DIR = Path(self.tempdir.name) / "uploads"
         backend_main.FRONTEND_DIST = Path(self.tempdir.name) / "frontend" / "dist"
         backend_main.MODELS_DIR.mkdir()
+        backend_main.UPLOADS_DIR.mkdir()
         backend_main.FRONTEND_DIST.mkdir(parents=True)
         (backend_main.FRONTEND_DIST / "index.html").write_text(
             '<!doctype html><div id="root"></div>',
@@ -40,6 +43,7 @@ class Peter3DBackendTests(unittest.TestCase):
     def tearDown(self):
         backend_main.DB_PATH = self.original_db_path
         backend_main.MODELS_DIR = self.original_models_dir
+        backend_main.UPLOADS_DIR = self.original_uploads_dir
         backend_main.FRONTEND_DIST = self.original_frontend_dist
         self.tempdir.cleanup()
 
@@ -80,6 +84,14 @@ class Peter3DBackendTests(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'model_assets'"
             ).fetchone()
         self.assertIn("model_asset_id", team_columns)
+        self.assertIn("showcase_image_url", team_columns)
+        self.assertTrue({
+            "showcase_sprite_url",
+            "showcase_sprite_status",
+            "showcase_sprite_error",
+            "showcase_sprite_model",
+            "showcase_sprite_updated_at",
+        }.issubset(team_columns))
         self.assertIsNotNone(asset_table)
 
     def test_generation_profiles_keep_provider_face_limits_valid(self):
@@ -181,9 +193,105 @@ class Peter3DBackendTests(unittest.TestCase):
     def test_world_and_admin_serve_the_react_index(self):
         world = asyncio.run(backend_main.world_page())
         admin = asyncio.run(backend_main.admin_page())
+        legacy_world = asyncio.run(backend_main.legacy_world_page())
         expected = backend_main.FRONTEND_DIST / "index.html"
         self.assertEqual(world.path, expected)
         self.assertEqual(admin.path, expected)
+        self.assertEqual(legacy_world.path, expected)
+
+    def test_character_image_upload_updates_only_the_showcase_image(self):
+        previous_image = "/uploads/team-1-3d-source.png"
+        previous_model = "/static/models/team-1/model.glb"
+        with backend_main.connect_db() as db:
+            db.execute(
+                """
+                UPDATE teams
+                SET image_url = ?, model_url = ?, conversion_status = 'done'
+                WHERE id = 1
+                """,
+                (previous_image, previous_model),
+            )
+        upload = backend_main.UploadFile(
+            filename="paper-peter.png",
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\nshowcase-image"),
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        updated = asyncio.run(backend_main.upload_team_image(1, upload))
+
+        self.assertTrue(updated["showcase_image_url"].startswith("/uploads/team-1-showcase-"))
+        self.assertEqual(updated["image_url"], previous_image)
+        self.assertEqual(updated["model_url"], previous_model)
+        self.assertEqual(updated["conversion_status"], "done")
+        self.assertEqual(updated["showcase_sprite_status"], "empty")
+        self.assertIsNone(updated["showcase_sprite_url"])
+        stored_path = backend_main.UPLOADS_DIR / Path(updated["showcase_image_url"]).name
+        self.assertEqual(stored_path.read_bytes(), b"\x89PNG\r\n\x1a\nshowcase-image")
+
+    def test_showcase_sprite_generation_persists_the_ai_atlas(self):
+        with backend_main.connect_db() as db:
+            db.execute(
+                "UPDATE teams SET showcase_image_url = ? WHERE id = 1",
+                ("/uploads/team-1-showcase-source.png",),
+            )
+        reference = backend_main.UploadFile(
+            filename="peter-reference.png",
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\nreference"),
+            headers=Headers({"content-type": "image/png"}),
+        )
+        sprite = b"\x89PNG\r\n\x1a\nai-sprite-atlas"
+
+        with patch(
+            "backend_main.request_showcase_sprite",
+            new=AsyncMock(return_value=sprite),
+        ) as request:
+            updated = asyncio.run(backend_main.generate_showcase_sprite(1, reference))
+
+        request.assert_awaited_once()
+        self.assertEqual(updated["showcase_sprite_status"], "ready")
+        self.assertEqual(updated["showcase_sprite_model"], backend_main.OPENAI_IMAGE_MODEL)
+        self.assertTrue(updated["showcase_sprite_url"].startswith("/uploads/team-1-sprite-"))
+        stored_path = backend_main.UPLOADS_DIR / Path(updated["showcase_sprite_url"]).name
+        self.assertEqual(stored_path.read_bytes(), sprite)
+
+    def test_showcase_sprite_generation_requires_a_registered_character(self):
+        reference = backend_main.UploadFile(
+            filename="peter-reference.png",
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\nreference"),
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(backend_main.generate_showcase_sprite(1, reference))
+
+        self.assertEqual(caught.exception.status_code, 409)
+
+    def test_showcase_sprite_generation_records_api_failure(self):
+        with backend_main.connect_db() as db:
+            db.execute(
+                "UPDATE teams SET showcase_image_url = ? WHERE id = 1",
+                ("/uploads/team-1-showcase-source.png",),
+            )
+        reference = backend_main.UploadFile(
+            filename="peter-reference.png",
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\nreference"),
+            headers=Headers({"content-type": "image/png"}),
+        )
+        failure = HTTPException(status_code=429, detail="이미지 생성 한도에 도달했습니다")
+
+        with patch(
+            "backend_main.request_showcase_sprite",
+            new=AsyncMock(side_effect=failure),
+        ):
+            with self.assertRaises(HTTPException) as caught:
+                asyncio.run(backend_main.generate_showcase_sprite(1, reference))
+
+        self.assertEqual(caught.exception.status_code, 429)
+        with backend_main.connect_db() as db:
+            updated = dict(backend_main.get_team_or_404(db, 1))
+        self.assertEqual(updated["showcase_sprite_status"], "failed")
+        self.assertEqual(updated["showcase_sprite_error"], "이미지 생성 한도에 도달했습니다")
+        self.assertIsNotNone(updated["showcase_sprite_updated_at"])
 
     def test_frontend_route_explains_a_missing_build(self):
         backend_main.FRONTEND_DIST = Path(self.tempdir.name) / "missing-dist"
@@ -207,6 +315,8 @@ class Peter3DBackendTests(unittest.TestCase):
         result = asyncio.run(backend_main.health())
         self.assertEqual(result["database"], "sqlite")
         self.assertEqual(result["object_storage"], "local")
+        self.assertIn("openai_configured", result)
+        self.assertEqual(result["openai_image_model"], backend_main.OPENAI_IMAGE_MODEL)
 
     def test_public_job_hides_internal_paths_and_provider_task_ids(self):
         with backend_main.connect_db() as db:

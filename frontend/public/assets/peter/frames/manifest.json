@@ -1,0 +1,592 @@
+{
+  "source": "frontend/public/assets/peter/peter-sprite-sheet.png",
+  "canvas": {
+    "width": 280,
+    "height": 340,
+    "baselineY": 302,
+    "targetContentHeight": 252,
+    "maxContentWidth": 244
+  },
+  "frames": {
+    "idle-front": {
+      "sourceRegion": [
+        0,
+        0,
+        280,
+        300
+      ],
+      "trimmedBBox": [
+        110,
+        41,
+        149,
+        248
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        151,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        64,
+        50
+      ],
+      "scale": 1.0161,
+      "file": "idle-front.png"
+    },
+    "idle-three-quarter": {
+      "sourceRegion": [
+        280,
+        0,
+        281,
+        300
+      ],
+      "trimmedBBox": [
+        95,
+        41,
+        117,
+        248
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        119,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        80,
+        50
+      ],
+      "scale": 1.0161,
+      "file": "idle-three-quarter.png"
+    },
+    "idle-side": {
+      "sourceRegion": [
+        561,
+        0,
+        280,
+        300
+      ],
+      "trimmedBBox": [
+        81,
+        41,
+        107,
+        248
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        109,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        86,
+        50
+      ],
+      "scale": 1.0161,
+      "file": "idle-side.png"
+    },
+    "idle-back": {
+      "sourceRegion": [
+        841,
+        0,
+        281,
+        300
+      ],
+      "trimmedBBox": [
+        59,
+        41,
+        140,
+        248
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        142,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        69,
+        50
+      ],
+      "scale": 1.0161,
+      "file": "idle-back.png"
+    },
+    "idle-front-alt": {
+      "sourceRegion": [
+        1122,
+        0,
+        280,
+        300
+      ],
+      "trimmedBBox": [
+        35,
+        41,
+        116,
+        248
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        118,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        81,
+        50
+      ],
+      "scale": 1.0161,
+      "file": "idle-front-alt.png"
+    },
+    "walk-01": {
+      "sourceRegion": [
+        0,
+        300,
+        280,
+        260
+      ],
+      "trimmedBBox": [
+        123,
+        18,
+        127,
+        218
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        147,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        66,
+        50
+      ],
+      "scale": 1.156,
+      "file": "walk-01.png"
+    },
+    "walk-02": {
+      "sourceRegion": [
+        280,
+        300,
+        281,
+        260
+      ],
+      "trimmedBBox": [
+        102,
+        18,
+        121,
+        216
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        141,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        70,
+        50
+      ],
+      "scale": 1.1667,
+      "file": "walk-02.png"
+    },
+    "walk-03": {
+      "sourceRegion": [
+        561,
+        300,
+        280,
+        260
+      ],
+      "trimmedBBox": [
+        70,
+        19,
+        130,
+        217
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        151,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        64,
+        50
+      ],
+      "scale": 1.1613,
+      "file": "walk-03.png"
+    },
+    "walk-04": {
+      "sourceRegion": [
+        841,
+        300,
+        281,
+        260
+      ],
+      "trimmedBBox": [
+        61,
+        19,
+        116,
+        217
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        135,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        72,
+        50
+      ],
+      "scale": 1.1613,
+      "file": "walk-04.png"
+    },
+    "walk-05": {
+      "sourceRegion": [
+        1122,
+        300,
+        280,
+        260
+      ],
+      "trimmedBBox": [
+        23,
+        19,
+        131,
+        217
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        152,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        64,
+        50
+      ],
+      "scale": 1.1613,
+      "file": "walk-05.png"
+    },
+    "run-01": {
+      "sourceRegion": [
+        0,
+        560,
+        280,
+        250
+      ],
+      "trimmedBBox": [
+        101,
+        16,
+        158,
+        203
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        196,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        42,
+        50
+      ],
+      "scale": 1.2414,
+      "file": "run-01.png"
+    },
+    "run-02": {
+      "sourceRegion": [
+        280,
+        560,
+        281,
+        250
+      ],
+      "trimmedBBox": [
+        91,
+        16,
+        148,
+        202
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        185,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        48,
+        50
+      ],
+      "scale": 1.2475,
+      "file": "run-02.png"
+    },
+    "run-03": {
+      "sourceRegion": [
+        561,
+        560,
+        280,
+        250
+      ],
+      "trimmedBBox": [
+        64,
+        16,
+        151,
+        206
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        185,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        48,
+        50
+      ],
+      "scale": 1.2233,
+      "file": "run-03.png"
+    },
+    "run-04": {
+      "sourceRegion": [
+        841,
+        560,
+        281,
+        250
+      ],
+      "trimmedBBox": [
+        32,
+        15,
+        142,
+        210
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        170,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        55,
+        50
+      ],
+      "scale": 1.2,
+      "file": "run-04.png"
+    },
+    "run-05": {
+      "sourceRegion": [
+        1122,
+        560,
+        280,
+        250
+      ],
+      "trimmedBBox": [
+        19,
+        17,
+        150,
+        212
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        178,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        51,
+        50
+      ],
+      "scale": 1.1887,
+      "file": "run-05.png"
+    },
+    "wave-01": {
+      "sourceRegion": [
+        0,
+        810,
+        280,
+        312
+      ],
+      "trimmedBBox": [
+        73,
+        13,
+        178,
+        236
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        190,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        45,
+        50
+      ],
+      "scale": 1.0678,
+      "file": "wave-01.png"
+    },
+    "jump-01": {
+      "sourceRegion": [
+        280,
+        810,
+        281,
+        312
+      ],
+      "trimmedBBox": [
+        70,
+        7,
+        189,
+        253
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        188,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        46,
+        50
+      ],
+      "scale": 0.996,
+      "file": "jump-01.png"
+    },
+    "pray-01": {
+      "sourceRegion": [
+        561,
+        810,
+        280,
+        312
+      ],
+      "trimmedBBox": [
+        80,
+        20,
+        119,
+        232
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        129,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        76,
+        50
+      ],
+      "scale": 1.0862,
+      "file": "pray-01.png"
+    },
+    "kneel-01": {
+      "sourceRegion": [
+        841,
+        810,
+        281,
+        312
+      ],
+      "trimmedBBox": [
+        51,
+        34,
+        124,
+        216
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        124,
+        216
+      ],
+      "baselineY": 302,
+      "paste": [
+        78,
+        86
+      ],
+      "scale": 1.0,
+      "file": "kneel-01.png"
+    },
+    "point-01": {
+      "sourceRegion": [
+        1122,
+        810,
+        280,
+        312
+      ],
+      "trimmedBBox": [
+        30,
+        14,
+        168,
+        238
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        178,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        51,
+        50
+      ],
+      "scale": 1.0588,
+      "file": "point-01.png"
+    }
+  }
+}

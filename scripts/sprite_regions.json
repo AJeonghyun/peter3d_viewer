@@ -1,0 +1,51 @@
+{
+  "source": "frontend/public/assets/peter/peter-sprite-sheet.png",
+  "output": "frontend/public/assets/peter/frames",
+  "canvas": {
+    "width": 280,
+    "height": 340,
+    "baselineY": 302,
+    "targetContentHeight": 252,
+    "maxContentWidth": 244
+  },
+  "background": {
+    "type": "embedded-checkerboard",
+    "removeCheckerboard": true,
+    "whiteThreshold": 218,
+    "grayDeltaTolerance": 24,
+    "edgeFloodFill": true
+  },
+  "frames": {
+    "idle-front": { "x": 0, "y": 0, "width": 280, "height": 300, "anchorX": 0.5, "anchorY": 1.0 },
+    "idle-three-quarter": { "x": 280, "y": 0, "width": 281, "height": 300, "anchorX": 0.5, "anchorY": 1.0 },
+    "idle-side": { "x": 561, "y": 0, "width": 280, "height": 300, "anchorX": 0.5, "anchorY": 1.0 },
+    "idle-back": { "x": 841, "y": 0, "width": 281, "height": 300, "anchorX": 0.5, "anchorY": 1.0 },
+    "idle-front-alt": { "x": 1122, "y": 0, "width": 280, "height": 300, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "walk-01": { "x": 0, "y": 300, "width": 280, "height": 260, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-02": { "x": 280, "y": 300, "width": 281, "height": 260, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-03": { "x": 561, "y": 300, "width": 280, "height": 260, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-04": { "x": 841, "y": 300, "width": 281, "height": 260, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-05": { "x": 1122, "y": 300, "width": 280, "height": 260, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "run-01": { "x": 0, "y": 560, "width": 280, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-02": { "x": 280, "y": 560, "width": 281, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-03": { "x": 561, "y": 560, "width": 280, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-04": { "x": 841, "y": 560, "width": 281, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-05": { "x": 1122, "y": 560, "width": 280, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "wave-01": { "x": 0, "y": 810, "width": 280, "height": 312, "anchorX": 0.5, "anchorY": 1.0 },
+    "jump-01": { "x": 280, "y": 810, "width": 281, "height": 312, "anchorX": 0.5, "anchorY": 1.0 },
+    "pray-01": { "x": 561, "y": 810, "width": 280, "height": 312, "anchorX": 0.5, "anchorY": 1.0 },
+    "kneel-01": {
+      "x": 841,
+      "y": 810,
+      "width": 281,
+      "height": 312,
+      "anchorX": 0.5,
+      "anchorY": 1.0,
+      "normalizeHeight": false
+    },
+    "point-01": { "x": 1122, "y": 810, "width": 280, "height": 312, "anchorX": 0.5, "anchorY": 1.0 }
+  }
+}

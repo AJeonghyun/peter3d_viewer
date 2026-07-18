@@ -6,7 +6,7 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.py": {
-      "maxDuration": 60,
+      "maxDuration": 180,
       "excludeFiles": "{frontend/**,static/**,uploads/**,data/**,tests/**,.venv/**,.env*}"
     }
   },

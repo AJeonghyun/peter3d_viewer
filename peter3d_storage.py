@@ -74,6 +74,12 @@ SQLITE_SCHEMA = (
         love INTEGER NOT NULL DEFAULT 10,
         talents INTEGER NOT NULL DEFAULT 0,
         title TEXT NOT NULL DEFAULT '첫걸음을 준비하는 자',
+        showcase_image_url TEXT,
+        showcase_sprite_url TEXT,
+        showcase_sprite_status TEXT NOT NULL DEFAULT 'empty',
+        showcase_sprite_error TEXT,
+        showcase_sprite_model TEXT,
+        showcase_sprite_updated_at TEXT,
         image_url TEXT,
         model_url TEXT,
         model_asset_id TEXT,
@@ -163,6 +169,12 @@ POSTGRES_SCHEMA = (
         love INTEGER NOT NULL DEFAULT 10,
         talents INTEGER NOT NULL DEFAULT 0,
         title TEXT NOT NULL DEFAULT '첫걸음을 준비하는 자',
+        showcase_image_url TEXT,
+        showcase_sprite_url TEXT,
+        showcase_sprite_status TEXT NOT NULL DEFAULT 'empty',
+        showcase_sprite_error TEXT,
+        showcase_sprite_model TEXT,
+        showcase_sprite_updated_at TEXT,
         image_url TEXT,
         model_url TEXT,
         model_asset_id TEXT,
@@ -255,6 +267,12 @@ JOB_COLUMN_MIGRATIONS = {
 }
 
 TEAM_COLUMN_MIGRATIONS = {
+    "showcase_image_url": "TEXT",
+    "showcase_sprite_url": "TEXT",
+    "showcase_sprite_status": "TEXT NOT NULL DEFAULT 'empty'",
+    "showcase_sprite_error": "TEXT",
+    "showcase_sprite_model": "TEXT",
+    "showcase_sprite_updated_at": "TEXT",
     "model_asset_id": "TEXT",
 }
 
