@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,8 @@ def remove_embedded_checkerboard(region: Image.Image, background: dict[str, Any]
 
     This avoids deleting white clothing details inside the character.
     """
-    rgba = region.convert("RGBA")
+    source = region.convert("RGBA")
+    rgba = source.copy()
     width, height = rgba.size
     pixels = rgba.load()
     visited = [[False] * height for _ in range(width)]
@@ -119,7 +120,50 @@ def remove_embedded_checkerboard(region: Image.Image, background: dict[str, Any]
 
     if removed == 0:
         print(f"[warn] {frame_name}: checkerboard removal was enabled, but no border background pixels were removed.")
+    rgba = preserve_light_garment(source, rgba)
     return rgba
+
+
+def preserve_light_garment(source: Image.Image, cutout: Image.Image) -> Image.Image:
+    """Restore the white shirt around its blue cloud print.
+
+    The artwork has no dark contour around the white shirt, so an edge flood fill
+    alone treats the shirt as part of the baked checkerboard. The cloud pattern is
+    a reliable garment-only seed: closing and expanding those seeds reconstructs
+    the connected shirt area without bridging large gaps between raised arms.
+    """
+    blue_seeds = Image.new("L", source.size, 0)
+    seed_pixels = blue_seeds.load()
+    source_pixels = source.load()
+    width, height = source.size
+    seed_count = 0
+    for x in range(width):
+        for y in range(height):
+            red, green, blue, _alpha = source_pixels[x, y]
+            if (
+                blue >= 165
+                and green >= 135
+                and blue - red >= 18
+                and blue - green >= 4
+            ):
+                seed_pixels[x, y] = 255
+                seed_count += 1
+
+    if seed_count < 20:
+        return cutout
+
+    garment_mask = blue_seeds.filter(ImageFilter.MaxFilter(29))
+    garment_mask = garment_mask.filter(ImageFilter.MinFilter(15))
+    garment_mask = garment_mask.filter(ImageFilter.MaxFilter(9))
+
+    restored = cutout.copy()
+    restored_pixels = restored.load()
+    garment_pixels = garment_mask.load()
+    for x in range(width):
+        for y in range(height):
+            if garment_pixels[x, y] > 0:
+                restored_pixels[x, y] = source_pixels[x, y]
+    return restored
 
 
 def alpha_bbox(image: Image.Image) -> BBox | None:
@@ -201,6 +245,46 @@ def extract_frame(
     return canvas_image, metrics
 
 
+def build_animation_sheet(
+    name: str,
+    frame_names: list[str],
+    extracted_frames: dict[str, Image.Image],
+    output_dir: Path,
+) -> dict[str, Any]:
+    if not frame_names:
+        raise ValueError(f"{name}: animation must include at least one frame.")
+
+    missing = [frame_name for frame_name in frame_names if frame_name not in extracted_frames]
+    if missing:
+        raise ValueError(f"{name}: missing extracted frames: {', '.join(missing)}")
+
+    first_frame = extracted_frames[frame_names[0]]
+    frame_width, frame_height = first_frame.size
+    sheet = Image.new(
+        "RGBA",
+        (frame_width * len(frame_names), frame_height),
+        (0, 0, 0, 0),
+    )
+    for index, frame_name in enumerate(frame_names):
+        frame = extracted_frames[frame_name]
+        if frame.size != first_frame.size:
+            raise ValueError(
+                f"{name}: {frame_name} has size {frame.size}, expected {first_frame.size}."
+            )
+        sheet.alpha_composite(frame, (index * frame_width, 0))
+
+    sheet_path = output_dir / f"{name}-sheet.png"
+    sheet.save(sheet_path)
+    print(f"[ok] {name} animation sheet -> {sheet_path} frames={len(frame_names)}")
+    return {
+        "file": sheet_path.name,
+        "frameWidth": frame_width,
+        "frameHeight": frame_height,
+        "frameCount": len(frame_names),
+        "frames": frame_names,
+    }
+
+
 def main() -> int:
     args = parse_args()
     config = load_config(args.config)
@@ -240,9 +324,11 @@ def main() -> int:
         "source": str(source_path),
         "canvas": canvas,
         "frames": {},
+        "animations": {},
     }
 
     errors: list[str] = []
+    extracted_frames: dict[str, Image.Image] = {}
     for name, frame in frames.items():
         output_path = output_dir / f"{name}.png"
         if output_path.exists() and not args.overwrite:
@@ -251,10 +337,22 @@ def main() -> int:
         try:
             extracted, metrics = extract_frame(source, name, frame, canvas, background, configured_removal)
             extracted.save(output_path)
+            extracted_frames[name] = extracted
             manifest["frames"][name] = {**metrics, "file": output_path.name}
             print(f"[ok] {name} -> {output_path} content={metrics['resizedContent']} paste={metrics['paste']} scale={metrics['scale']}")
         except Exception as exc:  # noqa: BLE001 - frame-specific failure reporting is intentional for this CLI.
             errors.append(f"{name}: {exc}")
+
+    for name, frame_names in config.get("animations", {}).items():
+        try:
+            manifest["animations"][name] = build_animation_sheet(
+                name,
+                list(frame_names),
+                extracted_frames,
+                output_dir,
+            )
+        except Exception as exc:  # noqa: BLE001 - animation-specific failure reporting is intentional.
+            errors.append(f"{name} animation: {exc}")
 
     manifest_path = output_dir / "manifest.json"
     if not manifest_path.exists() or args.overwrite:

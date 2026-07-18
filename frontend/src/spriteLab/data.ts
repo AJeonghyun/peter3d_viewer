@@ -1,62 +1,69 @@
 import type { AnimationDefinition, CharacterDefinition } from './types';
 
 const FRAME_ROOT = '/assets/peter/frames';
+const FRAME_WIDTH = 280;
+const FRAME_HEIGHT = 340;
 
-function frames(...names: string[]) {
-  return names.map((name) => `${FRAME_ROOT}/${name}.png`);
+function animationSheet(
+  name: string,
+  frameCount: number,
+  options: Omit<
+    AnimationDefinition,
+    'sprite' | 'frameWidth' | 'frameHeight' | 'frameCount'
+  >,
+): AnimationDefinition {
+  return {
+    sprite: `${FRAME_ROOT}/${name}-sheet.png`,
+    frameWidth: FRAME_WIDTH,
+    frameHeight: FRAME_HEIGHT,
+    frameCount,
+    ...options,
+  };
 }
 
 export const peterAnimations = {
-  idle: {
-    frames: frames('idle-front'),
+  idle: animationSheet('idle', 1, {
     fps: 1,
     loop: true,
-  },
-  walk: {
-    frames: frames('walk-01', 'walk-02', 'walk-03', 'walk-04', 'walk-05'),
-    fps: 7,
+  }),
+  walk: animationSheet('walk', 6, {
+    fps: 8,
     loop: true,
-  },
-  run: {
-    frames: frames('run-01', 'run-02', 'run-03', 'run-04', 'run-05'),
-    fps: 10,
+  }),
+  run: animationSheet('run', 5, {
+    fps: 11,
     loop: true,
-  },
-  wave: {
-    frames: frames('wave-01'),
+  }),
+  wave: animationSheet('wave', 1, {
     fps: 1,
     loop: false,
     holdLastFrame: true,
     durationMs: 1_350,
-  },
-  jump: {
-    frames: frames('jump-01'),
+  }),
+  jump: animationSheet('jump', 1, {
     fps: 1,
     loop: false,
     holdLastFrame: true,
     durationMs: 900,
-  },
-  pray: {
-    frames: frames('pray-01'),
+  }),
+  pray: animationSheet('pray', 1, {
     fps: 1,
     loop: false,
     holdLastFrame: true,
     durationMs: 1_800,
-  },
-  kneel: {
-    frames: frames('kneel-01'),
+  }),
+  kneel: animationSheet('kneel', 1, {
     fps: 1,
     loop: false,
     holdLastFrame: true,
     durationMs: 1_800,
-  },
-  point: {
-    frames: frames('point-01'),
+  }),
+  point: animationSheet('point', 1, {
     fps: 1,
     loop: false,
     holdLastFrame: true,
     durationMs: 1_350,
-  },
+  }),
 } satisfies Record<string, AnimationDefinition>;
 
 const DEMO_CHARACTERS = [

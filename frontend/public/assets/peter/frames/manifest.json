@@ -11,131 +11,44 @@
     "idle-front": {
       "sourceRegion": [
         0,
-        0,
-        280,
-        300
+        62,
+        224,
+        310
       ],
       "trimmedBBox": [
-        110,
-        41,
-        149,
-        248
+        83,
+        22,
+        141,
+        267
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        151,
+        133,
         252
       ],
       "baselineY": 302,
       "paste": [
-        64,
+        74,
         50
       ],
-      "scale": 1.0161,
+      "scale": 0.9438,
       "file": "idle-front.png"
     },
     "idle-three-quarter": {
       "sourceRegion": [
-        280,
-        0,
-        281,
-        300
+        224,
+        62,
+        225,
+        310
       ],
       "trimmedBBox": [
-        95,
-        41,
-        117,
-        248
-      ],
-      "outputSize": [
-        280,
-        340
-      ],
-      "resizedContent": [
-        119,
-        252
-      ],
-      "baselineY": 302,
-      "paste": [
-        80,
-        50
-      ],
-      "scale": 1.0161,
-      "file": "idle-three-quarter.png"
-    },
-    "idle-side": {
-      "sourceRegion": [
-        561,
-        0,
-        280,
-        300
-      ],
-      "trimmedBBox": [
-        81,
-        41,
-        107,
-        248
-      ],
-      "outputSize": [
-        280,
-        340
-      ],
-      "resizedContent": [
-        109,
-        252
-      ],
-      "baselineY": 302,
-      "paste": [
-        86,
-        50
-      ],
-      "scale": 1.0161,
-      "file": "idle-side.png"
-    },
-    "idle-back": {
-      "sourceRegion": [
-        841,
-        0,
-        281,
-        300
-      ],
-      "trimmedBBox": [
-        59,
-        41,
-        140,
-        248
-      ],
-      "outputSize": [
-        280,
-        340
-      ],
-      "resizedContent": [
-        142,
-        252
-      ],
-      "baselineY": 302,
-      "paste": [
-        69,
-        50
-      ],
-      "scale": 1.0161,
-      "file": "idle-back.png"
-    },
-    "idle-front-alt": {
-      "sourceRegion": [
-        1122,
-        0,
-        280,
-        300
-      ],
-      "trimmedBBox": [
-        35,
-        41,
-        116,
-        248
+        83,
+        22,
+        125,
+        267
       ],
       "outputSize": [
         280,
@@ -150,28 +63,115 @@
         81,
         50
       ],
-      "scale": 1.0161,
-      "file": "idle-front-alt.png"
+      "scale": 0.9438,
+      "file": "idle-three-quarter.png"
     },
-    "walk-01": {
+    "idle-side": {
       "sourceRegion": [
-        0,
-        300,
-        280,
-        260
+        449,
+        62,
+        224,
+        310
       ],
       "trimmedBBox": [
-        123,
-        18,
-        127,
-        218
+        66,
+        23,
+        114,
+        266
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        147,
+        108,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        86,
+        50
+      ],
+      "scale": 0.9474,
+      "file": "idle-side.png"
+    },
+    "idle-back": {
+      "sourceRegion": [
+        673,
+        62,
+        225,
+        310
+      ],
+      "trimmedBBox": [
+        34,
+        22,
+        138,
+        267
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        130,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        75,
+        50
+      ],
+      "scale": 0.9438,
+      "file": "idle-back.png"
+    },
+    "idle-front-alt": {
+      "sourceRegion": [
+        898,
+        62,
+        224,
+        310
+      ],
+      "trimmedBBox": [
+        16,
+        24,
+        115,
+        265
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        109,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        86,
+        50
+      ],
+      "scale": 0.9509,
+      "file": "idle-front-alt.png"
+    },
+    "walk-01": {
+      "sourceRegion": [
+        0,
+        450,
+        187,
+        270
+      ],
+      "trimmedBBox": [
+        49,
+        12,
+        129,
+        219
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        148,
         252
       ],
       "baselineY": 302,
@@ -179,282 +179,195 @@
         66,
         50
       ],
-      "scale": 1.156,
+      "scale": 1.1507,
       "file": "walk-01.png"
     },
     "walk-02": {
       "sourceRegion": [
-        280,
-        300,
-        281,
-        260
+        187,
+        450,
+        187,
+        270
       ],
       "trimmedBBox": [
-        102,
-        18,
-        121,
-        216
+        43,
+        11,
+        119,
+        223
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        141,
+        134,
         252
       ],
       "baselineY": 302,
       "paste": [
-        70,
+        73,
         50
       ],
-      "scale": 1.1667,
+      "scale": 1.13,
       "file": "walk-02.png"
     },
     "walk-03": {
       "sourceRegion": [
-        561,
-        300,
-        280,
-        260
+        374,
+        450,
+        187,
+        270
       ],
       "trimmedBBox": [
-        70,
-        19,
-        130,
-        217
+        45,
+        10,
+        103,
+        222
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        151,
+        117,
         252
       ],
       "baselineY": 302,
       "paste": [
-        64,
+        82,
         50
       ],
-      "scale": 1.1613,
+      "scale": 1.1351,
       "file": "walk-03.png"
     },
     "walk-04": {
       "sourceRegion": [
-        841,
-        300,
-        281,
-        260
+        561,
+        450,
+        187,
+        270
       ],
       "trimmedBBox": [
-        61,
-        19,
-        116,
-        217
+        24,
+        13,
+        122,
+        219
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        135,
+        140,
         252
       ],
       "baselineY": 302,
       "paste": [
-        72,
+        70,
         50
       ],
-      "scale": 1.1613,
+      "scale": 1.1507,
       "file": "walk-04.png"
     },
     "walk-05": {
       "sourceRegion": [
-        1122,
-        300,
-        280,
-        260
+        748,
+        450,
+        187,
+        270
       ],
       "trimmedBBox": [
-        23,
-        19,
-        131,
-        217
+        26,
+        10,
+        103,
+        219
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        152,
+        119,
         252
       ],
       "baselineY": 302,
       "paste": [
-        64,
+        80,
         50
       ],
-      "scale": 1.1613,
+      "scale": 1.1507,
       "file": "walk-05.png"
+    },
+    "walk-06": {
+      "sourceRegion": [
+        935,
+        450,
+        187,
+        270
+      ],
+      "trimmedBBox": [
+        4,
+        13,
+        123,
+        219
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        142,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        69,
+        50
+      ],
+      "scale": 1.1507,
+      "file": "walk-06.png"
     },
     "run-01": {
       "sourceRegion": [
         0,
-        560,
-        280,
-        250
+        780,
+        224,
+        245
       ],
       "trimmedBBox": [
-        101,
-        16,
-        158,
-        203
+        45,
+        14,
+        139,
+        208
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        196,
+        168,
         252
       ],
       "baselineY": 302,
       "paste": [
-        42,
+        56,
         50
       ],
-      "scale": 1.2414,
+      "scale": 1.2115,
       "file": "run-01.png"
     },
     "run-02": {
       "sourceRegion": [
-        280,
-        560,
-        281,
-        250
+        224,
+        780,
+        225,
+        245
       ],
       "trimmedBBox": [
-        91,
-        16,
-        148,
-        202
-      ],
-      "outputSize": [
-        280,
-        340
-      ],
-      "resizedContent": [
-        185,
-        252
-      ],
-      "baselineY": 302,
-      "paste": [
-        48,
-        50
-      ],
-      "scale": 1.2475,
-      "file": "run-02.png"
-    },
-    "run-03": {
-      "sourceRegion": [
-        561,
-        560,
-        280,
-        250
-      ],
-      "trimmedBBox": [
-        64,
-        16,
-        151,
-        206
-      ],
-      "outputSize": [
-        280,
-        340
-      ],
-      "resizedContent": [
-        185,
-        252
-      ],
-      "baselineY": 302,
-      "paste": [
-        48,
-        50
-      ],
-      "scale": 1.2233,
-      "file": "run-03.png"
-    },
-    "run-04": {
-      "sourceRegion": [
-        841,
-        560,
-        281,
-        250
-      ],
-      "trimmedBBox": [
-        32,
-        15,
-        142,
-        210
-      ],
-      "outputSize": [
-        280,
-        340
-      ],
-      "resizedContent": [
-        170,
-        252
-      ],
-      "baselineY": 302,
-      "paste": [
-        55,
-        50
-      ],
-      "scale": 1.2,
-      "file": "run-04.png"
-    },
-    "run-05": {
-      "sourceRegion": [
-        1122,
-        560,
-        280,
-        250
-      ],
-      "trimmedBBox": [
-        19,
-        17,
-        150,
-        212
-      ],
-      "outputSize": [
-        280,
-        340
-      ],
-      "resizedContent": [
-        178,
-        252
-      ],
-      "baselineY": 302,
-      "paste": [
-        51,
-        50
-      ],
-      "scale": 1.1887,
-      "file": "run-05.png"
-    },
-    "wave-01": {
-      "sourceRegion": [
-        0,
-        810,
-        280,
-        312
-      ],
-      "trimmedBBox": [
-        73,
+        21,
         13,
-        178,
-        236
+        156,
+        207
       ],
       "outputSize": [
         280,
@@ -469,124 +382,323 @@
         45,
         50
       ],
-      "scale": 1.0678,
+      "scale": 1.2174,
+      "file": "run-02.png"
+    },
+    "run-03": {
+      "sourceRegion": [
+        449,
+        780,
+        224,
+        245
+      ],
+      "trimmedBBox": [
+        37,
+        9,
+        145,
+        203
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        180,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        50,
+        50
+      ],
+      "scale": 1.2414,
+      "file": "run-03.png"
+    },
+    "run-04": {
+      "sourceRegion": [
+        673,
+        780,
+        225,
+        245
+      ],
+      "trimmedBBox": [
+        33,
+        14,
+        141,
+        212
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        168,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        56,
+        50
+      ],
+      "scale": 1.1887,
+      "file": "run-04.png"
+    },
+    "run-05": {
+      "sourceRegion": [
+        898,
+        780,
+        224,
+        245
+      ],
+      "trimmedBBox": [
+        21,
+        12,
+        135,
+        211
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        161,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        60,
+        50
+      ],
+      "scale": 1.1943,
+      "file": "run-05.png"
+    },
+    "wave-01": {
+      "sourceRegion": [
+        0,
+        1090,
+        224,
+        275
+      ],
+      "trimmedBBox": [
+        32,
+        9,
+        166,
+        234
+      ],
+      "outputSize": [
+        280,
+        340
+      ],
+      "resizedContent": [
+        179,
+        252
+      ],
+      "baselineY": 302,
+      "paste": [
+        50,
+        50
+      ],
+      "scale": 1.0769,
       "file": "wave-01.png"
     },
     "jump-01": {
       "sourceRegion": [
-        280,
-        810,
-        281,
-        312
+        224,
+        1090,
+        225,
+        275
       ],
       "trimmedBBox": [
-        70,
-        7,
-        189,
-        253
+        21,
+        1,
+        194,
+        252
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        188,
+        194,
         252
       ],
       "baselineY": 302,
       "paste": [
-        46,
+        43,
         50
       ],
-      "scale": 0.996,
+      "scale": 1.0,
       "file": "jump-01.png"
     },
     "pray-01": {
       "sourceRegion": [
-        561,
-        810,
-        280,
-        312
+        449,
+        1090,
+        224,
+        275
       ],
       "trimmedBBox": [
-        80,
-        20,
+        46,
+        13,
         119,
-        232
+        231
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        129,
+        130,
         252
       ],
       "baselineY": 302,
       "paste": [
-        76,
+        75,
         50
       ],
-      "scale": 1.0862,
+      "scale": 1.0909,
       "file": "pray-01.png"
     },
     "kneel-01": {
       "sourceRegion": [
-        841,
-        810,
-        281,
-        312
+        673,
+        1090,
+        225,
+        275
       ],
       "trimmedBBox": [
-        51,
         34,
-        124,
-        216
+        30,
+        115,
+        222
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        124,
-        216
+        115,
+        222
       ],
       "baselineY": 302,
       "paste": [
-        78,
-        86
+        82,
+        80
       ],
       "scale": 1.0,
       "file": "kneel-01.png"
     },
     "point-01": {
       "sourceRegion": [
-        1122,
-        810,
-        280,
-        312
+        898,
+        1090,
+        224,
+        275
       ],
       "trimmedBBox": [
-        30,
         14,
-        168,
-        238
+        2,
+        153,
+        239
       ],
       "outputSize": [
         280,
         340
       ],
       "resizedContent": [
-        178,
+        161,
         252
       ],
       "baselineY": 302,
       "paste": [
-        51,
+        60,
         50
       ],
-      "scale": 1.0588,
+      "scale": 1.0544,
       "file": "point-01.png"
+    }
+  },
+  "animations": {
+    "idle": {
+      "file": "idle-sheet.png",
+      "frameWidth": 280,
+      "frameHeight": 340,
+      "frameCount": 1,
+      "frames": [
+        "idle-front"
+      ]
+    },
+    "walk": {
+      "file": "walk-sheet.png",
+      "frameWidth": 280,
+      "frameHeight": 340,
+      "frameCount": 6,
+      "frames": [
+        "walk-01",
+        "walk-02",
+        "walk-03",
+        "walk-04",
+        "walk-05",
+        "walk-06"
+      ]
+    },
+    "run": {
+      "file": "run-sheet.png",
+      "frameWidth": 280,
+      "frameHeight": 340,
+      "frameCount": 5,
+      "frames": [
+        "run-01",
+        "run-02",
+        "run-03",
+        "run-04",
+        "run-05"
+      ]
+    },
+    "wave": {
+      "file": "wave-sheet.png",
+      "frameWidth": 280,
+      "frameHeight": 340,
+      "frameCount": 1,
+      "frames": [
+        "wave-01"
+      ]
+    },
+    "jump": {
+      "file": "jump-sheet.png",
+      "frameWidth": 280,
+      "frameHeight": 340,
+      "frameCount": 1,
+      "frames": [
+        "jump-01"
+      ]
+    },
+    "pray": {
+      "file": "pray-sheet.png",
+      "frameWidth": 280,
+      "frameHeight": 340,
+      "frameCount": 1,
+      "frames": [
+        "pray-01"
+      ]
+    },
+    "kneel": {
+      "file": "kneel-sheet.png",
+      "frameWidth": 280,
+      "frameHeight": 340,
+      "frameCount": 1,
+      "frames": [
+        "kneel-01"
+      ]
+    },
+    "point": {
+      "file": "point-sheet.png",
+      "frameWidth": 280,
+      "frameHeight": 340,
+      "frameCount": 1,
+      "frames": [
+        "point-01"
+      ]
     }
   }
 }

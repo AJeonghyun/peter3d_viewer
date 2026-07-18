@@ -22,7 +22,10 @@ export type CharacterState =
   | 'exiting';
 
 export interface AnimationDefinition {
-  frames: string[];
+  sprite: string;
+  frameWidth: number;
+  frameHeight: number;
+  frameCount: number;
   fps: number;
   loop: boolean;
   holdLastFrame?: boolean;
