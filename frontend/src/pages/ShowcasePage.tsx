@@ -5,7 +5,7 @@ import type { StageSlot } from '../showcase/PaperPeter';
 import type { Team } from '../types/api';
 import '../styles/showcase.css';
 
-const DISPLAY_TEAM_COUNT = 22;
+const DISPLAY_TEAM_COUNT = 21;
 
 const STAGE_SLOTS: readonly StageSlot[] = [
   { id: 0, x: 8, y: 43.7, scale: 0.76, layer: 2, roam: 1.5 },
@@ -16,22 +16,21 @@ const STAGE_SLOTS: readonly StageSlot[] = [
   { id: 5, x: 78, y: 43.7, scale: 0.76, layer: 2, roam: 1.5 },
   { id: 6, x: 92, y: 43.7, scale: 0.76, layer: 2, roam: 1.5 },
 
-  { id: 7, x: 7, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
-  { id: 8, x: 19, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
-  { id: 9, x: 31, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
-  { id: 10, x: 43, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
-  { id: 11, x: 55, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
-  { id: 12, x: 67, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
+  { id: 7, x: 8, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
+  { id: 8, x: 22, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
+  { id: 9, x: 36, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
+  { id: 10, x: 50, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
+  { id: 11, x: 64, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
+  { id: 12, x: 78, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
   { id: 13, x: 92, y: 66.5, scale: 0.82, layer: 4, roam: 1.35 },
 
-  { id: 14, x: 6.5, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
-  { id: 15, x: 19, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
-  { id: 16, x: 31.5, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
-  { id: 17, x: 44, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
-  { id: 18, x: 56.5, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
-  { id: 19, x: 69, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
-  { id: 20, x: 81.5, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
-  { id: 21, x: 94, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
+  { id: 14, x: 8, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
+  { id: 15, x: 22, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
+  { id: 16, x: 36, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
+  { id: 17, x: 50, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
+  { id: 18, x: 64, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
+  { id: 19, x: 78, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
+  { id: 20, x: 92, y: 90.1, scale: 0.88, layer: 6, roam: 1.2 },
 ] as const;
 
 const FALLBACK_COLORS = [
@@ -79,7 +78,7 @@ export default function ShowcasePage() {
   const visibleTeams = useMemo(() => fillStageTeams(teams), [teams]);
 
   useEffect(() => {
-    document.title = '베드로 키우기 | 갈릴리 세 갈래 마당';
+    document.title = '페이지 3 | 21개 조 베드로 마당';
     let active = true;
 
     const loadTeams = async () => {
@@ -109,7 +108,11 @@ export default function ShowcasePage() {
   }, [visibleTeams.length]);
 
   return (
-    <main className="showcase-stage" aria-label="갈릴리의 세 층에 모인 스물두 명의 베드로">
+    <main
+      className="showcase-stage"
+      data-page="3"
+      aria-label="페이지 3, 갈릴리의 세 층에 모인 스물한 명의 베드로"
+    >
       <img
         className="showcase-stage__background"
         src="/assets/showcase/galilee-three-tier-stage.png"
@@ -119,7 +122,7 @@ export default function ShowcasePage() {
         decoding="async"
       />
       <div className="showcase-stage__light" aria-hidden="true" />
-      <section className="showcase-stage__actors" aria-label="세 층에서 움직이는 조별 베드로 22명">
+      <section className="showcase-stage__actors" aria-label="세 층에서 움직이는 조별 베드로 21명">
         {visibleTeams.map((team, index) => (
           <PaperPeter
             key={team.id}

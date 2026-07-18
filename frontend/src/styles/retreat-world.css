@@ -1,0 +1,344 @@
+:root {
+  font-family: "Gowun Dodum", "Apple SD Gothic Neo", sans-serif;
+  color: #183b49;
+  background: #8ed0e1;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #8ed0e1;
+}
+
+.retreat-world {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    linear-gradient(180deg, rgba(255, 249, 214, 0.88), rgba(166, 224, 225, 0.9) 31%, rgba(111, 181, 180, 0.72) 72%),
+    #94d5df;
+}
+
+.retreat-world[data-preview="true"] {
+  min-height: 0;
+}
+
+.retreat-world__sky {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.64), transparent 18%),
+    radial-gradient(circle at 83% 30%, rgba(255, 255, 255, 0.44), transparent 16%),
+    linear-gradient(180deg, transparent 0 55%, rgba(53, 119, 116, 0.18) 100%);
+}
+
+.retreat-world__safe-zone {
+  position: absolute;
+  z-index: 10;
+  inset: 0 0 auto;
+  min-height: 118px;
+  pointer-events: none;
+}
+
+.retreat-world__title {
+  position: absolute;
+  z-index: 11;
+  top: clamp(18px, 3.5vh, 44px);
+  left: 50%;
+  width: min(850px, calc(100% - 44px));
+  transform: translateX(-50%);
+  text-align: center;
+  color: #17324a;
+  pointer-events: none;
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.52);
+}
+
+.retreat-world__title p,
+.retreat-world__title strong {
+  display: block;
+  margin: 0;
+  font-size: clamp(15px, 1.45vw, 22px);
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.retreat-world__title h1 {
+  margin: 4px 0 0;
+  font-family: "Gaegu", "Gowun Dodum", sans-serif;
+  font-size: clamp(42px, 6.4vw, 96px);
+  line-height: 0.94;
+  letter-spacing: 0;
+}
+
+.retreat-world__platforms,
+.retreat-world__ropes,
+.retreat-world__actors {
+  position: absolute;
+  inset: 0;
+}
+
+.retreat-world__platforms {
+  z-index: 2;
+}
+
+.retreat-world__ropes {
+  z-index: 1;
+}
+
+.retreat-world__actors {
+  z-index: 4;
+}
+
+.retreat-world__platform {
+  position: absolute;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 236, 161, 0.88), rgba(211, 157, 73, 0.94) 44%, rgba(143, 96, 50, 0.96));
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.38),
+    0 16px 22px rgba(67, 65, 42, 0.18);
+}
+
+.retreat-world__platform::before {
+  content: "";
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  bottom: -8px;
+  height: 10px;
+  border-radius: 0 0 8px 8px;
+  background: rgba(106, 72, 39, 0.42);
+}
+
+.retreat-world__platform[data-platform="upper"] {
+  filter: saturate(0.96);
+}
+
+.retreat-world__platform[data-platform="middle"] {
+  filter: saturate(1.04);
+}
+
+.retreat-world__platform[data-platform="lower"] {
+  filter: saturate(1.12);
+}
+
+.retreat-world__hole {
+  position: absolute;
+  top: -2px;
+  height: calc(100% + 5px);
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at center, rgba(50, 54, 44, 0.62), rgba(71, 58, 38, 0.42) 55%, transparent 72%);
+  box-shadow: inset 0 4px 8px rgba(46, 37, 28, 0.35);
+}
+
+.retreat-world__rope {
+  position: absolute;
+  width: 10px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      #8a653d 0,
+      #8a653d 8px,
+      #d6ae72 8px,
+      #d6ae72 15px
+    );
+  box-shadow:
+    inset 2px 0 0 rgba(255, 235, 187, 0.45),
+    0 5px 12px rgba(75, 58, 37, 0.18);
+}
+
+.retreat-world__actor {
+  position: absolute;
+  width: 88px;
+  height: 112px;
+  transform-origin: 50% 100%;
+  pointer-events: none;
+  will-change: transform, left, top;
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.82))
+    drop-shadow(0 10px 8px rgba(50, 77, 69, 0.22));
+}
+
+.retreat-world__actor::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 42px;
+  height: 10px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: rgba(48, 77, 65, 0.2);
+}
+
+.retreat-world__character {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 100%;
+}
+
+.retreat-world__character.retreat-character {
+  width: 100%;
+  height: 100%;
+}
+
+.retreat-world__character .sprite-animator,
+.retreat-world__character img {
+  width: 100%;
+  height: 100%;
+}
+
+.retreat-world__character img {
+  display: block;
+  object-fit: contain;
+}
+
+.retreat-world__character .sprite-animator {
+  position: relative;
+  overflow: visible;
+  transform: none;
+  transform-origin: 50% 100%;
+}
+
+.retreat-world__character .sprite-animator__motion {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  overflow: visible;
+}
+
+.retreat-world__character .sprite-animator__motion > * {
+  width: 100%;
+  height: 100%;
+}
+
+.retreat-world__character .sprite-animator__fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border: 2px dashed rgba(255, 255, 255, 0.58);
+  border-radius: 8px;
+  color: #31535b;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.retreat-world__badge {
+  position: absolute;
+  right: -7px;
+  bottom: 8px;
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--group-accent, #5b9faf);
+  color: #fffaf2;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 4px 9px rgba(38, 56, 57, 0.2);
+}
+
+.retreat-world__actor[data-state="waving"] {
+  animation: retreat-wave-pop 1.25s ease-in-out infinite;
+}
+
+.retreat-world__actor[data-state="praying"] {
+  filter:
+    drop-shadow(0 0 5px rgba(255, 244, 180, 0.84))
+    drop-shadow(0 11px 8px rgba(50, 77, 69, 0.18));
+}
+
+.retreat-world__actor[data-state="jumping"],
+.retreat-world__actor[data-state="falling"],
+.retreat-world__actor[data-state="droppingThroughHole"] {
+  filter:
+    drop-shadow(0 2px 0 rgba(255, 255, 255, 0.86))
+    drop-shadow(0 16px 11px rgba(45, 73, 66, 0.18));
+}
+
+.retreat-world__actor[data-state="climbingRope"],
+.retreat-world__actor[data-state="descendingRope"] {
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.74))
+    drop-shadow(0 8px 7px rgba(68, 53, 37, 0.24));
+}
+
+.retreat-world[data-paused="true"] .retreat-world__actor {
+  transition: opacity 180ms ease;
+}
+
+.retreat-world[data-preview="true"] .retreat-world__title {
+  transform: translateX(-50%) scale(0.82);
+  transform-origin: 50% 0;
+}
+
+@keyframes retreat-wave-pop {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  50% {
+    translate: 0 -5px;
+  }
+}
+
+@media (max-width: 720px) {
+  .retreat-world__safe-zone {
+    min-height: 96px;
+  }
+
+  .retreat-world__title {
+    top: 14px;
+    width: calc(100% - 28px);
+  }
+
+  .retreat-world__title h1 {
+    font-size: clamp(36px, 12vw, 64px);
+  }
+
+  .retreat-world__actor {
+    width: 58px;
+    height: 78px;
+  }
+
+  .retreat-world__badge {
+    right: -5px;
+    min-width: 21px;
+    height: 21px;
+    font-size: 11px;
+  }
+}

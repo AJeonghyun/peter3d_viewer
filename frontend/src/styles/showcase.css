@@ -374,7 +374,7 @@ body {
 .paper-peter[data-layout="tier"][data-render="sprite"],
 .paper-peter[data-layout="tier"][data-render="preset"] {
   width: auto;
-  height: clamp(130px, 22cqh, 238px);
+  height: clamp(145px, 24cqh, 260px);
   transform:
     translate3d(calc(-50% + var(--roam-x)), -100%, 0)
     scale(var(--actor-scale));

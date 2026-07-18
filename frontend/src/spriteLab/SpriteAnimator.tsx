@@ -2,6 +2,7 @@ import { PixelMotion } from '@ga1az/react-pixel-motion';
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useVisibilityPause } from './useVisibilityPause';
+import { useReducedMotion } from './useReducedMotion';
 import type { AnimationName, CharacterDefinition } from './types';
 
 interface SpriteAnimatorProps {
@@ -25,6 +26,7 @@ function SpriteAnimatorComponent({
 }: SpriteAnimatorProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const visible = useVisibilityPause(rootRef);
+  const reducedMotion = useReducedMotion();
   const definition = character.animations[animation];
   const [failed, setFailed] = useState(false);
   const [scale, setScale] = useState(1);
@@ -87,6 +89,7 @@ function SpriteAnimatorComponent({
   } as CSSProperties;
   const shouldAnimate = playing
     && visible
+    && !reducedMotion
     && definition.frameCount > 1;
 
   return (
