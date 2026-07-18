@@ -157,7 +157,7 @@ export function prepareSpriteAtlas(source: string) {
       source,
       processAtlas(source).catch((error) => {
         console.warn('스프라이트 배경 제거에 실패해 원본을 사용합니다.', error);
-        return { url: source, cellAspect: 1.125 };
+        return { url: source, cellAspect: 1 };
       }),
     );
   }

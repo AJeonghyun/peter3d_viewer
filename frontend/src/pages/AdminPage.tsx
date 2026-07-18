@@ -366,7 +366,7 @@ export default function AdminPage() {
   async function generateShowcaseSprite() {
     if (!selected?.showcase_image_url) return;
     if (!window.confirm(
-      `${selected.name} 사진을 OpenAI로 게임 캐릭터 12컷으로 변환합니다. 유료 API 사용량이 발생합니다.`,
+      `${selected.name}의 전체 그림을 OpenAI로 애니메이션 12컷으로 변환합니다. 유료 API 사용량이 발생합니다.`,
     )) return;
 
     setGeneratingSprite(true);
@@ -587,8 +587,9 @@ export default function AdminPage() {
                   <div>
                     <h3>2. 게임 캐릭터 12컷 생성</h3>
                     <p className="muted">
-                      색연필 질감은 정돈하고, 학생이 고른 색과 옷 무늬는 유지해
-                      대기·걷기·손 흔들기 동작을 만듭니다.
+                      얼굴·머리·상하의·무늬·신발과 손그림 질감을 그대로 살려
+                      대기·오른쪽 옆모습 걷기·손 흔들기 동작을 만듭니다.
+                      왼쪽으로 갈 때는 웹에서 시트를 자동으로 뒤집습니다.
                     </p>
                   </div>
                   <span>{spriteStatusLabel(selected?.showcase_sprite_status ?? 'empty')}</span>

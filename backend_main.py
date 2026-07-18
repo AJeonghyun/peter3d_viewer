@@ -53,26 +53,54 @@ TRIPO_API_BASE_URL = os.getenv("TRIPO_API_BASE_URL", "https://api.tripo3d.ai/v2/
 ENABLE_MULTIVIEW_FALLBACK = os.getenv("TRIPO_MULTIVIEW_FALLBACK", "1") == "1"
 OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
 OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
+OPENAI_IMAGE_INPUT_FIDELITY = os.getenv("OPENAI_IMAGE_INPUT_FIDELITY", "high")
 OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/edits"
+SHOWCASE_SPRITE_COLUMNS = 4
+SHOWCASE_SPRITE_ROWS = 3
+SHOWCASE_SPRITE_WIDTH = 1536
+SHOWCASE_SPRITE_HEIGHT = 1152
+SHOWCASE_SPRITE_SIZE = f"{SHOWCASE_SPRITE_WIDTH}x{SHOWCASE_SPRITE_HEIGHT}"
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
 
 SHOWCASE_SPRITE_PROMPT = """
-Transform the supplied student-designed Peter character into one consistent,
-polished 2D mobile-RPG chibi character sprite sheet. Preserve the input
-character's exact identity, face, hair, skin tone, clothing colors, hand-drawn
-patterns, shoes, and other distinctive design choices. Clean and professionally
-recolor the artwork with crisp dark outlines, balanced cel shading, soft
-highlights, and game-ready proportions. Do not retain crayon or colored-pencil
-texture, but do retain every intentional color and motif from the reference.
+Use the supplied student drawing as the sole visual source of truth and create
+one production-ready 2D sprite sheet of that exact full character. This is an
+identity-preserving edit, not a character redesign.
 
-Create exactly 12 separate full-body frames in a strict 4-column by 3-row grid.
-All cells must have identical dimensions, scale, camera, character proportions,
-ground level, and generous padding. Row 1: four subtle front-facing idle frames.
-Row 2: four side-view walking-right frames with correctly alternating arms and
-legs. Row 3: four front-facing friendly wave frames. Keep the same character in
-every frame. Use a perfectly flat, uniform very light warm-gray background in
-every cell. No transparency, scenery, cast shadows, grid lines, borders, text,
-captions, logos, extra people, duplicated limbs, or cropped body parts.
+PRESERVE IN EVERY FRAME:
+- the exact face, expression, head shape, hair, facial hair, skin tone, body
+  proportions, hands, clothing silhouette, clothing colors, hand-drawn patterns,
+  writing, accessories, legs, shoes, and intentional asymmetry from the input
+- the drawing's original visual medium and personality, including intentional
+  crayon, marker, colored-pencil, paint, collage, or handmade texture
+- every visible motif and its relative placement; never replace, simplify,
+  beautify, standardize, or invent decoration
+
+LAYOUT:
+- exactly 12 separate full-body frames in a strict 4-column by 3-row grid
+- all 12 cells are identical squares with identical camera, character scale,
+  padding, and bottom-center anchor
+- the lowest shoe sole uses the same baseline in every cell
+- exactly one complete character in each cell, with no cropping or overlap
+
+ANIMATION:
+- row 1: four subtle front-facing idle frames forming a seamless loop; only
+  breathing, a tiny body sway, and at most one blink may change
+- row 2: four strict 90-degree side-profile walking-right frames forming a
+  seamless loop, with alternating contact and passing poses; the forehead,
+  nose, mouth, chin, torso, arms, legs, and shoe toes all face right; show one
+  visible eye and preserve a recognizable side-profile version of the same face,
+  hair, and facial hair
+- row 3: four front-facing friendly wave frames: arm rising, hand tilted one
+  way, hand tilted the other way, arm returning
+
+For areas hidden by the side view, infer the minimum necessary continuation
+from the visible input. Do not add new motifs, text, accessories, or clothing
+features. Use one perfectly flat, uniform very light warm-gray background across
+the full sheet. No transparency, gradient, scenery, cast shadows, grid lines,
+borders, labels, captions, watermarks, extra people, extra limbs, duplicated
+features, or cropped body parts. The result must look like one consistently
+authored animation sheet, never twelve independently redesigned characters.
 """.strip()
 
 PIPELINE_PROFILES = {
@@ -1160,6 +1188,32 @@ def openai_error_detail(response: httpx.Response) -> str:
     return f"OpenAI 이미지 생성 실패 ({response.status_code})"
 
 
+def validate_showcase_sprite_png(sprite: bytes) -> tuple[int, int]:
+    if (
+        len(sprite) < 24
+        or not sprite.startswith(b"\x89PNG\r\n\x1a\n")
+        or sprite[12:16] != b"IHDR"
+    ):
+        raise ValueError("PNG 헤더가 올바르지 않습니다")
+
+    width, height = struct.unpack(">II", sprite[16:24])
+    if (width, height) != (SHOWCASE_SPRITE_WIDTH, SHOWCASE_SPRITE_HEIGHT):
+        raise ValueError(
+            f"스프라이트 크기는 {SHOWCASE_SPRITE_SIZE}여야 합니다 "
+            f"(현재 {width}x{height})"
+        )
+
+    cell_width = width // SHOWCASE_SPRITE_COLUMNS
+    cell_height = height // SHOWCASE_SPRITE_ROWS
+    if (
+        width % SHOWCASE_SPRITE_COLUMNS
+        or height % SHOWCASE_SPRITE_ROWS
+        or cell_width != cell_height
+    ):
+        raise ValueError("4x3 스프라이트의 각 셀은 동일한 정사각형이어야 합니다")
+    return width, height
+
+
 async def request_showcase_sprite(
     reference: bytes,
     content_type: str,
@@ -1175,8 +1229,9 @@ async def request_showcase_sprite(
     data = {
         "model": OPENAI_IMAGE_MODEL,
         "prompt": SHOWCASE_SPRITE_PROMPT,
-        "size": "1536x1024",
+        "size": SHOWCASE_SPRITE_SIZE,
         "quality": OPENAI_IMAGE_QUALITY,
+        "input_fidelity": OPENAI_IMAGE_INPUT_FIDELITY,
         "output_format": "png",
         "background": "opaque",
         "n": "1",
@@ -1211,10 +1266,15 @@ async def request_showcase_sprite(
         sprite = base64.b64decode(encoded, validate=True)
     except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=502, detail="AI 스프라이트 응답을 읽지 못했습니다") from exc
-    if not sprite.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise HTTPException(status_code=502, detail="AI가 올바른 PNG 스프라이트를 반환하지 않았습니다")
     if len(sprite) > MAX_SPRITE_BYTES:
         raise HTTPException(status_code=502, detail="AI 스프라이트 파일이 너무 큽니다")
+    try:
+        validate_showcase_sprite_png(sprite)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 스프라이트 규격이 올바르지 않습니다: {exc}",
+        ) from exc
     return sprite
 
 

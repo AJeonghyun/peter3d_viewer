@@ -144,7 +144,7 @@ function PaperPeterComponent({
     '--walk-duration': `${walkDuration}s`,
     '--entry-x': slot.x < 50 ? '-72vw' : '72vw',
     '--exit-x': slot.x < 50 ? '72vw' : '-72vw',
-    '--sprite-cell-ratio': sprite?.cellAspect ?? 1.125,
+    '--sprite-cell-ratio': sprite?.cellAspect ?? 1,
     '--sprite-row': phase === 'active'
       ? gesture === 'wave' ? 2 : gesture === 'step' ? 1 : 0
       : 1,

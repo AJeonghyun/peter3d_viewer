@@ -20,6 +20,16 @@ def make_glb(document: dict) -> bytes:
     return struct.pack("<4sII", b"glTF", 2, 12 + len(chunk)) + chunk
 
 
+def make_png_header(width: int, height: int) -> bytes:
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + struct.pack(">I", 13)
+        + b"IHDR"
+        + struct.pack(">II", width, height)
+        + b"\x08\x06\x00\x00\x00"
+    )
+
+
 class Peter3DBackendTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -109,6 +119,84 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertNotIn("geometry_quality", p1)
         self.assertNotIn("texture_quality", p1)
         self.assertNotIn("compress", p1)
+
+    def test_showcase_sprite_contract_uses_square_four_by_three_cells(self):
+        self.assertEqual(backend_main.SHOWCASE_SPRITE_SIZE, "1536x1152")
+        self.assertEqual(
+            backend_main.SHOWCASE_SPRITE_WIDTH // backend_main.SHOWCASE_SPRITE_COLUMNS,
+            384,
+        )
+        self.assertEqual(
+            backend_main.SHOWCASE_SPRITE_HEIGHT // backend_main.SHOWCASE_SPRITE_ROWS,
+            384,
+        )
+        self.assertEqual(
+            backend_main.validate_showcase_sprite_png(make_png_header(1536, 1152)),
+            (1536, 1152),
+        )
+
+    def test_showcase_sprite_contract_rejects_a_non_square_sheet(self):
+        with self.assertRaisesRegex(ValueError, "1536x1152"):
+            backend_main.validate_showcase_sprite_png(make_png_header(1536, 1024))
+
+    def test_showcase_sprite_prompt_preserves_the_complete_student_drawing(self):
+        prompt = backend_main.SHOWCASE_SPRITE_PROMPT
+        self.assertIn("sole visual source of truth", prompt)
+        self.assertIn("clothing colors", prompt)
+        self.assertIn("handmade texture", prompt)
+        self.assertIn("strict 90-degree side-profile walking-right", prompt)
+
+    def test_openai_sprite_request_sends_reference_and_fixed_contract(self):
+        expected_sprite = make_png_header(1536, 1152)
+        recorded = {}
+
+        class FakeResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    "data": [{
+                        "b64_json": backend_main.base64.b64encode(expected_sprite).decode("ascii"),
+                    }],
+                }
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return None
+
+            async def post(self, url, *, headers, data, files):
+                recorded.update({
+                    "url": url,
+                    "headers": headers,
+                    "data": data,
+                    "files": files,
+                })
+                return FakeResponse()
+
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
+            patch("backend_main.httpx.AsyncClient", return_value=FakeClient()),
+        ):
+            actual = asyncio.run(
+                backend_main.request_showcase_sprite(
+                    b"student-character",
+                    "image/png",
+                    "team-1-peter.png",
+                )
+            )
+
+        self.assertEqual(actual, expected_sprite)
+        self.assertEqual(recorded["url"], backend_main.OPENAI_IMAGE_API_URL)
+        self.assertEqual(recorded["data"]["size"], "1536x1152")
+        self.assertEqual(recorded["data"]["input_fidelity"], "high")
+        self.assertEqual(
+            recorded["files"][0],
+            ("image[]", ("team-1-peter.png", b"student-character", "image/png")),
+        )
 
     def test_multiview_fallback_reuses_generated_views(self):
         payload = backend_main.multiview_model_payload("h3_smart", "views-task")
