@@ -70,7 +70,8 @@ body {
   --actor-layer: 2;
   --team-color: #6f9fa7;
   --motion-delay: 0s;
-  --roam-x: 0cqw;
+  --roam-x: 0px;
+  --walk-duration: 1.8s;
   position: absolute;
   z-index: var(--actor-layer);
   top: var(--actor-y);
@@ -366,11 +367,12 @@ body {
 }
 
 .paper-peter[data-layout="tier"][data-gesture="step"] {
-  transition-duration: 2.8s, 0.7s;
+  transition-duration: var(--walk-duration), 0.7s;
   transition-timing-function: linear, ease;
 }
 
-.paper-peter[data-layout="tier"][data-render="sprite"] {
+.paper-peter[data-layout="tier"][data-render="sprite"],
+.paper-peter[data-layout="tier"][data-render="preset"] {
   width: auto;
   height: clamp(130px, 22cqh, 238px);
   transform:
@@ -379,7 +381,8 @@ body {
   transform-origin: 50% 100%;
 }
 
-.paper-peter[data-layout="tier"][data-render="sprite"][data-phase="entering"] {
+.paper-peter[data-layout="tier"][data-render="sprite"][data-phase="entering"],
+.paper-peter[data-layout="tier"][data-render="preset"][data-phase="entering"] {
   opacity: 0;
   transform:
     translate3d(calc(-50% + var(--roam-x)), calc(-100% + 3cqh), 0)
@@ -387,7 +390,8 @@ body {
 }
 
 .paper-peter[data-layout="tier"] .paper-peter__figure,
-.paper-peter[data-layout="tier"] .sprite-peter__figure {
+.paper-peter[data-layout="tier"] .sprite-peter__figure,
+.paper-peter[data-layout="tier"] .preset-peter__figure {
   inset: 0;
 }
 
@@ -397,10 +401,45 @@ body {
     drop-shadow(0 7px 5px rgba(61, 72, 66, 0.21));
 }
 
-.paper-peter[data-layout="tier"] .sprite-peter__figure {
+.paper-peter[data-layout="tier"] .sprite-peter__figure,
+.paper-peter[data-layout="tier"] .preset-peter__figure {
   filter:
     drop-shadow(0 1px 0 rgba(255, 255, 255, 0.28))
     drop-shadow(0 8px 6px rgba(31, 54, 55, 0.24));
+}
+
+.preset-peter__figure {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 100%;
+  animation: sprite-idle 3.4s ease-in-out var(--motion-delay) infinite;
+}
+
+.preset-peter__figure .sprite-animator {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(var(--sprite-flip));
+  transform-origin: 50% 100%;
+}
+
+.preset-peter__figure .sprite-animator img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: 50% 100%;
+  user-select: none;
+  pointer-events: none;
+}
+
+.preset-peter__figure .sprite-animator__fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: #f7fbff;
+  font-size: 12px;
 }
 
 .paper-peter[data-layout="tier"][data-compact="true"] .paper-peter__name {
@@ -501,6 +540,7 @@ body {
   .showcase-stage__background,
   .sprite-peter__figure,
   .sprite-peter__atlas,
+  .preset-peter__figure,
   .paper-peter__figure,
   .paper-peter__part,
   .showcase-stage__loading span {

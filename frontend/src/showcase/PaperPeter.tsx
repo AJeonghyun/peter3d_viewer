@@ -1,6 +1,9 @@
 import { memo, useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Team } from '../types/api';
+import { peterAnimations } from '../spriteLab/data';
+import { SpriteAnimator } from '../spriteLab/SpriteAnimator';
+import type { AnimationName, CharacterDefinition } from '../spriteLab/types';
 import { prepareCharacterImage } from './characterImage';
 import { prepareSpriteAtlas } from './spriteAtlas';
 import type { PreparedSpriteAtlas } from './spriteAtlas';
@@ -25,6 +28,13 @@ interface PaperPeterProps {
 }
 
 const SAMPLE_CHARACTER_URL = '/assets/showcase/peter-template.png';
+const WALK_SPEED_PX_PER_SECOND = 24;
+const PRESET_CHARACTER: CharacterDefinition = {
+  id: 'peter-preset',
+  name: '베드로',
+  group: '',
+  animations: peterAnimations,
+};
 
 function PaperPeterComponent({
   team,
@@ -39,6 +49,7 @@ function PaperPeterComponent({
   const [sprite, setSprite] = useState<PreparedSpriteAtlas | null>(null);
   const [gesture, setGesture] = useState<'idle' | 'wave' | 'step'>('idle');
   const [roamOffset, setRoamOffset] = useState(0);
+  const [walkDuration, setWalkDuration] = useState(1.8);
   const [travelDirection, setTravelDirection] = useState<1 | -1>(
     team.id % 2 === 0 ? 1 : -1,
   );
@@ -83,10 +94,20 @@ function PaperPeterComponent({
         const nextGesture = canRoam && Math.random() < 0.72
           ? 'step'
           : 'wave';
+        let actionDuration = 1800;
 
         if (nextGesture === 'step') {
-          const nextOffset = nextDirection * (slot.roam ?? 0);
+          const roamPixels = Math.round(
+            ((slot.roam ?? 0) * window.innerWidth) / 100,
+          );
+          const nextOffset = nextDirection * roamPixels;
+          const distance = Math.abs(nextOffset - currentOffset);
+          actionDuration = Math.round(Math.min(
+            2800,
+            Math.max(900, (distance / WALK_SPEED_PX_PER_SECOND) * 1000),
+          ));
           setTravelDirection(nextOffset > currentOffset ? 1 : -1);
+          setWalkDuration(actionDuration / 1000);
           setRoamOffset(nextOffset);
           currentOffset = nextOffset;
           nextDirection = nextDirection === 1 ? -1 : 1;
@@ -96,7 +117,7 @@ function PaperPeterComponent({
         actionEndTimer = window.setTimeout(() => {
           setGesture('idle');
           schedule();
-        }, nextGesture === 'wave' ? 1800 : 2800);
+        }, actionDuration);
       }, 2200 + Math.random() * 3600);
     };
 
@@ -107,6 +128,10 @@ function PaperPeterComponent({
     };
   }, [layout, phase, slot.roam, team.id]);
 
+  const usePresetSprite = layout === 'tier' && !sprite;
+  const presetAnimation: AnimationName = phase !== 'active' || gesture === 'step'
+    ? 'walk'
+    : gesture === 'wave' ? 'wave' : 'idle';
   const actorStyle = {
     '--actor-x': `${slot.x}%`,
     '--actor-y': `${slot.y}%`,
@@ -115,7 +140,8 @@ function PaperPeterComponent({
     '--team-color': team.color,
     '--motion-delay': `${-(team.id % 7) * 0.11}s`,
     '--travel-direction': travelDirection,
-    '--roam-x': `${roamOffset}cqw`,
+    '--roam-x': `${roamOffset}px`,
+    '--walk-duration': `${walkDuration}s`,
     '--entry-x': slot.x < 50 ? '-72vw' : '72vw',
     '--exit-x': slot.x < 50 ? '72vw' : '-72vw',
     '--sprite-cell-ratio': sprite?.cellAspect ?? 1.125,
@@ -129,9 +155,10 @@ function PaperPeterComponent({
       className="paper-peter"
       data-phase={phase}
       data-gesture={gesture}
-      data-render={sprite ? 'sprite' : 'paper'}
+      data-render={sprite ? 'sprite' : usePresetSprite ? 'preset' : 'paper'}
       data-layout={layout}
       data-compact={compact ? 'true' : 'false'}
+      data-direction={travelDirection < 0 ? 'left' : 'right'}
       style={actorStyle}
       aria-label={`${team.name} 베드로`}
     >
@@ -140,6 +167,15 @@ function PaperPeterComponent({
           <div className="sprite-peter__viewport">
             <img className="sprite-peter__atlas" src={sprite.url} alt="" />
           </div>
+        </div>
+      ) : usePresetSprite ? (
+        <div className="preset-peter__figure" role="img" aria-label={`${team.name}의 게임 캐릭터`}>
+          <SpriteAnimator
+            character={PRESET_CHARACTER}
+            animation={presetAnimation}
+            flipX={travelDirection < 0}
+            playing={phase !== 'exiting'}
+          />
         </div>
       ) : (
         <div className="paper-peter__figure" role="img" aria-label={`${team.name}에서 만든 베드로`}>
