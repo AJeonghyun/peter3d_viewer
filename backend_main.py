@@ -1,6 +1,6 @@
 """Peter3D retreat kiosk backend.
 
-Serves the Galilee world, stores 25 teams in SQLite or Postgres, and persists
+Serves the Galilee world, stores 21 active teams in SQLite or Postgres, and persists
 uploaded images and generated GLBs in Vercel Blob when configured.
 """
 
@@ -55,6 +55,7 @@ OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
 OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
 OPENAI_IMAGE_INPUT_FIDELITY = os.getenv("OPENAI_IMAGE_INPUT_FIDELITY", "high")
 OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/edits"
+TEAM_COUNT = 21
 SHOWCASE_SPRITE_COLUMNS = 4
 SHOWCASE_SPRITE_ROWS = 3
 SHOWCASE_SPRITE_WIDTH = 1536
@@ -136,7 +137,7 @@ def connect_db():
 
 
 def init_db() -> None:
-    initialize_database(DB_PATH, now_iso())
+    initialize_database(DB_PATH, now_iso(), team_count=TEAM_COUNT)
 
 
 def row_dict(row: Any) -> dict:
@@ -259,6 +260,8 @@ def public_model_asset(row: Any) -> dict:
 
 
 def get_team_or_404(db: Any, team_id: int):
+    if team_id < 1 or team_id > TEAM_COUNT:
+        raise HTTPException(status_code=404, detail="조를 찾을 수 없습니다")
     row = db.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="조를 찾을 수 없습니다")
@@ -296,7 +299,7 @@ class GrowthCreate(BaseModel):
 
 
 class ModelAssetApply(BaseModel):
-    team_ids: List[int] = Field(min_length=1, max_length=25)
+    team_ids: List[int] = Field(min_length=1, max_length=TEAM_COUNT)
 
 
 def profile_config(profile: str) -> dict:
@@ -1063,7 +1066,11 @@ async def tripo_billing():
 @app.get("/api/teams")
 async def list_teams():
     with connect_db() as db:
-        return [row_dict(row) for row in db.execute("SELECT * FROM teams ORDER BY id")]
+        rows = db.execute(
+            "SELECT * FROM teams WHERE id <= ? ORDER BY id",
+            (TEAM_COUNT,),
+        ).fetchall()
+        return [row_dict(row) for row in rows]
 
 
 @app.get("/api/teams/{team_id}")
@@ -1405,7 +1412,7 @@ async def generate_showcase_sprite(team_id: int, reference: UploadFile = File(..
             reference.filename or "peter-reference.png",
         )
         sprite_url = await persist_showcase_sprite(team_id, sprite)
-        updated = update_showcase_sprite_status(team_id, "ready", url=sprite_url, error=None)
+        updated = update_showcase_sprite_status(team_id, "review", url=sprite_url, error=None)
     except HTTPException as exc:
         update_showcase_sprite_status(team_id, "failed", error=str(exc.detail)[:300])
         raise
@@ -1420,6 +1427,19 @@ async def generate_showcase_sprite(team_id: int, reference: UploadFile = File(..
     if previous_url and previous_url != sprite_url:
         await delete_blob_if_managed(previous_url)
     return updated
+
+
+@app.post("/api/teams/{team_id}/showcase-sprite/approve")
+async def approve_showcase_sprite(team_id: int):
+    with connect_db() as db:
+        team = row_dict(get_team_or_404(db, team_id))
+    if not team["showcase_sprite_url"]:
+        raise HTTPException(status_code=409, detail="검수할 AI 스프라이트가 없습니다")
+    if team["showcase_sprite_status"] not in ("review", "ready"):
+        raise HTTPException(status_code=409, detail="생성이 완료된 AI 스프라이트만 승인할 수 있습니다")
+    if team["showcase_sprite_status"] == "ready":
+        return team
+    return update_showcase_sprite_status(team_id, "ready", error=None)
 
 
 async def validated_glb_upload(glb: UploadFile) -> tuple[bytes, dict]:
@@ -1591,8 +1611,11 @@ async def upload_model_asset(
 @app.post("/api/model-assets/{asset_id}/apply")
 async def apply_model_asset(asset_id: str, payload: ModelAssetApply):
     team_ids = sorted(set(payload.team_ids))
-    if any(team_id < 1 or team_id > 25 for team_id in team_ids):
-        raise HTTPException(status_code=422, detail="조 번호는 1~25 사이여야 합니다")
+    if any(team_id < 1 or team_id > TEAM_COUNT for team_id in team_ids):
+        raise HTTPException(
+            status_code=422,
+            detail=f"조 번호는 1~{TEAM_COUNT} 사이여야 합니다",
+        )
     timestamp = now_iso()
     with connect_db() as db:
         asset = db.execute("SELECT * FROM model_assets WHERE id = ?", (asset_id,)).fetchone()

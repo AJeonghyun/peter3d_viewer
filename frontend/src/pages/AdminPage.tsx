@@ -2,45 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { apiRequest } from '../lib/api';
 import { prepareCharacterUploadImage } from '../lib/prepareUploadImage';
 import { prepareCharacterImage } from '../showcase/characterImage';
-import type {
-  GrowthPayload,
-  StatKey,
-  Team,
-} from '../types/api';
+import type { Team } from '../types/api';
 import '../styles/admin.css';
-
-const STAT_FIELDS: ReadonlyArray<{ key: StatKey; label: string }> = [
-  { key: 'courage', label: '용기' },
-  { key: 'wisdom', label: '현명' },
-  { key: 'faith', label: '진실' },
-  { key: 'love', label: '열정' },
-];
-
-type DeltaId = 'talentDelta' | 'courageDelta' | 'wisdomDelta' | 'faithDelta' | 'loveDelta';
-type DeltaKey = 'talents' | StatKey;
-
-const DELTA_FIELDS: ReadonlyArray<{
-  id: DeltaId;
-  key: DeltaKey;
-  label: string;
-  step: number;
-  min: number;
-  max: number;
-}> = [
-  { id: 'talentDelta', key: 'talents', label: '달란트', step: 10, min: -10000, max: 10000 },
-  { id: 'courageDelta', key: 'courage', label: '용기', step: 1, min: -100, max: 100 },
-  { id: 'wisdomDelta', key: 'wisdom', label: '현명', step: 1, min: -100, max: 100 },
-  { id: 'faithDelta', key: 'faith', label: '진실', step: 1, min: -100, max: 100 },
-  { id: 'loveDelta', key: 'love', label: '열정', step: 1, min: -100, max: 100 },
-];
-
-const EMPTY_DELTAS: Record<DeltaId, number> = {
-  talentDelta: 0,
-  courageDelta: 0,
-  wisdomDelta: 0,
-  faithDelta: 0,
-  loveDelta: 0,
-};
 
 interface TeamDraft {
   name: string;
@@ -64,37 +27,55 @@ function spriteStatusLabel(status: Team['showcase_sprite_status']) {
   return ({
     empty: 'AI 캐릭터 미생성',
     generating: 'AI 캐릭터 생성 중',
+    review: '12컷 검수 필요',
     ready: 'AI 캐릭터 사용 중',
     failed: 'AI 캐릭터 생성 실패',
   } as const)[status];
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, Number.isFinite(value) ? value : 0));
-}
+const SPRITE_REVIEW_PREVIEWS = [
+  { label: '대기 동작', row: 0, flipped: false },
+  { label: '오른쪽 걷기', row: 1, flipped: false },
+  { label: '왼쪽 걷기', row: 1, flipped: true },
+  { label: '손 흔들기', row: 2, flipped: false },
+] as const;
 
-function boundedResult(key: DeltaKey, current: number, delta: number) {
-  return key === 'talents'
-    ? Math.max(0, current + delta)
-    : clamp(current + delta, 0, 100);
-}
-
-function signed(value: number) {
-  return `${value > 0 ? '+' : ''}${value}`;
+function SpriteMotionPreview({
+  label,
+  row,
+  flipped,
+  spriteUrl,
+}: {
+  label: string;
+  row: 0 | 1 | 2;
+  flipped: boolean;
+  spriteUrl: string;
+}) {
+  return (
+    <div className="sprite-motion-preview">
+      <div className="sprite-motion-viewport">
+        <div
+          className={`sprite-motion-frame ${flipped ? 'flipped' : ''}`}
+          data-row={row}
+          style={{ backgroundImage: `url(${JSON.stringify(spriteUrl)})` }}
+          role="img"
+          aria-label={`${label} 애니메이션 미리보기`}
+        />
+      </div>
+      <strong>{label}</strong>
+    </div>
+  );
 }
 
 export default function AdminPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [teamDraft, setTeamDraft] = useState<TeamDraft>(EMPTY_DRAFT);
-  const [source, setSource] = useState('');
-  const [note, setNote] = useState('');
-  const [deltas, setDeltas] = useState<Record<DeltaId, number>>(EMPTY_DELTAS);
   const [toast, setToast] = useState('');
   const [savingTeam, setSavingTeam] = useState(false);
-  const [savingGrowth, setSavingGrowth] = useState(false);
   const [uploadingCharacter, setUploadingCharacter] = useState(false);
   const [generatingSprite, setGeneratingSprite] = useState(false);
+  const [approvingSprite, setApprovingSprite] = useState(false);
   const characterInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -146,7 +127,6 @@ export default function AdminPage() {
   function chooseTeam(team: Team) {
     setSelectedId(team.id);
     setTeamDraft(draftFromTeam(team));
-    setDeltas(EMPTY_DELTAS);
   }
 
   async function saveTeam(event: FormEvent<HTMLFormElement>) {
@@ -166,46 +146,6 @@ export default function AdminPage() {
       showToast(error instanceof Error ? error.message : '조 정보를 저장하지 못했습니다');
     } finally {
       setSavingTeam(false);
-    }
-  }
-
-  function setDelta(field: typeof DELTA_FIELDS[number], value: number) {
-    const minimum = field.key === 'talents' && selected
-      ? Math.max(field.min, -selected.talents)
-      : field.min;
-    setDeltas((current) => ({ ...current, [field.id]: clamp(value, minimum, field.max) }));
-  }
-
-  async function saveGrowth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selected) return;
-    const stats: GrowthPayload['stats'] = {};
-    STAT_FIELDS.forEach(({ key }) => {
-      const delta = deltas[`${key}Delta` as DeltaId];
-      if (delta) stats[key] = delta;
-    });
-    const payload: GrowthPayload = {
-      source,
-      note,
-      talent_delta: deltas.talentDelta,
-      stats,
-    };
-    setSavingGrowth(true);
-    try {
-      const updated = await apiRequest<Team>(`/teams/${selected.id}/growth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      setTeams((current) => current.map((team) => team.id === updated.id ? updated : team));
-      setSource('');
-      setNote('');
-      setDeltas(EMPTY_DELTAS);
-      showToast('기록을 반영했습니다');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '기록을 반영하지 못했습니다');
-    } finally {
-      setSavingGrowth(false);
     }
   }
 
@@ -259,7 +199,7 @@ export default function AdminPage() {
         body: form,
       });
       setTeams((current) => current.map((team) => team.id === updated.id ? updated : team));
-      showToast(`${updated.name}의 게임 캐릭터 12컷을 만들었습니다`);
+      showToast(`${updated.name}의 12컷을 만들었습니다. 검수 후 승인해주세요.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI 캐릭터를 만들지 못했습니다';
       setTeams((current) => current.map((team) => (
@@ -273,25 +213,33 @@ export default function AdminPage() {
     }
   }
 
-  const changes = selected
-    ? DELTA_FIELDS.flatMap((field) => {
-      const delta = deltas[field.id];
-      if (!delta) return [];
-      const current = selected[field.key];
-      return [{ ...field, delta, result: boundedResult(field.key, current, delta) }];
-    })
-    : [];
+  async function approveShowcaseSprite() {
+    if (!selected || selected.showcase_sprite_status !== 'review') return;
+    setApprovingSprite(true);
+    try {
+      const updated = await apiRequest<Team>(
+        `/teams/${selected.id}/showcase-sprite/approve`,
+        { method: 'POST' },
+      );
+      setTeams((current) => current.map((team) => team.id === updated.id ? updated : team));
+      showToast(`${updated.name}의 12컷을 페이지 3에 적용했습니다.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'AI 캐릭터를 승인하지 못했습니다');
+    } finally {
+      setApprovingSprite(false);
+    }
+  }
 
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <div><h1>베드로 키우기 운영실</h1><small>AI 캐릭터 · 조 정보 · 달란트 · 성품</small></div>
+        <div><h1>베드로 키우기 운영실</h1><small>AI 캐릭터 · 조 정보 · 12컷 검수</small></div>
         <a href="/">← 갈릴리 마당으로 돌아가기</a>
       </header>
 
       <main className="admin-layout">
         <section className="card team-list-card">
-          <h2>25개 조</h2>
+          <h2>21개 조</h2>
           <div className="teams">
             {teams.map((team) => (
               <button
@@ -325,17 +273,6 @@ export default function AdminPage() {
                   alt={selected ? `${selected.name} 베드로 원본` : '기본 베드로'}
                 />
               </div>
-              {selected?.showcase_sprite_url && (
-                <a
-                  className="sprite-sheet-preview"
-                  href={selected.showcase_sprite_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <span>AI 12컷 결과</span>
-                  <img src={selected.showcase_sprite_url} alt={`${selected.name} AI 스프라이트 시트`} />
-                </a>
-              )}
             </div>
             <div className="character-workflow">
               <form onSubmit={uploadCharacterImage}>
@@ -385,6 +322,13 @@ export default function AdminPage() {
                 >
                   {generatingSprite ? 'AI 캐릭터 생성 중…' : selected?.showcase_sprite_url ? '12컷 다시 생성' : 'AI로 12컷 생성'}
                 </button>
+                {generatingSprite && (
+                  <div className="sprite-generation-progress" aria-label="AI 12컷 생성 진행 중">
+                    <span>원본 확인</span>
+                    <span>12컷 생성</span>
+                    <span>검수 화면 준비</span>
+                  </div>
+                )}
                 {selected?.showcase_sprite_error && (
                   <p className="sprite-generation-error">{selected.showcase_sprite_error}</p>
                 )}
@@ -395,57 +339,69 @@ export default function AdminPage() {
             </div>
           </section>
 
-          <div className="stats">
-            {STAT_FIELDS.map(({ key, label }) => <div className="stat" key={key}><span>{label}</span><b>{selected?.[key] ?? 0}</b></div>)}
-            <div className="stat"><span>달란트</span><b>{selected?.talents ?? 0}</b></div>
-          </div>
-
-          <hr />
-          <h2>프로그램 기록 반영</h2>
-          <p className="muted growth-guide">현재 수치를 확인하며 −/+ 버튼으로 변화량을 정하세요. 반영될 결과를 아래에서 바로 확인할 수 있습니다.</p>
-          <form className="form-grid" onSubmit={saveGrowth}>
-            <label className="full">프로그램·활동명<input value={source} placeholder="예: 조별 협동 게임" required onChange={(event) => setSource(event.target.value)} /></label>
-            <div className="full delta-grid">
-              {DELTA_FIELDS.map((field) => {
-                const current = selected?.[field.key] ?? 0;
-                const delta = deltas[field.id];
-                return (
-                  <div className="delta-control" key={field.id} data-delta={field.id}>
-                    <div className="delta-head"><strong>{field.label}</strong><span>현재 <b>{current}</b></span></div>
-                    <div className="stepper">
-                      <button type="button" aria-label={`${field.label} ${field.step} 감소`} onClick={() => setDelta(field, delta - field.step)}>−{field.step === 1 ? '' : field.step}</button>
-                      <input
-                        id={field.id}
-                        type="number"
-                        value={delta}
-                        min={field.min}
-                        max={field.max}
-                        aria-label={`${field.label} 변화량`}
-                        onChange={(event) => setDelta(field, Number(event.target.value))}
-                      />
-                      <button type="button" aria-label={`${field.label} ${field.step} 증가`} onClick={() => setDelta(field, delta + field.step)}>+{field.step === 1 ? '' : field.step}</button>
+          {selected?.showcase_sprite_url
+            && ['review', 'ready'].includes(selected.showcase_sprite_status)
+            && (
+              <section
+                className="sprite-review-card"
+                data-status={selected.showcase_sprite_status}
+                aria-label={`${selected.name} AI 12컷 검수`}
+              >
+                <header className="sprite-review-header">
+                  <div>
+                    <span>3</span>
+                    <div>
+                      <h3>12컷 결과 검수</h3>
+                      <p className="muted">시트 전체와 실제 재생 모습을 확인한 뒤 페이지 3 적용을 승인하세요.</p>
                     </div>
-                    <div className="delta-result"><span>반영 후</span><b>{boundedResult(field.key, current, delta)}</b></div>
                   </div>
-                );
-              })}
-            </div>
-            <label className="full">메모 <span className="muted">(선택)</span><input value={note} maxLength={200} placeholder="기록에 남길 설명" onChange={(event) => setNote(event.target.value)} /></label>
-            <section className="full change-preview" aria-live="polite">
-              <strong>이번에 반영되는 변화</strong>
-              <div className="change-list">
-                {changes.length ? changes.map((change) => (
-                  <span key={change.id} className={`change-pill ${change.delta > 0 ? 'positive' : 'negative'}`}>
-                    {change.label} {signed(change.delta)} → {change.result}
-                  </span>
-                )) : <span className="muted">아직 선택한 변화가 없습니다</span>}
-              </div>
-            </section>
-            <div className="full actions growth-actions">
-              <button type="button" className="secondary" onClick={() => setDeltas(EMPTY_DELTAS)}>변화량 초기화</button>
-              <button className="primary" disabled={!selected || savingGrowth}>{savingGrowth ? '반영 중…' : '이 기록 반영하기'}</button>
-            </div>
-          </form>
+                  <strong>{selected.showcase_sprite_status === 'ready' ? '승인·적용 완료' : '승인 전'}</strong>
+                </header>
+
+                <div className="sprite-review-layout">
+                  <a
+                    className="sprite-review-sheet"
+                    href={selected.showcase_sprite_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span>4 × 3 전체 시트 · 클릭해서 원본 확인</span>
+                    <img src={selected.showcase_sprite_url} alt={`${selected.name} AI 스프라이트 12컷`} />
+                  </a>
+                  <div className="sprite-motion-grid">
+                    {SPRITE_REVIEW_PREVIEWS.map((preview) => (
+                      <SpriteMotionPreview
+                        key={preview.label}
+                        {...preview}
+                        spriteUrl={selected.showcase_sprite_url as string}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <ul className="sprite-review-checklist">
+                  <li>얼굴·머리·수염과 전체 체형이 원본과 같은가요?</li>
+                  <li>상하의 색과 학생이 그린 무늬가 모든 프레임에 유지되나요?</li>
+                  <li>몸이 잘리지 않고 오른쪽 옆모습과 좌우 걷기가 자연스러운가요?</li>
+                </ul>
+
+                <div className="sprite-review-actions">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={selected.showcase_sprite_status !== 'review' || approvingSprite}
+                    onClick={() => { void approveShowcaseSprite(); }}
+                  >
+                    {approvingSprite
+                      ? '페이지 3 적용 중…'
+                      : selected.showcase_sprite_status === 'ready'
+                        ? '페이지 3 적용 완료'
+                        : '검수 완료 · 페이지 3에 적용'}
+                  </button>
+                  <span>문제가 있으면 위의 ‘12컷 다시 생성’을 눌러 새 결과를 확인하세요.</span>
+                </div>
+              </section>
+            )}
 
         </section>
       </main>

@@ -66,7 +66,9 @@ function PaperPeterComponent({
 
   useEffect(() => {
     let active = true;
-    const spriteUrl = team.showcase_sprite_url;
+    const spriteUrl = team.showcase_sprite_status === 'ready'
+      ? team.showcase_sprite_url
+      : null;
     if (!spriteUrl) {
       setSprite(null);
       return () => { active = false; };
@@ -75,7 +77,7 @@ function PaperPeterComponent({
       if (active) setSprite(prepared);
     });
     return () => { active = false; };
-  }, [team.showcase_sprite_url]);
+  }, [team.showcase_sprite_status, team.showcase_sprite_url]);
 
   useEffect(() => {
     if (phase !== 'active') {

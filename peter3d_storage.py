@@ -277,7 +277,7 @@ TEAM_COLUMN_MIGRATIONS = {
 }
 
 
-def initialize_database(sqlite_path: Path, timestamp: str) -> None:
+def initialize_database(sqlite_path: Path, timestamp: str, *, team_count: int = 21) -> None:
     with connect_database(sqlite_path) as db:
         schema = POSTGRES_SCHEMA if db.postgres else SQLITE_SCHEMA
         for statement in schema:
@@ -290,7 +290,7 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
                 db.execute(
                     f"ALTER TABLE conversion_jobs ADD COLUMN IF NOT EXISTS {column} {definition}"
                 )
-            for team_id in range(1, 26):
+            for team_id in range(1, team_count + 1):
                 db.execute(
                     """
                     INSERT INTO teams (id, name, updated_at) VALUES (?, ?, ?)
@@ -311,7 +311,7 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
             for column, definition in JOB_COLUMN_MIGRATIONS.items():
                 if column not in columns:
                     db.execute(f"ALTER TABLE conversion_jobs ADD COLUMN {column} {definition}")
-            for team_id in range(1, 26):
+            for team_id in range(1, team_count + 1):
                 db.execute(
                     "INSERT OR IGNORE INTO teams (id, name, updated_at) VALUES (?, ?, ?)",
                     (team_id, f"{team_id}조", timestamp),

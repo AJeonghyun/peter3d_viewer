@@ -14,7 +14,7 @@ export interface Team {
   title: string;
   showcase_image_url: string | null;
   showcase_sprite_url: string | null;
-  showcase_sprite_status: 'empty' | 'generating' | 'ready' | 'failed';
+  showcase_sprite_status: 'empty' | 'generating' | 'review' | 'ready' | 'failed';
   showcase_sprite_error: string | null;
   showcase_sprite_model: string | null;
   showcase_sprite_updated_at: string | null;

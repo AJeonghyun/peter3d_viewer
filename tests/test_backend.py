@@ -57,10 +57,25 @@ class Peter3DBackendTests(unittest.TestCase):
         backend_main.FRONTEND_DIST = self.original_frontend_dist
         self.tempdir.cleanup()
 
-    def test_initializes_exactly_25_teams(self):
+    def test_initializes_exactly_21_teams(self):
         with backend_main.connect_db() as db:
             count = db.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
-        self.assertEqual(count, 25)
+        self.assertEqual(count, 21)
+
+    def test_team_api_hides_legacy_teams_above_21(self):
+        with backend_main.connect_db() as db:
+            db.execute(
+                "INSERT INTO teams (id, name, updated_at) VALUES (?, ?, ?)",
+                (22, "22조", backend_main.now_iso()),
+            )
+
+        teams = asyncio.run(backend_main.list_teams())
+
+        self.assertEqual(len(teams), 21)
+        self.assertEqual(max(team["id"] for team in teams), 21)
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(backend_main.get_team(22))
+        self.assertEqual(caught.exception.status_code, 404)
 
     def test_initializes_pipeline_metadata_and_credit_ledger(self):
         with backend_main.connect_db() as db:
@@ -336,11 +351,20 @@ class Peter3DBackendTests(unittest.TestCase):
             updated = asyncio.run(backend_main.generate_showcase_sprite(1, reference))
 
         request.assert_awaited_once()
-        self.assertEqual(updated["showcase_sprite_status"], "ready")
+        self.assertEqual(updated["showcase_sprite_status"], "review")
         self.assertEqual(updated["showcase_sprite_model"], backend_main.OPENAI_IMAGE_MODEL)
         self.assertTrue(updated["showcase_sprite_url"].startswith("/uploads/team-1-sprite-"))
         stored_path = backend_main.UPLOADS_DIR / Path(updated["showcase_sprite_url"]).name
         self.assertEqual(stored_path.read_bytes(), sprite)
+
+        approved = asyncio.run(backend_main.approve_showcase_sprite(1))
+        self.assertEqual(approved["showcase_sprite_status"], "ready")
+
+    def test_showcase_sprite_approval_requires_a_generated_sheet(self):
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(backend_main.approve_showcase_sprite(1))
+
+        self.assertEqual(caught.exception.status_code, 409)
 
     def test_showcase_sprite_generation_requires_a_registered_character(self):
         reference = backend_main.UploadFile(
@@ -578,7 +602,7 @@ class Peter3DBackendTests(unittest.TestCase):
                 """
                 INSERT INTO conversion_jobs (
                     id, team_id, status, image_path, created_at, updated_at
-                ) VALUES ('queued-job', 25, 'queued', 'queued.png', ?, ?)
+                ) VALUES ('queued-job', 21, 'queued', 'queued.png', ?, ?)
                 """,
                 (timestamp, timestamp),
             )
