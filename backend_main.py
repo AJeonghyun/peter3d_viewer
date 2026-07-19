@@ -1238,11 +1238,12 @@ async def request_showcase_sprite(
         "prompt": SHOWCASE_SPRITE_PROMPT,
         "size": SHOWCASE_SPRITE_SIZE,
         "quality": OPENAI_IMAGE_QUALITY,
-        "input_fidelity": OPENAI_IMAGE_INPUT_FIDELITY,
         "output_format": "png",
         "background": "opaque",
         "n": "1",
     }
+    if OPENAI_IMAGE_MODEL == "gpt-image-1":
+        data["input_fidelity"] = OPENAI_IMAGE_INPUT_FIDELITY
     try:
         timeout = httpx.Timeout(150.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout) as client:

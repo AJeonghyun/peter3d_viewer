@@ -207,11 +207,53 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(actual, expected_sprite)
         self.assertEqual(recorded["url"], backend_main.OPENAI_IMAGE_API_URL)
         self.assertEqual(recorded["data"]["size"], "1536x1152")
-        self.assertEqual(recorded["data"]["input_fidelity"], "high")
+        self.assertEqual(recorded["data"]["model"], "gpt-image-2")
+        self.assertNotIn("input_fidelity", recorded["data"])
         self.assertEqual(
             recorded["files"][0],
             ("image[]", ("team-1-peter.png", b"student-character", "image/png")),
         )
+
+    def test_openai_sprite_request_keeps_fidelity_for_gpt_image_1(self):
+        expected_sprite = make_png_header(1536, 1152)
+        recorded = {}
+
+        class FakeResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    "data": [{
+                        "b64_json": backend_main.base64.b64encode(expected_sprite).decode("ascii"),
+                    }],
+                }
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return None
+
+            async def post(self, url, *, headers, data, files):
+                recorded["data"] = data
+                return FakeResponse()
+
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
+            patch.object(backend_main, "OPENAI_IMAGE_MODEL", "gpt-image-1"),
+            patch("backend_main.httpx.AsyncClient", return_value=FakeClient()),
+        ):
+            asyncio.run(
+                backend_main.request_showcase_sprite(
+                    b"student-character",
+                    "image/png",
+                    "team-1-peter.png",
+                )
+            )
+
+        self.assertEqual(recorded["data"]["input_fidelity"], "high")
 
     def test_multiview_fallback_reuses_generated_views(self):
         payload = backend_main.multiview_model_payload("h3_smart", "views-task")
