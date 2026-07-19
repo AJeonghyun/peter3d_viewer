@@ -77,7 +77,9 @@ function PaperPeterComponent({
 
   useEffect(() => {
     let active = true;
-    const spriteUrl = team.showcase_sprite_active_url;
+    const spriteUrl = team.showcase_sprite_active_version_id
+      ? team.showcase_sprite_active_url
+      : '';
     if (!spriteUrl) {
       setSprite(null);
       return () => { active = false; };

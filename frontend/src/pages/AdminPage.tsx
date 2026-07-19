@@ -116,6 +116,7 @@ function partPreviewUrl(part?: ShowcaseGarmentPart) {
 }
 
 function activeSpriteUrl(team: Team | null) {
+  if (!isFixedMaster(team)) return '';
   return team?.showcase_sprite_url
     || team?.showcase_sprite_active_url
     || team?.showcase_sprite_contract?.atlas_url
