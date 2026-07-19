@@ -91,6 +91,7 @@ function RetreatCharacterComponent({
           animation={animation}
           playing={playing}
           flipX={flipX}
+          contract={group.spriteAtlasContract}
           label={`${group.groupName} 캐릭터`}
         />
       ) : singleImage ? (

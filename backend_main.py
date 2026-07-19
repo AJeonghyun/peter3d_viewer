@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from PIL import Image, ImageFilter, UnidentifiedImageError
+from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
 from tripo3d import TaskStatus, TripoClient
 from tripo3d.models import RigType
 
@@ -69,8 +69,29 @@ SHOWCASE_SPRITE_ROWS = 3
 SHOWCASE_SPRITE_WIDTH = 1536
 SHOWCASE_SPRITE_HEIGHT = 1152
 SHOWCASE_SPRITE_SIZE = f"{SHOWCASE_SPRITE_WIDTH}x{SHOWCASE_SPRITE_HEIGHT}"
-SHOWCASE_MASTER_PATH = (
+GARMENT_TRANSFER_CONTRACT = "fixed-peter-garment-transfer-v2"
+GARMENT_ATLAS_COLUMNS = 5
+GARMENT_ATLAS_ROWS = 5
+GARMENT_ATLAS_CELL_SIZE = 360
+GARMENT_ATLAS_SIZE = GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_CELL_SIZE
+GARMENT_TEMPLATE_SIZE = (1240, 1754)
+GARMENT_PART_CROPS = {
+    "upper": (0.12, 0.34, 0.88, 0.62),
+    "lower": (0.25, 0.60, 0.75, 0.82),
+    "left_shoe": (0.22, 0.79, 0.49, 0.94),
+    "right_shoe": (0.52, 0.79, 0.79, 0.94),
+}
+GARMENT_PARTS = tuple(GARMENT_PART_CROPS.keys())
+SHOWCASE_SOURCE_MASTER_PATH = (
     ROOT / "frontend" / "public" / "assets" / "peter-sober" / "peter-sober-master.png"
+)
+SHOWCASE_SAFE_MASTER_PATH = (
+    ROOT / "frontend" / "public" / "assets" / "peter-sober" / "peter-sober-master-safe.png"
+)
+SHOWCASE_MASTER_PATH = (
+    SHOWCASE_SAFE_MASTER_PATH
+    if SHOWCASE_SAFE_MASTER_PATH.is_file()
+    else SHOWCASE_SOURCE_MASTER_PATH
 )
 SHOWCASE_FRAME_SAFE_MARGIN = 14
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
@@ -189,12 +210,34 @@ def row_dict(row: Any) -> dict:
 
 def public_team(row: Any) -> dict:
     team = row_dict(row)
-    encoded_quality = team.pop("showcase_sprite_quality_json", None)
-    try:
-        quality = json.loads(encoded_quality) if encoded_quality else None
-    except (json.JSONDecodeError, TypeError):
-        quality = None
-    team["showcase_sprite_quality"] = quality
+    json_fields = {
+        "showcase_sprite_quality_json": "showcase_sprite_quality",
+        "showcase_capture_quality_json": "showcase_capture_quality",
+        "showcase_garment_parts_json": "showcase_garment_parts",
+    }
+    for source, target in json_fields.items():
+        encoded = team.pop(source, None)
+        try:
+            decoded = json.loads(encoded) if encoded else None
+        except (json.JSONDecodeError, TypeError):
+            decoded = None
+        team[target] = decoded
+    parts = team.get("showcase_garment_parts")
+    if isinstance(parts, dict) and isinstance(parts.get("urls"), dict):
+        urls = parts["urls"]
+        crops = parts.get("crops") if isinstance(parts.get("crops"), dict) else {}
+        team["showcase_garment_parts"] = {
+            part: {
+                "key": part,
+                "status": "ready" if urls.get(part) else "empty",
+                "preview_url": urls.get(part),
+                "crop": crops.get(part),
+            }
+            for part in GARMENT_PARTS
+        }
+    team["showcase_sprite_contract"] = public_sprite_contract(
+        team.get("showcase_sprite_contract")
+    )
     return team
 
 
@@ -311,6 +354,40 @@ def public_model_asset(row: Any) -> dict:
         "created_at": asset["created_at"],
         "updated_at": asset["updated_at"],
     }
+
+
+def _loads_json(value: Any) -> Any:
+    try:
+        return json.loads(value) if value else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def public_sprite_contract(value: Any) -> Any:
+    if isinstance(value, dict) or value is None:
+        return value
+    if value == GARMENT_TRANSFER_CONTRACT:
+        return {
+            "id": GARMENT_TRANSFER_CONTRACT,
+            "version": 2,
+            "layout": "5x5",
+            "rows": GARMENT_ATLAS_ROWS,
+            "columns": GARMENT_ATLAS_COLUMNS,
+            "frame_count": GARMENT_ATLAS_ROWS * GARMENT_ATLAS_COLUMNS,
+            "frame_width": GARMENT_ATLAS_CELL_SIZE,
+            "frame_height": GARMENT_ATLAS_CELL_SIZE,
+            "safe_frame": "square",
+        }
+    return {"id": str(value), "layout": "4x3", "rows": 3, "columns": 4, "frame_count": 12}
+
+
+def public_sprite_version(row: Any) -> dict:
+    version = row_dict(row)
+    version["contract"] = public_sprite_contract(version.get("contract"))
+    version["quality"] = _loads_json(version.pop("quality_json", None))
+    version["parts"] = _loads_json(version.pop("parts_json", None))
+    version["qa"] = _loads_json(version.pop("qa_json", None))
+    return version
 
 
 def get_team_or_404(db: Any, team_id: int):
@@ -1135,6 +1212,23 @@ async def legacy_world_page():
     return frontend_index()
 
 
+@app.get("/page-1")
+@app.get("/page-2")
+@app.get("/page-3")
+@app.get("/display/group-layout")
+@app.get("/display/notice")
+@app.get("/display/all-characters")
+@app.get("/showcase")
+@app.get("/print-template")
+@app.get("/editor")
+@app.get("/admin/seating")
+@app.get("/seating-admin")
+@app.get("/sprite-lab")
+@app.get("/garment-test")
+async def retreat_display_page():
+    return frontend_index()
+
+
 @app.get("/api/health")
 async def health():
     api_key = os.getenv("TRIPO_API_KEY", "")
@@ -1952,6 +2046,541 @@ def update_showcase_sprite_status(
         return public_team(get_team_or_404(db, team_id))
 
 
+def _image_to_png_bytes(image: Image.Image) -> bytes:
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    return stream.getvalue()
+
+
+async def persist_showcase_asset(
+    team_id: int,
+    kind: str,
+    contents: bytes,
+    *,
+    content_type: str = "image/png",
+    extension: str = ".png",
+) -> str:
+    asset_id = uuid.uuid4().hex[:12]
+    if blob_configured():
+        return await put_public_blob(
+            f"teams/{team_id}/sprites/{kind}-{asset_id}{extension}",
+            contents,
+            content_type=content_type,
+        )
+    if SERVERLESS_RUNTIME:
+        raise HTTPException(status_code=503, detail="Vercel Blob 연결이 필요합니다")
+    filename = f"team-{team_id}-{kind}-{asset_id}{extension}"
+    (UPLOADS_DIR / filename).write_bytes(contents)
+    return f"/uploads/{filename}"
+
+
+async def read_public_asset_bytes(url: str) -> bytes:
+    if url.startswith("/uploads/"):
+        path = UPLOADS_DIR / Path(url).name
+        return path.read_bytes()
+    if url.startswith("/static/"):
+        path = ROOT / url.lstrip("/")
+        return path.read_bytes()
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+        response = await client.get(url)
+    response.raise_for_status()
+    return response.content
+
+
+def default_capture_quality() -> dict:
+    return {
+        "status": "unavailable",
+        "can_process": True,
+        "summary": "OpenAI Responses QA unavailable; using full-image page corners.",
+        "page_corners": {
+            "top_left": [0.0, 0.0],
+            "top_right": [1.0, 0.0],
+            "bottom_right": [1.0, 1.0],
+            "bottom_left": [0.0, 1.0],
+        },
+        "checks": {
+            "blur": "unknown",
+            "glare": "unknown",
+            "shadow": "unknown",
+            "crop": "unknown",
+            "perspective": "unknown",
+        },
+        "issues": [],
+        "model": OPENAI_SPRITE_QA_MODEL,
+    }
+
+
+def _normalized_corner(value: Any, fallback: list[float]) -> list[float]:
+    if (
+        isinstance(value, list)
+        and len(value) == 2
+        and all(isinstance(item, (int, float)) for item in value)
+    ):
+        return [max(0.0, min(1.0, float(value[0]))), max(0.0, min(1.0, float(value[1])))]
+    return fallback
+
+
+def normalize_capture_quality(payload: dict) -> dict:
+    fallback = default_capture_quality()
+    corners = payload.get("page_corners") if isinstance(payload.get("page_corners"), dict) else {}
+    normalized_corners = {
+        "top_left": _normalized_corner(corners.get("top_left"), [0.0, 0.0]),
+        "top_right": _normalized_corner(corners.get("top_right"), [1.0, 0.0]),
+        "bottom_right": _normalized_corner(corners.get("bottom_right"), [1.0, 1.0]),
+        "bottom_left": _normalized_corner(corners.get("bottom_left"), [0.0, 1.0]),
+    }
+    checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
+    return {
+        "status": payload.get("status") if payload.get("status") in {"passed", "warning", "failed"} else "warning",
+        "can_process": bool(payload.get("can_process", False)),
+        "summary": str(payload.get("summary") or fallback["summary"])[:500],
+        "page_corners": normalized_corners,
+        "checks": {
+            "blur": str(checks.get("blur", "unknown"))[:80],
+            "glare": str(checks.get("glare", "unknown"))[:80],
+            "shadow": str(checks.get("shadow", "unknown"))[:80],
+            "crop": str(checks.get("crop", "unknown"))[:80],
+            "perspective": str(checks.get("perspective", "unknown"))[:80],
+        },
+        "issues": [str(issue)[:160] for issue in payload.get("issues", [])[:12]]
+        if isinstance(payload.get("issues"), list) else [],
+        "model": OPENAI_SPRITE_QA_MODEL,
+    }
+
+
+async def request_capture_quality_review(reference: bytes, content_type: str) -> dict:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key.startswith("sk-"):
+        return default_capture_quality()
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "status": {"type": "string", "enum": ["passed", "warning", "failed"]},
+            "can_process": {"type": "boolean"},
+            "summary": {"type": "string"},
+            "page_corners": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "top_left": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                    "top_right": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                    "bottom_right": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                    "bottom_left": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                },
+                "required": ["top_left", "top_right", "bottom_right", "bottom_left"],
+            },
+            "checks": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "blur": {"type": "string"},
+                    "glare": {"type": "string"},
+                    "shadow": {"type": "string"},
+                    "crop": {"type": "string"},
+                    "perspective": {"type": "string"},
+                },
+                "required": ["blur", "glare", "shadow", "crop", "perspective"],
+            },
+            "issues": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["status", "can_process", "summary", "page_corners", "checks", "issues"],
+    }
+    body = {
+        "model": OPENAI_SPRITE_QA_MODEL,
+        "store": False,
+        "input": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "Review this phone photo of the printed Peter garment worksheet. "
+                        "Return normalized page corners in reading order, each x/y between 0 and 1. "
+                        "Assess blur, glare, shadow, crop, and perspective. Set can_process false only "
+                        "when the four garment regions cannot be extracted from the corrected page."
+                    ),
+                },
+                {
+                    "type": "input_image",
+                    "image_url": f"data:{content_type};base64,{base64.b64encode(reference).decode('ascii')}",
+                    "detail": "high",
+                },
+            ],
+        }],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "peter_capture_quality",
+                "strict": True,
+                "schema": schema,
+            },
+        },
+        "max_output_tokens": 1000,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(75.0, connect=10.0)) as client:
+            response = await client.post(
+                OPENAI_RESPONSES_API_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+        if response.status_code >= 400:
+            fallback = default_capture_quality()
+            fallback["summary"] = openai_error_detail(response)
+            return fallback
+        return normalize_capture_quality(json.loads(_response_output_text(response.json())))
+    except (httpx.HTTPError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        fallback = default_capture_quality()
+        fallback["summary"] = f"Capture QA failed: {str(exc)[:160]}"
+        return fallback
+
+
+def correct_capture_image(reference: bytes, quality: dict) -> Image.Image:
+    source = Image.open(io.BytesIO(reference)).convert("RGB")
+    source.load()
+    corners = quality.get("page_corners") or default_capture_quality()["page_corners"]
+    width, height = source.size
+    quad: list[float] = []
+    # Pillow QUAD expects NW, SW, SE, NE. Keeping this order explicit prevents
+    # a valid phone photo from being rotated or folded during rectification.
+    for key in ("top_left", "bottom_left", "bottom_right", "top_right"):
+        x, y = corners[key]
+        quad.extend([x * width, y * height])
+    corrected = source.transform(
+        GARMENT_TEMPLATE_SIZE,
+        Image.Transform.QUAD,
+        quad,
+        Image.Resampling.BICUBIC,
+    )
+    return neutral_paper_white_balance(corrected)
+
+
+def neutral_paper_white_balance(image: Image.Image) -> Image.Image:
+    rgb = image.convert("RGB")
+    width, height = rgb.size
+    border = max(8, round(min(width, height) * 0.025))
+    samples = []
+    pixels = rgb.load()
+    for x in range(0, width, 8):
+        for y in (*range(0, border, 4), *range(height - border, height, 4)):
+            samples.append(pixels[x, y])
+    for y in range(border, height - border, 8):
+        for x in (*range(0, border, 4), *range(width - border, width, 4)):
+            samples.append(pixels[x, y])
+    if not samples:
+        return rgb
+    channels = [max(1, _median([sample[index] for sample in samples])) for index in range(3)]
+    target = max(channels)
+    balanced = Image.new("RGB", rgb.size)
+    out = balanced.load()
+    for y in range(height):
+        for x in range(width):
+            pixel = pixels[x, y]
+            out[x, y] = tuple(max(0, min(255, round(pixel[index] * target / channels[index]))) for index in range(3))
+    return ImageOps.autocontrast(balanced, cutoff=0.5)
+
+
+def extract_garment_parts(corrected: Image.Image) -> dict[str, Image.Image]:
+    parts: dict[str, Image.Image] = {}
+    width, height = corrected.size
+    for part, crop in GARMENT_PART_CROPS.items():
+        left, top, right, bottom = crop
+        box = (
+            round(left * width),
+            round(top * height),
+            round(right * width),
+            round(bottom * height),
+        )
+        parts[part] = corrected.crop(box).convert("RGB")
+    return parts
+
+
+def is_master_garment_pixel(pixel: tuple[int, int, int, int]) -> float:
+    red, green, blue, alpha = pixel
+    if alpha < 16:
+        return 0.0
+    minimum = min(red, green, blue)
+    spread = max(red, green, blue) - minimum
+    brightness = max(0.0, min(1.0, (minimum - 205) / 38))
+    neutrality = max(0.0, min(1.0, 1 - spread / 34))
+    return brightness * neutrality * (alpha / 255)
+
+
+def _texture_pixel(texture: Image.Image, x: int, y: int, bbox: tuple[int, int, int, int]) -> tuple[int, int, int]:
+    tx = round((x - bbox[0]) * (texture.width - 1) / max(1, bbox[2] - bbox[0] - 1))
+    ty = round((y - bbox[1]) * (texture.height - 1) / max(1, bbox[3] - bbox[1] - 1))
+    return texture.getpixel((max(0, min(texture.width - 1, tx)), max(0, min(texture.height - 1, ty))))[:3]
+
+
+def _garment_split_y(cell: Image.Image, bbox: tuple[int, int, int, int]) -> int:
+    return bbox[1] + round((bbox[3] - bbox[1]) * 0.58)
+
+
+def apply_garment_parts_to_cell(cell: Image.Image, parts: dict[str, Image.Image]) -> Image.Image:
+    source = cell.convert("RGBA")
+    result = source.copy()
+    alpha_bbox = source.getchannel("A").getbbox()
+    if alpha_bbox is None:
+        return result
+    split_y = _garment_split_y(source, alpha_bbox)
+    shoe_top = alpha_bbox[1] + round((alpha_bbox[3] - alpha_bbox[1]) * 0.78)
+    mid_x = alpha_bbox[0] + round((alpha_bbox[2] - alpha_bbox[0]) * 0.5)
+    source_pixels = source.load()
+    result_pixels = result.load()
+    for y in range(source.height):
+        for x in range(source.width):
+            base = source_pixels[x, y]
+            if base[3] < 16:
+                continue
+            strength = is_master_garment_pixel(base)
+            part = None
+            if y >= shoe_top and alpha_bbox[0] <= x <= alpha_bbox[2]:
+                part = "left_shoe" if x < mid_x else "right_shoe"
+                strength = max(strength, 0.88)
+            elif strength > 0:
+                part = "upper" if y < split_y else "lower"
+            if part is None or strength <= 0:
+                continue
+            texture_pixel = _texture_pixel(parts[part], x, y, alpha_bbox)
+            luma = base[0] * 0.2126 + base[1] * 0.7152 + base[2] * 0.0722
+            shade = max(0.65, min(1.10, luma / 238))
+            themed = tuple(max(0, min(255, round(channel * shade))) for channel in texture_pixel)
+            alpha = max(0.0, min(1.0, strength))
+            result_pixels[x, y] = (
+                round(base[0] * (1 - alpha) + themed[0] * alpha),
+                round(base[1] * (1 - alpha) + themed[1] * alpha),
+                round(base[2] * (1 - alpha) + themed[2] * alpha),
+                base[3],
+            )
+    return result
+
+
+def normalize_garment_atlas_cell(cell: Image.Image, *, margin: int = 18) -> Image.Image:
+    rgba = cell.convert("RGBA")
+    bbox = rgba.getchannel("A").getbbox()
+    if bbox is None:
+        return Image.new("RGBA", (GARMENT_ATLAS_CELL_SIZE, GARMENT_ATLAS_CELL_SIZE), (0, 0, 0, 0))
+    trimmed = rgba.crop(bbox)
+    max_size = GARMENT_ATLAS_CELL_SIZE - margin * 2
+    scale = min(max_size / max(1, trimmed.width), max_size / max(1, trimmed.height), 1.0)
+    resized = trimmed.resize(
+        (max(1, round(trimmed.width * scale)), max(1, round(trimmed.height * scale))),
+        Image.Resampling.LANCZOS,
+    )
+    output = Image.new("RGBA", (GARMENT_ATLAS_CELL_SIZE, GARMENT_ATLAS_CELL_SIZE), (0, 0, 0, 0))
+    x = round((GARMENT_ATLAS_CELL_SIZE - resized.width) / 2)
+    y = round((GARMENT_ATLAS_CELL_SIZE - resized.height) / 2)
+    output.alpha_composite(resized, (x, y))
+    return output
+
+
+def compose_garment_atlas(parts: dict[str, Image.Image]) -> Image.Image:
+    if not SHOWCASE_MASTER_PATH.is_file():
+        raise HTTPException(status_code=500, detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다")
+    master = Image.open(SHOWCASE_MASTER_PATH).convert("RGBA")
+    atlas = Image.new("RGBA", (GARMENT_ATLAS_SIZE, GARMENT_ATLAS_SIZE), (0, 0, 0, 0))
+    for row in range(GARMENT_ATLAS_ROWS):
+        for column in range(GARMENT_ATLAS_COLUMNS):
+            left = round(master.width * column / GARMENT_ATLAS_COLUMNS)
+            top = round(master.height * row / GARMENT_ATLAS_ROWS)
+            right = round(master.width * (column + 1) / GARMENT_ATLAS_COLUMNS)
+            bottom = round(master.height * (row + 1) / GARMENT_ATLAS_ROWS)
+            cell = master.crop((left, top, right, bottom))
+            themed = apply_garment_parts_to_cell(cell, parts)
+            themed = normalize_garment_atlas_cell(themed)
+            atlas.alpha_composite(themed, (column * GARMENT_ATLAS_CELL_SIZE, row * GARMENT_ATLAS_CELL_SIZE))
+    return atlas
+
+
+def analyze_garment_atlas_pixels(atlas: Any) -> dict:
+    image = Image.open(io.BytesIO(atlas)).convert("RGBA") if isinstance(atlas, bytes) else atlas.convert("RGBA")
+    if image.size != (GARMENT_ATLAS_SIZE, GARMENT_ATLAS_SIZE):
+        return {
+            "status": "failed",
+            "can_approve": False,
+            "summary": f"Atlas must be {GARMENT_ATLAS_SIZE}x{GARMENT_ATLAS_SIZE}.",
+            "frames": [],
+            "issues": ["invalid_size"],
+        }
+    frames = []
+    failed = 0
+    for index in range(GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS):
+        column = index % GARMENT_ATLAS_COLUMNS
+        row = index // GARMENT_ATLAS_COLUMNS
+        cell = image.crop((
+            column * GARMENT_ATLAS_CELL_SIZE,
+            row * GARMENT_ATLAS_CELL_SIZE,
+            (column + 1) * GARMENT_ATLAS_CELL_SIZE,
+            (row + 1) * GARMENT_ATLAS_CELL_SIZE,
+        ))
+        bbox = cell.getchannel("A").getbbox()
+        issues = []
+        margins = None
+        if bbox is None:
+            failed += 1
+            issues.append("empty_frame")
+        else:
+            left, top, right, bottom = bbox
+            margins = {
+                "left": left,
+                "top": top,
+                "right": GARMENT_ATLAS_CELL_SIZE - right,
+                "bottom": GARMENT_ATLAS_CELL_SIZE - bottom,
+            }
+            if min(margins.values()) < 8:
+                failed += 1
+                issues.append("unsafe_margin")
+        frames.append({
+            "frame": index + 1,
+            "row": row + 1,
+            "column": column + 1,
+            "alpha_bbox": list(bbox) if bbox else None,
+            "margins": margins,
+            "regions_checked": ["head", "hands", "feet", "shoes"],
+            "issues": issues,
+            "status": "failed" if issues else "passed",
+        })
+    return {
+        "status": "failed" if failed else "passed",
+        "can_approve": failed == 0,
+        "summary": "25-frame alpha bbox QA passed." if not failed else f"{failed} frames failed alpha bbox QA.",
+        "contract": GARMENT_TRANSFER_CONTRACT,
+        "safe_margin_px": 8,
+        "frames": frames,
+        "issues": [],
+    }
+
+
+async def request_garment_atlas_ai_review(atlas: bytes, deterministic: dict) -> dict:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key.startswith("sk-"):
+        return {
+            "status": "unavailable",
+            "summary": "AI animation review unavailable.",
+            "issues": [],
+            "frames": [],
+            "model": OPENAI_SPRITE_QA_MODEL,
+        }
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "status": {"type": "string", "enum": ["passed", "warning", "failed"]},
+            "summary": {"type": "string"},
+            "issues": {"type": "array", "items": {"type": "string"}},
+            "frames": {
+                "type": "array",
+                "maxItems": 25,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "frame": {"type": "integer", "minimum": 1, "maximum": 25},
+                        "severity": {"type": "string", "enum": ["warning", "failed"]},
+                        "issue": {"type": "string"},
+                    },
+                    "required": ["frame", "severity", "issue"],
+                },
+            },
+        },
+        "required": ["status", "summary", "issues", "frames"],
+    }
+    body = {
+        "model": OPENAI_SPRITE_QA_MODEL,
+        "store": False,
+        "input": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "Review this fixed Peter 5x5 garment-transfer atlas. There are exactly 25 frames. "
+                        "Check clipping, animation consistency, and whether clothing texture transfer keeps Peter's master identity. "
+                        "Do not fail because left and right shoes differ; that distinction is intentional.\n\n"
+                        + json.dumps({"deterministic": deterministic}, ensure_ascii=False)[:4000]
+                    ),
+                },
+                {
+                    "type": "input_image",
+                    "image_url": f"data:image/png;base64,{base64.b64encode(atlas).decode('ascii')}",
+                    "detail": "high",
+                },
+            ],
+        }],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "peter_garment_animation_review",
+                "strict": True,
+                "schema": schema,
+            },
+        },
+        "max_output_tokens": 1200,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(75.0, connect=10.0)) as client:
+            response = await client.post(
+                OPENAI_RESPONSES_API_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+        if response.status_code >= 400:
+            return {
+                "status": "unavailable",
+                "summary": openai_error_detail(response),
+                "issues": [],
+                "frames": [],
+                "model": OPENAI_SPRITE_QA_MODEL,
+            }
+        review = json.loads(_response_output_text(response.json()))
+        review["model"] = OPENAI_SPRITE_QA_MODEL
+        return review
+    except (httpx.HTTPError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return {
+            "status": "unavailable",
+            "summary": f"AI animation review failed: {str(exc)[:160]}",
+            "issues": [],
+            "frames": [],
+            "model": OPENAI_SPRITE_QA_MODEL,
+        }
+
+
+async def inspect_garment_atlas_quality(atlas: bytes) -> dict:
+    deterministic = analyze_garment_atlas_pixels(atlas)
+    ai = await request_garment_atlas_ai_review(atlas, deterministic)
+    statuses = {deterministic.get("status"), ai.get("status")}
+    if "failed" in statuses:
+        status = "failed"
+    elif "warning" in statuses or "unavailable" in statuses:
+        status = "warning"
+    else:
+        status = "passed"
+    return {
+        "status": status,
+        "can_approve": deterministic.get("status") != "failed" and ai.get("status") != "failed",
+        "summary": "Garment atlas QA passed." if status == "passed" else "Garment atlas needs review.",
+        "deterministic": deterministic,
+        "ai": ai,
+    }
+
+
+def get_sprite_version_or_404(db: Any, team_id: int, version_id: str):
+    row = db.execute(
+        "SELECT * FROM sprite_versions WHERE team_id = ? AND id = ?",
+        (team_id, version_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="스프라이트 버전을 찾을 수 없습니다")
+    return row
+
+
 @app.post("/api/teams/{team_id}/image")
 async def upload_team_image(team_id: int, image: UploadFile = File(...)):
     if SERVERLESS_RUNTIME and not blob_configured():
@@ -2073,6 +2702,358 @@ async def generate_showcase_sprite(team_id: int, reference: UploadFile = File(..
     return updated
 
 
+@app.post("/api/teams/{team_id}/capture/process")
+async def process_showcase_capture(team_id: int, reference: UploadFile = File(...)):
+    if SERVERLESS_RUNTIME and not blob_configured():
+        raise HTTPException(status_code=503, detail="Vercel Blob 연결이 필요합니다")
+    with connect_db() as db:
+        get_team_or_404(db, team_id)
+    contents, content_type, extension = await validated_image_upload(reference)
+    quality = await request_capture_quality_review(contents, content_type)
+    if not quality.get("can_process", False):
+        timestamp = now_iso()
+        with connect_db() as db:
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_capture_status = 'failed',
+                    showcase_capture_quality_json = ?,
+                    showcase_sprite_error = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    json.dumps(quality, ensure_ascii=False),
+                    quality.get("summary", "캡처 품질 검수 실패"),
+                    timestamp,
+                    team_id,
+                ),
+            )
+            return {
+                "team": public_team(get_team_or_404(db, team_id)),
+                "quality": quality,
+                "can_process": False,
+            }
+    source_url = await persist_showcase_asset(
+        team_id,
+        "capture-source",
+        contents,
+        content_type=content_type,
+        extension=extension,
+    )
+    corrected = correct_capture_image(contents, quality)
+    corrected_bytes = _image_to_png_bytes(corrected)
+    corrected_url = await persist_showcase_asset(team_id, "capture-corrected", corrected_bytes)
+    parts = extract_garment_parts(corrected)
+    part_urls: dict[str, str] = {}
+    for part, image in parts.items():
+        part_urls[part] = await persist_showcase_asset(
+            team_id,
+            f"capture-{part}",
+            _image_to_png_bytes(image),
+        )
+    version_id = uuid.uuid4().hex
+    timestamp = now_iso()
+    parts_payload = {
+        "contract": GARMENT_TRANSFER_CONTRACT,
+        "template_size": list(GARMENT_TEMPLATE_SIZE),
+        "crops": {part: list(crop) for part, crop in GARMENT_PART_CROPS.items()},
+        "urls": part_urls,
+    }
+    with connect_db() as db:
+        db.execute(
+            """
+            INSERT INTO sprite_versions (
+                id, team_id, contract, status, source_url, corrected_url,
+                upper_url, lower_url, left_shoe_url, right_shoe_url,
+                quality_json, parts_json, model, created_at, updated_at
+            ) VALUES (?, ?, ?, 'parts_ready', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                version_id,
+                team_id,
+                GARMENT_TRANSFER_CONTRACT,
+                source_url,
+                corrected_url,
+                part_urls["upper"],
+                part_urls["lower"],
+                part_urls["left_shoe"],
+                part_urls["right_shoe"],
+                json.dumps(quality, ensure_ascii=False),
+                json.dumps(parts_payload, ensure_ascii=False),
+                OPENAI_SPRITE_QA_MODEL,
+                timestamp,
+                timestamp,
+            ),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_capture_url = ?,
+                showcase_capture_source_url = ?,
+                showcase_capture_corrected_url = ?,
+                showcase_capture_status = 'garment_review',
+                showcase_capture_quality_json = ?,
+                showcase_garment_parts_json = ?,
+                showcase_sprite_contract = ?,
+                showcase_sprite_version_id = ?,
+                showcase_sprite_status = 'garment_review',
+                showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                corrected_url,
+                source_url,
+                corrected_url,
+                json.dumps(quality, ensure_ascii=False),
+                json.dumps(parts_payload, ensure_ascii=False),
+                GARMENT_TRANSFER_CONTRACT,
+                version_id,
+                timestamp,
+                timestamp,
+                team_id,
+            ),
+        )
+        return {
+            "team": public_team(get_team_or_404(db, team_id)),
+            "version": public_sprite_version(get_sprite_version_or_404(db, team_id, version_id)),
+            "quality": quality,
+            "parts": parts_payload,
+            "status": "parts_ready",
+        }
+
+
+@app.post("/api/teams/{team_id}/capture/parts/{part}/retry")
+async def retry_showcase_capture_part(
+    team_id: int,
+    part: str,
+    reference: Optional[UploadFile] = File(default=None),
+):
+    if reference is not None and not hasattr(reference, "content_type"):
+        reference = None
+    if part not in GARMENT_PARTS:
+        raise HTTPException(status_code=404, detail="지원하지 않는 의상 영역입니다")
+    with connect_db() as db:
+        team = row_dict(get_team_or_404(db, team_id))
+        version_id = team.get("showcase_sprite_version_id")
+        if not version_id:
+            raise HTTPException(status_code=409, detail="먼저 캡처를 처리해주세요")
+        version = row_dict(get_sprite_version_or_404(db, team_id, version_id))
+    if reference is not None:
+        contents, content_type, _ = await validated_image_upload(reference)
+        quality = await request_capture_quality_review(contents, content_type)
+        if not quality.get("can_process", False):
+            raise HTTPException(status_code=422, detail=quality.get("summary", "캡처 품질 검수 실패"))
+        corrected = correct_capture_image(contents, quality)
+    else:
+        if not version.get("corrected_url"):
+            raise HTTPException(status_code=409, detail="보정된 캡처가 없어 재추출할 수 없습니다")
+        corrected_bytes = await read_public_asset_bytes(version["corrected_url"])
+        corrected = Image.open(io.BytesIO(corrected_bytes)).convert("RGB")
+    part_image = extract_garment_parts(corrected)[part]
+    part_url = await persist_showcase_asset(team_id, f"capture-{part}", _image_to_png_bytes(part_image))
+    parts_payload = _loads_json(version.get("parts_json")) or {
+        "contract": GARMENT_TRANSFER_CONTRACT,
+        "template_size": list(GARMENT_TEMPLATE_SIZE),
+        "crops": {name: list(crop) for name, crop in GARMENT_PART_CROPS.items()},
+        "urls": {},
+    }
+    parts_payload.setdefault("urls", {})[part] = part_url
+    timestamp = now_iso()
+    column = f"{part}_url"
+    with connect_db() as db:
+        db.execute(
+            f"""
+            UPDATE sprite_versions
+            SET {column} = ?, parts_json = ?, status = 'parts_ready',
+                atlas_url = NULL, qa_json = NULL, updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (
+                part_url,
+                json.dumps(parts_payload, ensure_ascii=False),
+                timestamp,
+                version_id,
+                team_id,
+            ),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_garment_parts_json = ?,
+                showcase_sprite_status = 'garment_review',
+                showcase_sprite_url = NULL,
+                showcase_sprite_quality_json = NULL,
+                showcase_sprite_quality_status = 'unchecked',
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                json.dumps(parts_payload, ensure_ascii=False),
+                timestamp,
+                timestamp,
+                team_id,
+            ),
+        )
+        return {
+            "team": public_team(get_team_or_404(db, team_id)),
+            "version": public_sprite_version(get_sprite_version_or_404(db, team_id, version_id)),
+            "part": part,
+            "part_url": part_url,
+            "status": "parts_ready",
+        }
+
+
+@app.post("/api/teams/{team_id}/capture/compose")
+async def compose_showcase_capture(team_id: int):
+    with connect_db() as db:
+        team = row_dict(get_team_or_404(db, team_id))
+        version_id = team.get("showcase_sprite_version_id")
+        if not version_id:
+            raise HTTPException(status_code=409, detail="먼저 캡처를 처리해주세요")
+        version = row_dict(get_sprite_version_or_404(db, team_id, version_id))
+    missing = [part for part in GARMENT_PARTS if not version.get(f"{part}_url")]
+    if missing:
+        raise HTTPException(status_code=409, detail=f"의상 영역이 누락되었습니다: {', '.join(missing)}")
+    parts: dict[str, Image.Image] = {}
+    for part in GARMENT_PARTS:
+        part_bytes = await read_public_asset_bytes(version[f"{part}_url"])
+        parts[part] = Image.open(io.BytesIO(part_bytes)).convert("RGB")
+    atlas = compose_garment_atlas(parts)
+    atlas_bytes = _image_to_png_bytes(atlas)
+    if len(atlas_bytes) > MAX_SPRITE_BYTES:
+        raise HTTPException(status_code=502, detail="합성 스프라이트 파일이 너무 큽니다")
+    qa = await inspect_garment_atlas_quality(atlas_bytes)
+    atlas_url = await persist_showcase_asset(team_id, "sprite-v2-atlas", atlas_bytes)
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'review', atlas_url = ?, qa_json = ?, updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (
+                atlas_url,
+                json.dumps(qa, ensure_ascii=False),
+                timestamp,
+                version_id,
+                team_id,
+            ),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_url = ?,
+                showcase_sprite_status = 'review',
+                showcase_sprite_error = NULL,
+                showcase_sprite_model = ?,
+                showcase_sprite_quality_status = ?,
+                showcase_sprite_quality_json = ?,
+                showcase_sprite_qa_model = ?,
+                showcase_sprite_contract = ?,
+                showcase_sprite_version_id = ?,
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                atlas_url,
+                "pillow-garment-transfer",
+                qa.get("status", "unchecked"),
+                json.dumps(qa, ensure_ascii=False),
+                OPENAI_SPRITE_QA_MODEL,
+                GARMENT_TRANSFER_CONTRACT,
+                version_id,
+                timestamp,
+                timestamp,
+                team_id,
+            ),
+        )
+        return {
+            "team": public_team(get_team_or_404(db, team_id)),
+            "version": public_sprite_version(get_sprite_version_or_404(db, team_id, version_id)),
+            "qa": qa,
+            "atlas_url": atlas_url,
+            "status": "review",
+            "contract": GARMENT_TRANSFER_CONTRACT,
+        }
+
+
+@app.get("/api/teams/{team_id}/sprite-versions")
+async def list_sprite_versions(team_id: int):
+    with connect_db() as db:
+        get_team_or_404(db, team_id)
+        rows = db.execute(
+            """
+            SELECT * FROM sprite_versions
+            WHERE team_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (team_id,),
+        ).fetchall()
+        return {
+            "team_id": team_id,
+            "active_version_id": row_dict(get_team_or_404(db, team_id)).get("showcase_sprite_active_version_id"),
+            "candidate_version_id": row_dict(get_team_or_404(db, team_id)).get("showcase_sprite_version_id"),
+            "versions": [public_sprite_version(row) for row in rows],
+        }
+
+
+@app.post("/api/teams/{team_id}/sprite-versions/{version_id}/restore")
+async def restore_sprite_version(team_id: int, version_id: str):
+    timestamp = now_iso()
+    with connect_db() as db:
+        version = row_dict(get_sprite_version_or_404(db, team_id, version_id))
+        if not version.get("atlas_url"):
+            raise HTTPException(status_code=409, detail="복원할 스프라이트 아틀라스가 없습니다")
+        db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'ready', approved_at = COALESCE(approved_at, ?), updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (timestamp, timestamp, version_id, team_id),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_active_url = ?,
+                showcase_sprite_active_version_id = ?,
+                showcase_sprite_version_id = ?,
+                showcase_sprite_url = ?,
+                showcase_sprite_status = 'ready',
+                showcase_sprite_contract = ?,
+                showcase_sprite_quality_status = ?,
+                showcase_sprite_quality_json = ?,
+                showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                version["atlas_url"],
+                version_id,
+                version_id,
+                version["atlas_url"],
+                version.get("contract") or GARMENT_TRANSFER_CONTRACT,
+                (_loads_json(version.get("qa_json")) or {}).get("status", "unchecked"),
+                version.get("qa_json"),
+                timestamp,
+                timestamp,
+                team_id,
+            ),
+        )
+        return {
+            "team": public_team(get_team_or_404(db, team_id)),
+            "version": public_sprite_version(get_sprite_version_or_404(db, team_id, version_id)),
+            "status": "ready",
+        }
+
+
 @app.post("/api/teams/{team_id}/showcase-sprite/approve")
 async def approve_showcase_sprite(
     team_id: int,
@@ -2081,6 +3062,13 @@ async def approve_showcase_sprite(
     force = payload.force if payload else False
     with connect_db() as db:
         team = row_dict(get_team_or_404(db, team_id))
+        candidate_version = None
+        if team.get("showcase_sprite_version_id"):
+            candidate_version = row_dict(get_sprite_version_or_404(
+                db,
+                team_id,
+                team["showcase_sprite_version_id"],
+            ))
     if not team["showcase_sprite_url"]:
         raise HTTPException(status_code=409, detail="검수할 AI 스프라이트가 없습니다")
     if team["showcase_sprite_status"] not in ("review", "ready"):
@@ -2088,7 +3076,12 @@ async def approve_showcase_sprite(
     if team["showcase_sprite_status"] == "ready":
         return public_team(team)
     quality = {}
-    if team.get("showcase_sprite_quality_json"):
+    if candidate_version and candidate_version.get("qa_json"):
+        try:
+            quality = json.loads(candidate_version["qa_json"])
+        except (json.JSONDecodeError, TypeError):
+            quality = {}
+    elif team.get("showcase_sprite_quality_json"):
         try:
             quality = json.loads(team["showcase_sprite_quality_json"])
         except (json.JSONDecodeError, TypeError):
@@ -2100,10 +3093,25 @@ async def approve_showcase_sprite(
         )
     timestamp = now_iso()
     with connect_db() as db:
+        if candidate_version:
+            db.execute(
+                """
+                UPDATE sprite_versions
+                SET status = 'ready', approved_at = ?, updated_at = ?
+                WHERE id = ? AND team_id = ?
+                """,
+                (
+                    timestamp,
+                    timestamp,
+                    candidate_version["id"],
+                    team_id,
+                ),
+            )
         db.execute(
             """
             UPDATE teams
             SET showcase_sprite_active_url = showcase_sprite_url,
+                showcase_sprite_active_version_id = COALESCE(showcase_sprite_version_id, showcase_sprite_active_version_id),
                 showcase_sprite_status = 'ready',
                 showcase_sprite_error = NULL,
                 showcase_sprite_updated_at = ?, updated_at = ?

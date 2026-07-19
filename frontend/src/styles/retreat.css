@@ -99,12 +99,20 @@ select {
   height: min(92cqw, 92cqh);
   background-image: var(--atlas-image);
   background-repeat: no-repeat;
-  background-position-x: 0%;
-  background-position-y: calc(var(--atlas-row) * 50%);
-  background-size: 400% 300%;
+  background-position-x: calc(var(--atlas-column, 0) * 100% / (var(--atlas-columns, 4) - 1));
+  background-position-y: calc(var(--atlas-row, 0) * 100% / (var(--atlas-rows, 3) - 1));
+  background-size: calc(var(--atlas-columns, 4) * 100%) calc(var(--atlas-rows, 3) * 100%);
   animation: retreat-atlas-frames 0.88s steps(1, end) infinite;
   translate: -50% 0;
   transform-origin: 50% 100%;
+}
+
+.atlas-sprite-animator[data-layout="fixed-5x5"] .atlas-sprite-animator__safe-frame {
+  bottom: 2cqh;
+  width: min(96cqw, 96cqh);
+  height: min(96cqw, 96cqh);
+  animation: none;
+  image-rendering: auto;
 }
 
 .atlas-sprite-animator[data-playing="false"] .atlas-sprite-animator__safe-frame {

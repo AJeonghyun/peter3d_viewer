@@ -1,4 +1,5 @@
 import type { AnimationName } from '../spriteLab/types';
+import type { ShowcaseSpriteContract } from '../types/api';
 
 export type RetreatPage = 'group-layout' | 'notice' | 'all-characters';
 export type TextAlign = 'left' | 'center' | 'right';
@@ -31,6 +32,7 @@ export interface RetreatGroup {
   memberNames: string[];
   spriteSheetUrl: string;
   spriteAtlasUrl?: string;
+  spriteAtlasContract?: ShowcaseSpriteContract | null;
   spriteAnimationRoot?: string;
   spriteAssetKey?: string;
   spriteFrameCount: number;

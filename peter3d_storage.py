@@ -91,6 +91,15 @@ SQLITE_SCHEMA = (
         showcase_sprite_quality_json TEXT,
         showcase_sprite_qa_model TEXT,
         showcase_sprite_updated_at TEXT,
+        showcase_capture_url TEXT,
+        showcase_capture_source_url TEXT,
+        showcase_capture_corrected_url TEXT,
+        showcase_capture_status TEXT NOT NULL DEFAULT 'empty',
+        showcase_capture_quality_json TEXT,
+        showcase_garment_parts_json TEXT,
+        showcase_sprite_contract TEXT,
+        showcase_sprite_version_id TEXT,
+        showcase_sprite_active_version_id TEXT,
         image_url TEXT,
         model_url TEXT,
         model_asset_id TEXT,
@@ -147,6 +156,29 @@ SQLITE_SCHEMA = (
         task_type TEXT NOT NULL,
         consumed_credit INTEGER NOT NULL DEFAULT 0,
         recorded_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS sprite_versions (
+        id TEXT PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        contract TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        source_url TEXT,
+        corrected_url TEXT,
+        upper_url TEXT,
+        lower_url TEXT,
+        left_shoe_url TEXT,
+        right_shoe_url TEXT,
+        atlas_url TEXT,
+        quality_json TEXT,
+        parts_json TEXT,
+        qa_json TEXT,
+        model TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        approved_at TEXT
     )
     """,
     """
@@ -208,6 +240,15 @@ POSTGRES_SCHEMA = (
         showcase_sprite_quality_json TEXT,
         showcase_sprite_qa_model TEXT,
         showcase_sprite_updated_at TEXT,
+        showcase_capture_url TEXT,
+        showcase_capture_source_url TEXT,
+        showcase_capture_corrected_url TEXT,
+        showcase_capture_status TEXT NOT NULL DEFAULT 'empty',
+        showcase_capture_quality_json TEXT,
+        showcase_garment_parts_json TEXT,
+        showcase_sprite_contract TEXT,
+        showcase_sprite_version_id TEXT,
+        showcase_sprite_active_version_id TEXT,
         image_url TEXT,
         model_url TEXT,
         model_asset_id TEXT,
@@ -264,6 +305,29 @@ POSTGRES_SCHEMA = (
         task_type TEXT NOT NULL,
         consumed_credit INTEGER NOT NULL DEFAULT 0,
         recorded_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS sprite_versions (
+        id TEXT PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        contract TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        source_url TEXT,
+        corrected_url TEXT,
+        upper_url TEXT,
+        lower_url TEXT,
+        left_shoe_url TEXT,
+        right_shoe_url TEXT,
+        atlas_url TEXT,
+        quality_json TEXT,
+        parts_json TEXT,
+        qa_json TEXT,
+        model TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        approved_at TEXT
     )
     """,
     """
@@ -328,6 +392,15 @@ TEAM_COLUMN_MIGRATIONS = {
     "showcase_sprite_quality_json": "TEXT",
     "showcase_sprite_qa_model": "TEXT",
     "showcase_sprite_updated_at": "TEXT",
+    "showcase_capture_url": "TEXT",
+    "showcase_capture_source_url": "TEXT",
+    "showcase_capture_corrected_url": "TEXT",
+    "showcase_capture_status": "TEXT NOT NULL DEFAULT 'empty'",
+    "showcase_capture_quality_json": "TEXT",
+    "showcase_garment_parts_json": "TEXT",
+    "showcase_sprite_contract": "TEXT",
+    "showcase_sprite_version_id": "TEXT",
+    "showcase_sprite_active_version_id": "TEXT",
     "model_asset_id": "TEXT",
 }
 

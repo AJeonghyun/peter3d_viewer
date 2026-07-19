@@ -18,6 +18,7 @@ export function createDefaultGroups(): RetreatGroup[] {
       memberNames: [],
       spriteSheetUrl: '',
       spriteAtlasUrl: '',
+      spriteAtlasContract: null,
       spriteAnimationRoot: '',
       spriteFrameCount: 1,
       spriteFrameWidth: 160,

@@ -37,6 +37,16 @@ const PRESET_CHARACTER: CharacterDefinition = {
   animations: peterAnimations,
 };
 
+function isFixedMasterContract(team: Team) {
+  if (!team.showcase_sprite_active_version_id) return false;
+  const contract = team.showcase_sprite_contract;
+  return contract?.version === 2
+    || contract?.version === '2'
+    || contract?.layout === '5x5'
+    || (contract?.rows === 5 && contract?.columns === 5)
+    || contract?.frame_count === 25;
+}
+
 function PaperPeterComponent({
   team,
   phase,
@@ -72,11 +82,18 @@ function PaperPeterComponent({
       setSprite(null);
       return () => { active = false; };
     }
+    if (isFixedMasterContract(team)) {
+      setSprite({
+        url: spriteUrl,
+        cellAspect: 1,
+      });
+      return () => { active = false; };
+    }
     void prepareSpriteAtlas(spriteUrl).then((prepared) => {
       if (active) setSprite(prepared);
     });
     return () => { active = false; };
-  }, [team.showcase_sprite_active_url]);
+  }, [team]);
 
   useEffect(() => {
     if (phase !== 'active') {
@@ -171,6 +188,9 @@ function PaperPeterComponent({
             flipX={travelDirection < 0}
             playing={phase !== 'exiting'}
             prepared
+            contract={team.showcase_sprite_active_version_id
+              ? team.showcase_sprite_contract
+              : null}
             label={`${team.name}의 AI 게임 캐릭터`}
           />
         </div>

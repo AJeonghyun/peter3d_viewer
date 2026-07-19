@@ -151,6 +151,9 @@ export function RetreatProvider({ children }: PropsWithChildren) {
           groupName: team.name || group.groupName,
           displayName: team.name || group.displayName,
           spriteAtlasUrl: team.showcase_sprite_active_url || '',
+          spriteAtlasContract: team.showcase_sprite_active_version_id
+            ? team.showcase_sprite_contract ?? null
+            : null,
         };
       }),
     };

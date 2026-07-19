@@ -53,6 +53,32 @@ def make_sprite_atlas(*, clipped_frame: Optional[int] = None) -> bytes:
     return stream.getvalue()
 
 
+def make_garment_capture() -> bytes:
+    image = Image.new("RGB", backend_main.GARMENT_TEMPLATE_SIZE, (246, 246, 242))
+    draw = ImageDraw.Draw(image)
+    colors = {
+        "upper": (210, 48, 72),
+        "lower": (38, 112, 205),
+        "left_shoe": (30, 170, 92),
+        "right_shoe": (235, 196, 38),
+    }
+    width, height = image.size
+    for part, crop in backend_main.GARMENT_PART_CROPS.items():
+        left, top, right, bottom = crop
+        draw.rectangle(
+            (
+                round(left * width) + 12,
+                round(top * height) + 12,
+                round(right * width) - 12,
+                round(bottom * height) - 12,
+            ),
+            fill=colors[part],
+        )
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    return stream.getvalue()
+
+
 class Peter3DBackendTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -131,6 +157,9 @@ class Peter3DBackendTests(unittest.TestCase):
             asset_table = db.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'model_assets'"
             ).fetchone()
+            version_table = db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sprite_versions'"
+            ).fetchone()
         self.assertIn("model_asset_id", team_columns)
         self.assertIn("showcase_image_url", team_columns)
         self.assertTrue({
@@ -143,7 +172,15 @@ class Peter3DBackendTests(unittest.TestCase):
             "showcase_sprite_quality_json",
             "showcase_sprite_qa_model",
             "showcase_sprite_updated_at",
+            "showcase_capture_url",
+            "showcase_capture_status",
+            "showcase_capture_quality_json",
+            "showcase_garment_parts_json",
+            "showcase_sprite_contract",
+            "showcase_sprite_version_id",
+            "showcase_sprite_active_version_id",
         }.issubset(team_columns))
+        self.assertIsNotNone(version_table)
         self.assertIsNotNone(asset_table)
 
     def test_initializes_default_seating_preset_and_active_setting(self):
@@ -509,10 +546,26 @@ class Peter3DBackendTests(unittest.TestCase):
         world = asyncio.run(backend_main.world_page())
         admin = asyncio.run(backend_main.admin_page())
         legacy_world = asyncio.run(backend_main.legacy_world_page())
+        retreat_display = asyncio.run(backend_main.retreat_display_page())
         expected = backend_main.FRONTEND_DIST / "index.html"
         self.assertEqual(world.path, expected)
         self.assertEqual(admin.path, expected)
         self.assertEqual(legacy_world.path, expected)
+        self.assertEqual(retreat_display.path, expected)
+        registered_paths = {route.path for route in backend_main.app.routes}
+        self.assertTrue(
+            {
+                "/page-1",
+                "/page-2",
+                "/page-3",
+                "/display/group-layout",
+                "/display/notice",
+                "/display/all-characters",
+                "/showcase",
+                "/print-template",
+                "/admin/seating",
+            }.issubset(registered_paths)
+        )
 
     def test_character_image_upload_updates_only_the_showcase_image(self):
         previous_image = "/uploads/team-1-3d-source.png"
@@ -601,6 +654,130 @@ class Peter3DBackendTests(unittest.TestCase):
             approved["showcase_sprite_active_url"],
             approved["showcase_sprite_url"],
         )
+
+    def test_capture_v2_process_compose_approve_and_restore_version(self):
+        quality = {
+            "status": "passed",
+            "can_process": True,
+            "summary": "usable worksheet",
+            "page_corners": {
+                "top_left": [0, 0],
+                "top_right": [1, 0],
+                "bottom_right": [1, 1],
+                "bottom_left": [0, 1],
+            },
+            "checks": {
+                "blur": "sharp",
+                "glare": "none",
+                "shadow": "minor",
+                "crop": "complete",
+                "perspective": "correctable",
+            },
+            "issues": [],
+            "model": backend_main.OPENAI_SPRITE_QA_MODEL,
+        }
+        reference = backend_main.UploadFile(
+            filename="capture.png",
+            file=io.BytesIO(make_garment_capture()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        with patch(
+            "backend_main.request_capture_quality_review",
+            new=AsyncMock(return_value=quality),
+        ) as review:
+            processed = asyncio.run(backend_main.process_showcase_capture(1, reference))
+
+        review.assert_awaited_once()
+        self.assertEqual(processed["status"], "parts_ready")
+        self.assertEqual(
+            processed["version"]["contract"]["id"],
+            backend_main.GARMENT_TRANSFER_CONTRACT,
+        )
+        self.assertEqual(processed["version"]["status"], "parts_ready")
+        self.assertEqual(processed["parts"]["template_size"], list(backend_main.GARMENT_TEMPLATE_SIZE))
+        self.assertEqual(set(processed["parts"]["urls"]), set(backend_main.GARMENT_PARTS))
+        for part in backend_main.GARMENT_PARTS:
+            self.assertTrue(processed["parts"]["urls"][part].startswith(f"/uploads/team-1-capture-{part}-"))
+            self.assertTrue((backend_main.UPLOADS_DIR / Path(processed["parts"]["urls"][part]).name).is_file())
+            self.assertEqual(
+                processed["team"]["showcase_garment_parts"][part]["preview_url"],
+                processed["parts"]["urls"][part],
+            )
+        self.assertTrue(processed["team"]["showcase_capture_source_url"].startswith("/uploads/"))
+        self.assertTrue(processed["team"]["showcase_capture_corrected_url"].startswith("/uploads/"))
+
+        retried = asyncio.run(backend_main.retry_showcase_capture_part(1, "lower"))
+        self.assertEqual(retried["part"], "lower")
+        self.assertNotEqual(retried["part_url"], processed["parts"]["urls"]["lower"])
+        self.assertEqual(retried["version"]["status"], "parts_ready")
+
+        composed = asyncio.run(backend_main.compose_showcase_capture(1))
+
+        self.assertEqual(composed["status"], "review")
+        self.assertEqual(composed["contract"], backend_main.GARMENT_TRANSFER_CONTRACT)
+        self.assertEqual(
+            composed["team"]["showcase_sprite_contract"]["id"],
+            backend_main.GARMENT_TRANSFER_CONTRACT,
+        )
+        self.assertEqual(composed["team"]["showcase_sprite_status"], "review")
+        self.assertEqual(composed["team"]["showcase_sprite_quality"]["deterministic"]["status"], "passed")
+        atlas_path = backend_main.UPLOADS_DIR / Path(composed["atlas_url"]).name
+        with Image.open(atlas_path) as atlas:
+            self.assertEqual(atlas.size, (1800, 1800))
+
+        approved = asyncio.run(backend_main.approve_showcase_sprite(1))
+        self.assertEqual(approved["showcase_sprite_status"], "ready")
+        self.assertEqual(approved["showcase_sprite_active_url"], composed["atlas_url"])
+        self.assertEqual(approved["showcase_sprite_active_version_id"], composed["version"]["id"])
+
+        listed = asyncio.run(backend_main.list_sprite_versions(1))
+        self.assertEqual(listed["active_version_id"], composed["version"]["id"])
+        self.assertEqual(len(listed["versions"]), 1)
+
+        restored = asyncio.run(backend_main.restore_sprite_version(1, composed["version"]["id"]))
+        self.assertEqual(restored["status"], "ready")
+        self.assertEqual(restored["team"]["showcase_sprite_active_url"], composed["atlas_url"])
+
+    def test_capture_correction_keeps_phone_photo_corner_orientation(self):
+        source = Image.new("RGB", (100, 100), "white")
+        pixels = source.load()
+        patches = (
+            ((10, 10, 35, 35), (240, 20, 20)),
+            ((65, 10, 90, 35), (20, 220, 20)),
+            ((10, 65, 35, 90), (20, 20, 240)),
+            ((65, 65, 90, 90), (230, 210, 20)),
+        )
+        for (left, top, right, bottom), color in patches:
+            for y in range(top, bottom):
+                for x in range(left, right):
+                    pixels[x, y] = color
+        buffer = io.BytesIO()
+        source.save(buffer, format="PNG")
+        quality = backend_main.default_capture_quality()
+        corrected = backend_main.correct_capture_image(buffer.getvalue(), quality)
+        width, height = corrected.size
+        samples = [
+            corrected.getpixel((round(width * 0.22), round(height * 0.22))),
+            corrected.getpixel((round(width * 0.78), round(height * 0.22))),
+            corrected.getpixel((round(width * 0.22), round(height * 0.78))),
+            corrected.getpixel((round(width * 0.78), round(height * 0.78))),
+        ]
+        self.assertGreater(samples[0][0], max(samples[0][1:]))
+        self.assertGreater(samples[1][1], max(samples[1][0], samples[1][2]))
+        self.assertGreater(samples[2][2], max(samples[2][:2]))
+        self.assertGreater(samples[3][0], samples[3][2])
+        self.assertGreater(samples[3][1], samples[3][2])
+
+    def test_safe_master_keeps_all_25_poses_inside_cell_margins(self):
+        self.assertEqual(backend_main.SHOWCASE_MASTER_PATH, backend_main.SHOWCASE_SAFE_MASTER_PATH)
+        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as master:
+            self.assertEqual(master.size, (1800, 1800))
+            report = backend_main.analyze_garment_atlas_pixels(master)
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(len(report["frames"]), 25)
+        for frame in report["frames"]:
+            self.assertGreaterEqual(min(frame["margins"].values()), 18)
 
     def test_showcase_sprite_approval_blocks_failed_qa_without_force(self):
         quality = {

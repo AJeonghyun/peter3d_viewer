@@ -8,6 +8,7 @@ type PageName =
   | 'world-3d'
   | 'sprite-lab'
   | 'showcase'
+  | 'print-template'
   | 'editor'
   | 'group-layout'
   | 'notice'
@@ -30,6 +31,7 @@ function resolvePage(pathname: string): PageName {
     || pathname === '/page-2'
   ) return 'notice';
   if (pathname === '/showcase' || pathname.startsWith('/showcase/')) return 'showcase';
+  if (pathname === '/print-template' || pathname.startsWith('/print-template/')) return 'print-template';
   if (pathname === '/garment-test' || pathname.startsWith('/garment-test/')) return 'garment-test';
   if (
     pathname === '/display/all-characters'
@@ -57,6 +59,7 @@ const Page = ({
   'all-characters': lazy(() => import('./pages/AllCharactersPage')),
   'garment-test': lazy(() => import('./pages/GarmentTransferTestPage')),
   showcase: lazy(() => import('./pages/ShowcasePage')),
+  'print-template': lazy(() => import('./pages/PrintTemplatePage')),
   'sprite-lab': lazy(() => import('./pages/SpriteLabPage')),
   'world-3d': lazy(() => import('./pages/WorldPage')),
 } satisfies Record<PageName, ReturnType<typeof lazy>>)[page];

@@ -1,0 +1,164 @@
+:root {
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  color: #172b36;
+  background: #eef3f4;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; }
+button, a { font: inherit; }
+
+.print-template-page {
+  min-height: 100vh;
+  padding: 22px;
+}
+
+.print-template-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  max-width: 1060px;
+  margin: 0 auto 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(23, 43, 54, .12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .86);
+  box-shadow: 0 16px 42px rgba(34, 58, 70, .12);
+}
+
+.print-template-toolbar h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+.print-template-toolbar p {
+  margin: 0;
+  color: #607582;
+  font-size: 13px;
+}
+
+.print-template-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.print-template-actions button,
+.print-template-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(23, 43, 54, .16);
+  border-radius: 10px;
+  color: #172b36;
+  background: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.print-template-actions button {
+  color: #fff;
+  border-color: #bd653f;
+  background: #d9784a;
+}
+
+.print-template-sheet {
+  position: relative;
+  width: min(100%, 794px);
+  aspect-ratio: 3759 / 5316;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(23, 43, 54, .16);
+  background: #fff;
+  box-shadow: 0 18px 55px rgba(34, 58, 70, .18);
+}
+
+.print-template-sheet img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.print-corner {
+  position: absolute;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border-color: #172b36;
+  pointer-events: none;
+}
+
+.print-corner--tl { top: 14px; left: 14px; border-top: 2px solid; border-left: 2px solid; }
+.print-corner--tr { top: 14px; right: 14px; border-top: 2px solid; border-right: 2px solid; }
+.print-corner--bl { bottom: 14px; left: 14px; border-bottom: 2px solid; border-left: 2px solid; }
+.print-corner--br { right: 14px; bottom: 14px; border-right: 2px solid; border-bottom: 2px solid; }
+
+.print-template-instructions {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  left: 20px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(23, 43, 54, .14);
+  border-radius: 8px;
+  color: #172b36;
+  background: rgba(255, 255, 255, .92);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.print-template-instructions strong {
+  font-size: 12px;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@media print {
+  :root,
+  body {
+    background: #fff;
+  }
+
+  .print-template-page {
+    min-height: 0;
+    padding: 0;
+  }
+
+  .print-template-toolbar {
+    display: none;
+  }
+
+  .print-template-sheet {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    page-break-after: avoid;
+  }
+}
+
+@media (max-width: 720px) {
+  .print-template-page {
+    padding: 12px;
+  }
+
+  .print-template-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .print-template-actions {
+    flex-wrap: wrap;
+  }
+}
