@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { peterAnimations } from '../spriteLab/data';
+import { createPeterAnimations, peterAnimations } from '../spriteLab/data';
 import { SpriteAnimator } from '../spriteLab/SpriteAnimator';
 import type { AnimationName, CharacterDefinition } from '../spriteLab/types';
 import { loadSpriteAsset } from './persistence';
@@ -45,11 +45,14 @@ function RetreatCharacterComponent({
   const character = useMemo<CharacterDefinition>(() => {
     const sprite = uploadedUrl || group.spriteSheetUrl;
     if (!sprite || group.spriteFrameCount <= 1) {
+      const animations = group.spriteAnimationRoot
+        ? createPeterAnimations(group.spriteAnimationRoot, { jump: 1 })
+        : peterAnimations;
       return {
         id: group.id,
         name: group.displayName,
         group: group.groupName,
-        animations: peterAnimations,
+        animations,
       };
     }
     const customDefinition = {

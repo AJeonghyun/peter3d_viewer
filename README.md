@@ -55,6 +55,28 @@ macOS `Control + Command + F`로 실행합니다.
 React 컴포넌트를 만들 필요가 없습니다. 모든 조는 공통 `RetreatCharacter`와
 `SpriteAnimator`를 사용합니다.
 
+### 고정 베드로 의상 합성 테스트
+
+`/garment-test`는 고정된 5×5 베드로 마스터의 얼굴·수염·체형·동작을 유지한
+채 학생 그림의 상의와 하의만 합성하는 검수 화면입니다. 포함된 샘플은 파도·별
+상의와 물고기 하의를 추출해 25개 포즈에 적용하며, PAGE 3의 1조가 같은
+걷기·달리기·동작 시트를 사용합니다.
+
+샘플 결과는 다음 명령으로 다시 만들 수 있습니다.
+
+```bash
+python3 scripts/apply_garment_design.py \
+  --master frontend/public/assets/peter-garment-demo/peter-master.png \
+  --design frontend/public/assets/peter-garment-demo/source/student-garment-sample.png \
+  --output frontend/public/assets/peter-garment-demo
+```
+
+입력 디자인 카드는 밝은 종이 위 위쪽 절반에 상의, 아래쪽 절반에 하의를
+배치합니다. 스크립트는 색칠된 내부 영역을 텍스처로 추출하고, 갈색 허리띠와
+의상 밖의 모든 픽셀 및 마스터 알파 실루엣을 보존합니다. 실제 학생 촬영본을
+운영에 연결할 때는 AI가 먼저 촬영본을 이 상·하의 카드 규격으로 정규화하고,
+승인된 결과만 동일한 결정적 합성 단계에 전달해야 합니다.
+
 ## 페이지별 사용법
 
 ### 페이지 1 · 조 배치

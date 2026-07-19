@@ -11,7 +11,8 @@ type PageName =
   | 'editor'
   | 'group-layout'
   | 'notice'
-  | 'all-characters';
+  | 'all-characters'
+  | 'garment-test';
 
 function resolvePage(pathname: string): PageName {
   if (pathname === '/admin/seating' || pathname.startsWith('/admin/seating/')) return 'admin-seating';
@@ -29,6 +30,7 @@ function resolvePage(pathname: string): PageName {
     || pathname === '/page-2'
   ) return 'notice';
   if (pathname === '/showcase' || pathname.startsWith('/showcase/')) return 'showcase';
+  if (pathname === '/garment-test' || pathname.startsWith('/garment-test/')) return 'garment-test';
   if (
     pathname === '/display/all-characters'
     || pathname.startsWith('/display/all-characters/')
@@ -53,6 +55,7 @@ const Page = ({
   'group-layout': lazy(() => import('./pages/GroupLayoutPage')),
   notice: lazy(() => import('./pages/NoticePage')),
   'all-characters': lazy(() => import('./pages/AllCharactersPage')),
+  'garment-test': lazy(() => import('./pages/GarmentTransferTestPage')),
   showcase: lazy(() => import('./pages/ShowcasePage')),
   'sprite-lab': lazy(() => import('./pages/SpriteLabPage')),
   'world-3d': lazy(() => import('./pages/WorldPage')),

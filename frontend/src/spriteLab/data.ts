@@ -5,6 +5,7 @@ const FRAME_WIDTH = 300;
 const FRAME_HEIGHT = 360;
 
 function animationSheet(
+  frameRoot: string,
   name: string,
   frameCount: number,
   options: Omit<
@@ -13,7 +14,7 @@ function animationSheet(
   >,
 ): AnimationDefinition {
   return {
-    sprite: `${FRAME_ROOT}/${name}-sheet.png`,
+    sprite: `${frameRoot}/${name}-sheet.png`,
     frameWidth: FRAME_WIDTH,
     frameHeight: FRAME_HEIGHT,
     frameCount,
@@ -21,50 +22,57 @@ function animationSheet(
   };
 }
 
-export const peterAnimations = {
-  idle: animationSheet('idle', 1, {
-    fps: 1,
-    loop: true,
-  }),
-  walk: animationSheet('walk', 8, {
-    fps: 10,
-    loop: true,
-  }),
-  run: animationSheet('run', 8, {
-    fps: 14,
-    loop: true,
-  }),
-  wave: animationSheet('wave', 1, {
-    fps: 1,
-    loop: false,
-    holdLastFrame: true,
-    durationMs: 1_350,
-  }),
-  jump: animationSheet('jump', 3, {
-    fps: 5,
-    loop: false,
-    holdLastFrame: true,
-    durationMs: 900,
-  }),
-  pray: animationSheet('pray', 1, {
-    fps: 1,
-    loop: false,
-    holdLastFrame: true,
-    durationMs: 1_800,
-  }),
-  kneel: animationSheet('kneel', 1, {
-    fps: 1,
-    loop: false,
-    holdLastFrame: true,
-    durationMs: 1_800,
-  }),
-  point: animationSheet('point', 1, {
-    fps: 1,
-    loop: false,
-    holdLastFrame: true,
-    durationMs: 1_350,
-  }),
-} satisfies Record<string, AnimationDefinition>;
+export function createPeterAnimations(
+  frameRoot: string,
+  frameCounts: Partial<Record<keyof CharacterDefinition['animations'], number>> = {},
+) {
+  return {
+    idle: animationSheet(frameRoot, 'idle', frameCounts.idle ?? 1, {
+      fps: 1,
+      loop: true,
+    }),
+    walk: animationSheet(frameRoot, 'walk', frameCounts.walk ?? 8, {
+      fps: 10,
+      loop: true,
+    }),
+    run: animationSheet(frameRoot, 'run', frameCounts.run ?? 8, {
+      fps: 14,
+      loop: true,
+    }),
+    wave: animationSheet(frameRoot, 'wave', frameCounts.wave ?? 1, {
+      fps: 1,
+      loop: false,
+      holdLastFrame: true,
+      durationMs: 1_350,
+    }),
+    jump: animationSheet(frameRoot, 'jump', frameCounts.jump ?? 3, {
+      fps: 5,
+      loop: false,
+      holdLastFrame: true,
+      durationMs: 900,
+    }),
+    pray: animationSheet(frameRoot, 'pray', frameCounts.pray ?? 1, {
+      fps: 1,
+      loop: false,
+      holdLastFrame: true,
+      durationMs: 1_800,
+    }),
+    kneel: animationSheet(frameRoot, 'kneel', frameCounts.kneel ?? 1, {
+      fps: 1,
+      loop: false,
+      holdLastFrame: true,
+      durationMs: 1_800,
+    }),
+    point: animationSheet(frameRoot, 'point', frameCounts.point ?? 1, {
+      fps: 1,
+      loop: false,
+      holdLastFrame: true,
+      durationMs: 1_350,
+    }),
+  } satisfies CharacterDefinition['animations'];
+}
+
+export const peterAnimations = createPeterAnimations(FRAME_ROOT);
 
 const DEMO_CHARACTERS = [
   ['peter-01', '하늘 베드로', '1조'],

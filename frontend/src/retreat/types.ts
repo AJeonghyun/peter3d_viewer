@@ -30,6 +30,7 @@ export interface RetreatGroup {
   leaderName: string;
   memberNames: string[];
   spriteSheetUrl: string;
+  spriteAnimationRoot?: string;
   spriteAssetKey?: string;
   spriteFrameCount: number;
   spriteFrameWidth: number;

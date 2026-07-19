@@ -1,0 +1,538 @@
+{
+  "contract": "fixed-peter-garment-transfer-v1",
+  "master": "peter-master.png",
+  "design": "student-garment-sample.png",
+  "grid": [
+    5,
+    5
+  ],
+  "frameSize": [
+    300,
+    360
+  ],
+  "baselineY": 332,
+  "animations": {
+    "idle": {
+      "frames": [
+        "idle-front"
+      ],
+      "frameCount": 1,
+      "sheet": "idle-sheet.png"
+    },
+    "walk": {
+      "frames": [
+        "walk-01",
+        "walk-02",
+        "walk-03",
+        "walk-04",
+        "walk-05",
+        "walk-06",
+        "walk-07",
+        "walk-08"
+      ],
+      "frameCount": 8,
+      "sheet": "walk-sheet.png"
+    },
+    "run": {
+      "frames": [
+        "run-01",
+        "run-02",
+        "run-03",
+        "run-04",
+        "run-05",
+        "run-06",
+        "run-07",
+        "run-08"
+      ],
+      "frameCount": 8,
+      "sheet": "run-sheet.png"
+    },
+    "wave": {
+      "frames": [
+        "wave-01"
+      ],
+      "frameCount": 1,
+      "sheet": "wave-sheet.png"
+    },
+    "jump": {
+      "frames": [
+        "jump-01"
+      ],
+      "frameCount": 1,
+      "sheet": "jump-sheet.png"
+    },
+    "pray": {
+      "frames": [
+        "pray-01"
+      ],
+      "frameCount": 1,
+      "sheet": "pray-sheet.png"
+    },
+    "kneel": {
+      "frames": [
+        "kneel-01"
+      ],
+      "frameCount": 1,
+      "sheet": "kneel-sheet.png"
+    },
+    "point": {
+      "frames": [
+        "point-01"
+      ],
+      "frameCount": 1,
+      "sheet": "point-sheet.png"
+    }
+  },
+  "frames": {
+    "idle-front": {
+      "cell": [
+        0,
+        0
+      ],
+      "sourceBounds": [
+        0,
+        0,
+        251,
+        251
+      ],
+      "alphaBBox": [
+        74,
+        40,
+        227,
+        332
+      ]
+    },
+    "walk-01": {
+      "cell": [
+        1,
+        0
+      ],
+      "sourceBounds": [
+        251,
+        0,
+        502,
+        251
+      ],
+      "alphaBBox": [
+        84,
+        40,
+        215,
+        332
+      ]
+    },
+    "walk-02": {
+      "cell": [
+        2,
+        0
+      ],
+      "sourceBounds": [
+        502,
+        0,
+        752,
+        251
+      ],
+      "alphaBBox": [
+        88,
+        40,
+        212,
+        332
+      ]
+    },
+    "walk-03": {
+      "cell": [
+        3,
+        0
+      ],
+      "sourceBounds": [
+        752,
+        0,
+        1003,
+        251
+      ],
+      "alphaBBox": [
+        89,
+        40,
+        211,
+        332
+      ]
+    },
+    "walk-04": {
+      "cell": [
+        4,
+        0
+      ],
+      "sourceBounds": [
+        1003,
+        0,
+        1254,
+        251
+      ],
+      "alphaBBox": [
+        87,
+        40,
+        213,
+        332
+      ]
+    },
+    "walk-05": {
+      "cell": [
+        0,
+        1
+      ],
+      "sourceBounds": [
+        0,
+        251,
+        251,
+        502
+      ],
+      "alphaBBox": [
+        89,
+        40,
+        211,
+        332
+      ]
+    },
+    "walk-06": {
+      "cell": [
+        1,
+        1
+      ],
+      "sourceBounds": [
+        251,
+        251,
+        502,
+        502
+      ],
+      "alphaBBox": [
+        90,
+        40,
+        211,
+        332
+      ]
+    },
+    "walk-07": {
+      "cell": [
+        2,
+        1
+      ],
+      "sourceBounds": [
+        502,
+        251,
+        752,
+        502
+      ],
+      "alphaBBox": [
+        90,
+        40,
+        211,
+        332
+      ]
+    },
+    "walk-08": {
+      "cell": [
+        3,
+        1
+      ],
+      "sourceBounds": [
+        752,
+        251,
+        1003,
+        502
+      ],
+      "alphaBBox": [
+        84,
+        40,
+        217,
+        332
+      ]
+    },
+    "idle-front-alt": {
+      "cell": [
+        4,
+        1
+      ],
+      "sourceBounds": [
+        1003,
+        251,
+        1254,
+        502
+      ],
+      "alphaBBox": [
+        77,
+        40,
+        223,
+        332
+      ]
+    },
+    "run-01": {
+      "cell": [
+        0,
+        2
+      ],
+      "sourceBounds": [
+        0,
+        502,
+        251,
+        752
+      ],
+      "alphaBBox": [
+        52,
+        40,
+        247,
+        332
+      ]
+    },
+    "run-02": {
+      "cell": [
+        1,
+        2
+      ],
+      "sourceBounds": [
+        251,
+        502,
+        502,
+        752
+      ],
+      "alphaBBox": [
+        66,
+        40,
+        233,
+        332
+      ]
+    },
+    "run-03": {
+      "cell": [
+        2,
+        2
+      ],
+      "sourceBounds": [
+        502,
+        502,
+        752,
+        752
+      ],
+      "alphaBBox": [
+        76,
+        40,
+        224,
+        332
+      ]
+    },
+    "run-04": {
+      "cell": [
+        3,
+        2
+      ],
+      "sourceBounds": [
+        752,
+        502,
+        1003,
+        752
+      ],
+      "alphaBBox": [
+        58,
+        40,
+        243,
+        332
+      ]
+    },
+    "run-05": {
+      "cell": [
+        4,
+        2
+      ],
+      "sourceBounds": [
+        1003,
+        502,
+        1254,
+        752
+      ],
+      "alphaBBox": [
+        42,
+        40,
+        258,
+        332
+      ]
+    },
+    "run-06": {
+      "cell": [
+        0,
+        3
+      ],
+      "sourceBounds": [
+        0,
+        752,
+        251,
+        1003
+      ],
+      "alphaBBox": [
+        60,
+        40,
+        240,
+        332
+      ]
+    },
+    "run-07": {
+      "cell": [
+        1,
+        3
+      ],
+      "sourceBounds": [
+        251,
+        752,
+        502,
+        1003
+      ],
+      "alphaBBox": [
+        66,
+        40,
+        234,
+        332
+      ]
+    },
+    "run-08": {
+      "cell": [
+        2,
+        3
+      ],
+      "sourceBounds": [
+        502,
+        752,
+        752,
+        1003
+      ],
+      "alphaBBox": [
+        75,
+        40,
+        225,
+        332
+      ]
+    },
+    "wave-01": {
+      "cell": [
+        3,
+        3
+      ],
+      "sourceBounds": [
+        752,
+        752,
+        1003,
+        1003
+      ],
+      "alphaBBox": [
+        56,
+        40,
+        245,
+        332
+      ]
+    },
+    "sit-01": {
+      "cell": [
+        4,
+        3
+      ],
+      "sourceBounds": [
+        1003,
+        752,
+        1254,
+        1003
+      ],
+      "alphaBBox": [
+        81,
+        40,
+        219,
+        332
+      ]
+    },
+    "jump-01": {
+      "cell": [
+        0,
+        4
+      ],
+      "sourceBounds": [
+        0,
+        1003,
+        251,
+        1254
+      ],
+      "alphaBBox": [
+        20,
+        40,
+        281,
+        332
+      ]
+    },
+    "kneel-01": {
+      "cell": [
+        1,
+        4
+      ],
+      "sourceBounds": [
+        251,
+        1003,
+        502,
+        1254
+      ],
+      "alphaBBox": [
+        56,
+        40,
+        245,
+        332
+      ]
+    },
+    "pray-01": {
+      "cell": [
+        2,
+        4
+      ],
+      "sourceBounds": [
+        502,
+        1003,
+        752,
+        1254
+      ],
+      "alphaBBox": [
+        78,
+        40,
+        222,
+        332
+      ]
+    },
+    "pray-kneel-01": {
+      "cell": [
+        3,
+        4
+      ],
+      "sourceBounds": [
+        752,
+        1003,
+        1003,
+        1254
+      ],
+      "alphaBBox": [
+        78,
+        40,
+        222,
+        332
+      ]
+    },
+    "point-01": {
+      "cell": [
+        4,
+        4
+      ],
+      "sourceBounds": [
+        1003,
+        1003,
+        1254,
+        1254
+      ],
+      "alphaBBox": [
+        43,
+        40,
+        257,
+        332
+      ]
+    }
+  }
+}

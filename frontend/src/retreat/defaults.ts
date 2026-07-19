@@ -17,6 +17,9 @@ export function createDefaultGroups(): RetreatGroup[] {
       leaderName: '',
       memberNames: [],
       spriteSheetUrl: '',
+      spriteAnimationRoot: number === 1
+        ? '/assets/peter-garment-demo/frames'
+        : '',
       spriteFrameCount: 1,
       spriteFrameWidth: 160,
       spriteFrameHeight: 192,
