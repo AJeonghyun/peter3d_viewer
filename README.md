@@ -333,6 +333,7 @@ macOS에서 `Control + Command + F`, Windows에서 `F11`로 전환합니다.
 결과가 필요한 조만 한 번씩 처리하고 실패한 조만 재시도하세요.
 `gpt-image-2`는 입력 그림을 직접 참조하도록 프롬프트와 편집 입력을 사용하며
 `input_fidelity` 요청 필드를 지원하지 않습니다.
+생성 품질은 `OPENAI_IMAGE_QUALITY=high`를 기본값으로 사용합니다.
 `OPENAI_IMAGE_INPUT_FIDELITY`는 `OPENAI_IMAGE_MODEL=gpt-image-1`로 명시한
 호환 환경에서만 전송됩니다.
 사진 하단에 실제 닉네임창 그림이 감지되면 그 이미지를 그대로 사용하고, 감지되지

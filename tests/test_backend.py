@@ -208,6 +208,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(recorded["url"], backend_main.OPENAI_IMAGE_API_URL)
         self.assertEqual(recorded["data"]["size"], "1536x1152")
         self.assertEqual(recorded["data"]["model"], "gpt-image-2")
+        self.assertEqual(recorded["data"]["quality"], "high")
         self.assertNotIn("input_fidelity", recorded["data"])
         self.assertEqual(
             recorded["files"][0],
@@ -471,6 +472,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(result["object_storage"], "local")
         self.assertIn("openai_configured", result)
         self.assertEqual(result["openai_image_model"], backend_main.OPENAI_IMAGE_MODEL)
+        self.assertEqual(result["openai_image_quality"], "high")
 
     def test_public_job_hides_internal_paths_and_provider_task_ids(self):
         with backend_main.connect_db() as db:

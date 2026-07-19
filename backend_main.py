@@ -52,7 +52,7 @@ TRIPO_WALK_ANIMATION = "preset:biped:walk"
 TRIPO_API_BASE_URL = os.getenv("TRIPO_API_BASE_URL", "https://api.tripo3d.ai/v2/openapi")
 ENABLE_MULTIVIEW_FALLBACK = os.getenv("TRIPO_MULTIVIEW_FALLBACK", "1") == "1"
 OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
-OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
+OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "high")
 OPENAI_IMAGE_INPUT_FIDELITY = os.getenv("OPENAI_IMAGE_INPUT_FIDELITY", "high")
 OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/edits"
 TEAM_COUNT = 21
@@ -988,6 +988,7 @@ async def health():
         "tripo_configured": api_key.startswith("tsk_"),
         "openai_configured": openai_key.startswith("sk-"),
         "openai_image_model": OPENAI_IMAGE_MODEL,
+        "openai_image_quality": OPENAI_IMAGE_QUALITY,
         "persistent_storage": persistent if SERVERLESS_RUNTIME else True,
         "database": "postgres" if using_postgres() else "sqlite",
         "object_storage": "vercel-blob" if blob_configured() else "local",
