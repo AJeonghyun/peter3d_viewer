@@ -1,5 +1,47 @@
 export type StatKey = 'courage' | 'wisdom' | 'faith' | 'love';
 
+export type SpriteQualityStatus = 'unchecked' | 'passed' | 'warning' | 'failed';
+
+export interface SpriteQualityFrame {
+  frame: number;
+  row: number;
+  column: number;
+  status: 'passed' | 'warning' | 'failed';
+  margins: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  } | null;
+  issues: string[];
+}
+
+export interface SpriteAiQualityFrame {
+  frame: number;
+  severity: 'warning' | 'failed';
+  issue: string;
+}
+
+export interface SpriteQualityReport {
+  status: Exclude<SpriteQualityStatus, 'unchecked'>;
+  can_approve: boolean;
+  summary: string;
+  deterministic: {
+    status: 'passed' | 'warning' | 'failed';
+    summary: string;
+    safe_margin_px?: number;
+    frames: SpriteQualityFrame[];
+    issues: string[];
+  };
+  ai: {
+    status: 'passed' | 'warning' | 'failed' | 'unavailable';
+    summary: string;
+    issues: string[];
+    frames: SpriteAiQualityFrame[];
+    model: string;
+  };
+}
+
 export interface Team {
   id: number;
   name: string;
@@ -14,9 +56,13 @@ export interface Team {
   title: string;
   showcase_image_url: string | null;
   showcase_sprite_url: string | null;
+  showcase_sprite_active_url: string | null;
   showcase_sprite_status: 'empty' | 'generating' | 'review' | 'ready' | 'failed';
   showcase_sprite_error: string | null;
   showcase_sprite_model: string | null;
+  showcase_sprite_quality_status: SpriteQualityStatus;
+  showcase_sprite_quality: SpriteQualityReport | null;
+  showcase_sprite_qa_model: string | null;
   showcase_sprite_updated_at: string | null;
   image_url: string | null;
   model_url: string | null;

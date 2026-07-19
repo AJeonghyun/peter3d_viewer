@@ -83,9 +83,13 @@ SQLITE_SCHEMA = (
         title TEXT NOT NULL DEFAULT '첫걸음을 준비하는 자',
         showcase_image_url TEXT,
         showcase_sprite_url TEXT,
+        showcase_sprite_active_url TEXT,
         showcase_sprite_status TEXT NOT NULL DEFAULT 'empty',
         showcase_sprite_error TEXT,
         showcase_sprite_model TEXT,
+        showcase_sprite_quality_status TEXT NOT NULL DEFAULT 'unchecked',
+        showcase_sprite_quality_json TEXT,
+        showcase_sprite_qa_model TEXT,
         showcase_sprite_updated_at TEXT,
         image_url TEXT,
         model_url TEXT,
@@ -196,9 +200,13 @@ POSTGRES_SCHEMA = (
         title TEXT NOT NULL DEFAULT '첫걸음을 준비하는 자',
         showcase_image_url TEXT,
         showcase_sprite_url TEXT,
+        showcase_sprite_active_url TEXT,
         showcase_sprite_status TEXT NOT NULL DEFAULT 'empty',
         showcase_sprite_error TEXT,
         showcase_sprite_model TEXT,
+        showcase_sprite_quality_status TEXT NOT NULL DEFAULT 'unchecked',
+        showcase_sprite_quality_json TEXT,
+        showcase_sprite_qa_model TEXT,
         showcase_sprite_updated_at TEXT,
         image_url TEXT,
         model_url TEXT,
@@ -312,9 +320,13 @@ JOB_COLUMN_MIGRATIONS = {
 TEAM_COLUMN_MIGRATIONS = {
     "showcase_image_url": "TEXT",
     "showcase_sprite_url": "TEXT",
+    "showcase_sprite_active_url": "TEXT",
     "showcase_sprite_status": "TEXT NOT NULL DEFAULT 'empty'",
     "showcase_sprite_error": "TEXT",
     "showcase_sprite_model": "TEXT",
+    "showcase_sprite_quality_status": "TEXT NOT NULL DEFAULT 'unchecked'",
+    "showcase_sprite_quality_json": "TEXT",
+    "showcase_sprite_qa_model": "TEXT",
     "showcase_sprite_updated_at": "TEXT",
     "model_asset_id": "TEXT",
 }
@@ -341,6 +353,15 @@ def initialize_database(sqlite_path: Path, timestamp: str, *, team_count: int = 
                     """,
                     (team_id, f"{team_id}조", timestamp),
                 )
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_active_url = showcase_sprite_url
+                WHERE showcase_sprite_active_url IS NULL
+                  AND showcase_sprite_status = 'ready'
+                  AND showcase_sprite_url IS NOT NULL
+                """
+            )
         else:
             team_columns = {
                 row["name"] for row in db.execute("PRAGMA table_info(teams)").fetchall()
@@ -359,6 +380,15 @@ def initialize_database(sqlite_path: Path, timestamp: str, *, team_count: int = 
                     "INSERT OR IGNORE INTO teams (id, name, updated_at) VALUES (?, ?, ?)",
                     (team_id, f"{team_id}조", timestamp),
                 )
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_active_url = showcase_sprite_url
+                WHERE showcase_sprite_active_url IS NULL
+                  AND showcase_sprite_status = 'ready'
+                  AND showcase_sprite_url IS NOT NULL
+                """
+            )
 
         db.execute(
             """

@@ -5,9 +5,11 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
+from PIL import Image, ImageDraw
 from starlette.datastructures import Headers
 
 import backend_main
@@ -28,6 +30,27 @@ def make_png_header(width: int, height: int) -> bytes:
         + struct.pack(">II", width, height)
         + b"\x08\x06\x00\x00\x00"
     )
+
+def make_sprite_atlas(*, clipped_frame: Optional[int] = None) -> bytes:
+    atlas = Image.new("RGB", (1536, 1152), (240, 238, 232))
+    draw = ImageDraw.Draw(atlas)
+    for frame in range(1, 13):
+        column = (frame - 1) % 4
+        row = (frame - 1) // 4
+        x = column * 384
+        y = row * 384
+        top = y if frame == clipped_frame else y + 34
+        draw.ellipse((x + 108, top, x + 276, y + 178), fill=(78, 49, 32))
+        draw.rounded_rectangle(
+            (x + 84, y + 150, x + 300, y + 314),
+            radius=32,
+            fill=(104, 177, 211),
+        )
+        draw.rectangle((x + 112, y + 306, x + 168, y + 350), fill=(244, 146, 126))
+        draw.rectangle((x + 216, y + 306, x + 272, y + 350), fill=(244, 146, 126))
+    stream = io.BytesIO()
+    atlas.save(stream, format="PNG")
+    return stream.getvalue()
 
 
 class Peter3DBackendTests(unittest.TestCase):
@@ -112,9 +135,13 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("showcase_image_url", team_columns)
         self.assertTrue({
             "showcase_sprite_url",
+            "showcase_sprite_active_url",
             "showcase_sprite_status",
             "showcase_sprite_error",
             "showcase_sprite_model",
+            "showcase_sprite_quality_status",
+            "showcase_sprite_quality_json",
+            "showcase_sprite_qa_model",
             "showcase_sprite_updated_at",
         }.issubset(team_columns))
         self.assertIsNotNone(asset_table)
@@ -230,10 +257,10 @@ class Peter3DBackendTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "1536x1152"):
             backend_main.validate_showcase_sprite_png(make_png_header(1536, 1024))
 
-    def test_showcase_sprite_prompt_preserves_the_complete_student_drawing(self):
+    def test_showcase_sprite_prompt_locks_master_identity_and_transfers_garments(self):
         prompt = backend_main.SHOWCASE_SPRITE_PROMPT
-        self.assertIn("sole visual source of truth", prompt)
-        self.assertIn("clothing colors", prompt)
+        self.assertIn("fixed master is the sole source", prompt)
+        self.assertIn("upper garment", prompt)
         self.assertIn("handmade texture", prompt)
         self.assertIn("strict 90-degree side-profile walking-right", prompt)
 
@@ -290,6 +317,21 @@ class Peter3DBackendTests(unittest.TestCase):
             recorded["files"][0],
             ("image[]", ("team-1-peter.png", b"student-character", "image/png")),
         )
+        self.assertEqual(recorded["files"][1][0], "image[]")
+        self.assertEqual(recorded["files"][1][1][0], "fixed-peter-master.png")
+
+    def test_pixel_quality_check_rejects_a_clipped_animation_frame(self):
+        safe = backend_main.analyze_showcase_sprite_pixels(make_sprite_atlas())
+        clipped = backend_main.analyze_showcase_sprite_pixels(
+            make_sprite_atlas(clipped_frame=6),
+        )
+
+        self.assertEqual(safe["status"], "passed")
+        self.assertTrue(safe["can_approve"])
+        self.assertEqual(clipped["status"], "failed")
+        self.assertFalse(clipped["can_approve"])
+        self.assertEqual(clipped["frames"][5]["frame"], 6)
+        self.assertIn("위쪽 여백 부족", clipped["frames"][5]["issues"])
 
     def test_openai_sprite_request_keeps_fidelity_for_gpt_image_1(self):
         expected_sprite = make_png_header(1536, 1152)
@@ -331,6 +373,57 @@ class Peter3DBackendTests(unittest.TestCase):
             )
 
         self.assertEqual(recorded["data"]["input_fidelity"], "high")
+
+    def test_ai_sprite_review_compares_render_sheet_with_master_at_high_detail(self):
+        recorded = {}
+        review = {
+            "status": "passed",
+            "summary": "전신이 모두 보입니다.",
+            "issues": [],
+            "frames": [],
+        }
+
+        class FakeResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    "output": [{
+                        "type": "message",
+                        "content": [{
+                            "type": "output_text",
+                            "text": json.dumps(review),
+                        }],
+                    }],
+                }
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return None
+
+            async def post(self, url, *, headers, json):
+                recorded.update({"url": url, "headers": headers, "body": json})
+                return FakeResponse()
+
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
+            patch("backend_main.httpx.AsyncClient", return_value=FakeClient()),
+        ):
+            actual = asyncio.run(backend_main.request_showcase_sprite_ai_review(
+                make_sprite_atlas(),
+                {"status": "passed", "summary": "안전", "frames": []},
+            ))
+
+        self.assertEqual(actual["status"], "passed")
+        self.assertEqual(recorded["url"], backend_main.OPENAI_RESPONSES_API_URL)
+        content = recorded["body"]["input"][0]["content"]
+        self.assertEqual(len(content), 3)
+        self.assertTrue(all(item["detail"] == "high" for item in content[1:]))
+        self.assertTrue(recorded["body"]["text"]["format"]["strict"])
 
     def test_multiview_fallback_reuses_generated_views(self):
         payload = backend_main.multiview_model_payload("h3_smart", "views-task")
@@ -462,22 +555,81 @@ class Peter3DBackendTests(unittest.TestCase):
             headers=Headers({"content-type": "image/png"}),
         )
         sprite = b"\x89PNG\r\n\x1a\nai-sprite-atlas"
+        quality = {
+            "status": "passed",
+            "can_approve": True,
+            "summary": "자동 검수를 통과했습니다.",
+            "deterministic": {
+                "status": "passed",
+                "summary": "안전",
+                "frames": [],
+                "issues": [],
+            },
+            "ai": {
+                "status": "passed",
+                "summary": "안전",
+                "frames": [],
+                "issues": [],
+                "model": backend_main.OPENAI_SPRITE_QA_MODEL,
+            },
+        }
 
-        with patch(
-            "backend_main.request_showcase_sprite",
-            new=AsyncMock(return_value=sprite),
-        ) as request:
+        with (
+            patch(
+                "backend_main.request_showcase_sprite",
+                new=AsyncMock(return_value=sprite),
+            ) as request,
+            patch(
+                "backend_main.inspect_showcase_sprite_quality",
+                new=AsyncMock(return_value=quality),
+            ),
+        ):
             updated = asyncio.run(backend_main.generate_showcase_sprite(1, reference))
 
         request.assert_awaited_once()
         self.assertEqual(updated["showcase_sprite_status"], "review")
         self.assertEqual(updated["showcase_sprite_model"], backend_main.OPENAI_IMAGE_MODEL)
+        self.assertEqual(updated["showcase_sprite_quality_status"], "passed")
+        self.assertTrue(updated["showcase_sprite_quality"]["can_approve"])
         self.assertTrue(updated["showcase_sprite_url"].startswith("/uploads/team-1-sprite-"))
         stored_path = backend_main.UPLOADS_DIR / Path(updated["showcase_sprite_url"]).name
         self.assertEqual(stored_path.read_bytes(), sprite)
 
         approved = asyncio.run(backend_main.approve_showcase_sprite(1))
         self.assertEqual(approved["showcase_sprite_status"], "ready")
+        self.assertEqual(
+            approved["showcase_sprite_active_url"],
+            approved["showcase_sprite_url"],
+        )
+
+    def test_showcase_sprite_approval_blocks_failed_qa_without_force(self):
+        quality = {
+            "status": "failed",
+            "can_approve": False,
+            "summary": "6컷 머리 잘림",
+        }
+        with backend_main.connect_db() as db:
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_url = ?, showcase_sprite_status = 'review',
+                    showcase_sprite_quality_status = 'failed',
+                    showcase_sprite_quality_json = ?
+                WHERE id = 1
+                """,
+                ("/uploads/failed-atlas.png", json.dumps(quality)),
+            )
+
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(backend_main.approve_showcase_sprite(1))
+
+        self.assertEqual(caught.exception.status_code, 409)
+        approved = asyncio.run(backend_main.approve_showcase_sprite(
+            1,
+            backend_main.SpriteApprovalPayload(force=True),
+        ))
+        self.assertEqual(approved["showcase_sprite_status"], "ready")
+        self.assertEqual(approved["showcase_sprite_active_url"], "/uploads/failed-atlas.png")
 
     def test_showcase_sprite_approval_requires_a_generated_sheet(self):
         with self.assertRaises(HTTPException) as caught:

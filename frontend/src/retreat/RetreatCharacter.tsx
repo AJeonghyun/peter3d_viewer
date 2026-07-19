@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import { createPeterAnimations, peterAnimations } from '../spriteLab/data';
 import { SpriteAnimator } from '../spriteLab/SpriteAnimator';
 import type { AnimationName, CharacterDefinition } from '../spriteLab/types';
+import { AtlasSpriteAnimator } from './AtlasSpriteAnimator';
 import { loadSpriteAsset } from './persistence';
 import type { RetreatGroup } from './types';
 
@@ -84,7 +85,15 @@ function RetreatCharacterComponent({
       data-group-id={group.id}
       data-animation={animation}
     >
-      {singleImage ? (
+      {group.spriteAtlasUrl ? (
+        <AtlasSpriteAnimator
+          spriteUrl={group.spriteAtlasUrl}
+          animation={animation}
+          playing={playing}
+          flipX={flipX}
+          label={`${group.groupName} 캐릭터`}
+        />
+      ) : singleImage ? (
         <img
           src={singleImage}
           alt={`${group.groupName} 캐릭터`}

@@ -4,6 +4,7 @@ import type { Team } from '../types/api';
 import { peterAnimations } from '../spriteLab/data';
 import { SpriteAnimator } from '../spriteLab/SpriteAnimator';
 import type { AnimationName, CharacterDefinition } from '../spriteLab/types';
+import { AtlasSpriteAnimator } from '../retreat/AtlasSpriteAnimator';
 import { prepareCharacterImage } from './characterImage';
 import { prepareSpriteAtlas } from './spriteAtlas';
 import type { PreparedSpriteAtlas } from './spriteAtlas';
@@ -66,9 +67,7 @@ function PaperPeterComponent({
 
   useEffect(() => {
     let active = true;
-    const spriteUrl = team.showcase_sprite_status === 'ready'
-      ? team.showcase_sprite_url
-      : null;
+    const spriteUrl = team.showcase_sprite_active_url;
     if (!spriteUrl) {
       setSprite(null);
       return () => { active = false; };
@@ -77,7 +76,7 @@ function PaperPeterComponent({
       if (active) setSprite(prepared);
     });
     return () => { active = false; };
-  }, [team.showcase_sprite_status, team.showcase_sprite_url]);
+  }, [team.showcase_sprite_active_url]);
 
   useEffect(() => {
     if (phase !== 'active') {
@@ -165,10 +164,15 @@ function PaperPeterComponent({
       aria-label={`${team.name} 베드로`}
     >
       {sprite ? (
-        <div className="sprite-peter__figure" role="img" aria-label={`${team.name}의 AI 게임 캐릭터`}>
-          <div className="sprite-peter__viewport">
-            <img className="sprite-peter__atlas" src={sprite.url} alt="" />
-          </div>
+        <div className="sprite-peter__figure">
+          <AtlasSpriteAnimator
+            spriteUrl={sprite.url}
+            animation={presetAnimation}
+            flipX={travelDirection < 0}
+            playing={phase !== 'exiting'}
+            prepared
+            label={`${team.name}의 AI 게임 캐릭터`}
+          />
         </div>
       ) : usePresetSprite ? (
         <div className="preset-peter__figure" role="img" aria-label={`${team.name}의 게임 캐릭터`}>

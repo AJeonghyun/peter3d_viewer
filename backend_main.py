@@ -6,6 +6,7 @@ uploaded images and generated GLBs in Vercel Blob when configured.
 
 import asyncio
 import base64
+import io
 import json
 import os
 import struct
@@ -21,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from PIL import Image, ImageFilter, UnidentifiedImageError
 from tripo3d import TaskStatus, TripoClient
 from tripo3d.models import RigType
 
@@ -59,27 +61,40 @@ OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
 OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "high")
 OPENAI_IMAGE_INPUT_FIDELITY = os.getenv("OPENAI_IMAGE_INPUT_FIDELITY", "high")
 OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/edits"
+OPENAI_SPRITE_QA_MODEL = os.getenv("OPENAI_SPRITE_QA_MODEL", "gpt-5.4-mini")
+OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses"
 TEAM_COUNT = 21
 SHOWCASE_SPRITE_COLUMNS = 4
 SHOWCASE_SPRITE_ROWS = 3
 SHOWCASE_SPRITE_WIDTH = 1536
 SHOWCASE_SPRITE_HEIGHT = 1152
 SHOWCASE_SPRITE_SIZE = f"{SHOWCASE_SPRITE_WIDTH}x{SHOWCASE_SPRITE_HEIGHT}"
+SHOWCASE_MASTER_PATH = (
+    ROOT / "frontend" / "public" / "assets" / "peter-sober" / "peter-sober-master.png"
+)
+SHOWCASE_FRAME_SAFE_MARGIN = 14
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
 
 SHOWCASE_SPRITE_PROMPT = """
-Use the supplied student drawing as the sole visual source of truth and create
-one production-ready 2D sprite sheet of that exact full character. This is an
-identity-preserving edit, not a character redesign.
+You receive two reference images in this exact order:
+1. a phone photo of a student's drawing on the printed Peter worksheet
+2. the fixed Peter master animation sheet used by every team
+
+Create one production-ready 2D sprite sheet. The fixed master is the sole source
+of truth for Peter's face, hair, beard, skin, body proportions, line style, and
+character identity. The student photo is the sole source of truth only for the
+upper garment, lower garment, belt decoration if the student changed it, and
+left/right footwear. This is a garment transfer, never a character redesign.
 
 PRESERVE IN EVERY FRAME:
-- the exact face, expression, head shape, hair, facial hair, skin tone, body
-  proportions, hands, clothing silhouette, clothing colors, hand-drawn patterns,
-  writing, accessories, legs, shoes, and intentional asymmetry from the input
-- the drawing's original visual medium and personality, including intentional
-  crayon, marker, colored-pencil, paint, collage, or handmade texture
-- every visible motif and its relative placement; never replace, simplify,
-  beautify, standardize, or invent decoration
+- copy Peter's face, expression, head shape, hair, beard, skin tone, hands,
+  body proportions, and illustration style from the fixed master without change
+- transfer the student's exact upper/lower clothing colors, patterns, writing,
+  marks, handmade texture, and footwear colors/patterns onto those master poses
+- keep intentional left/right asymmetry in the student's clothes and footwear
+- infer only the minimum continuation needed for side views; invent no new motif
+- ignore paper color, room background, shadows, wrinkles, hands holding the
+  paper, perspective distortion, glare, and anything outside Peter's clothing
 
 LAYOUT:
 - exactly 12 separate full-body frames in a strict 4-column by 3-row grid
@@ -87,6 +102,9 @@ LAYOUT:
   padding, and bottom-center anchor
 - the lowest shoe sole uses the same baseline in every cell
 - exactly one complete character in each cell, with no cropping or overlap
+- keep at least 24 pixels of empty background around every visible body part in
+  every 384 by 384 cell, including raised hands, hair, beard, and shoe soles
+- no visible body pixel may touch or nearly touch a cell edge
 
 ANIMATION:
 - row 1: four subtle front-facing idle frames forming a seamless loop; only
@@ -100,12 +118,33 @@ ANIMATION:
   way, hand tilted the other way, arm returning
 
 For areas hidden by the side view, infer the minimum necessary continuation
-from the visible input. Do not add new motifs, text, accessories, or clothing
-features. Use one perfectly flat, uniform very light warm-gray background across
+from the student's garment while preserving the fixed master identity. Do not
+add new motifs, text, accessories, or clothing features. Use one perfectly flat,
+uniform very light warm-gray background across
 the full sheet. No transparency, gradient, scenery, cast shadows, grid lines,
 borders, labels, captions, watermarks, extra people, extra limbs, duplicated
 features, or cropped body parts. The result must look like one consistently
 authored animation sheet, never twelve independently redesigned characters.
+""".strip()
+
+SHOWCASE_SPRITE_QA_PROMPT = """
+Inspect this 4-column by 3-row sprite sheet as a strict animation QA reviewer.
+There must be exactly one complete Peter character in each of the 12 square
+cells. The first image is the generated sheet and the second image is the fixed
+Peter master when supplied. Check every frame independently.
+
+Fail a frame if any hair, head, beard, face, raised hand, arm, garment, leg,
+foot, shoe, or outline is cut off, hidden by the cell boundary, merged with a
+neighboring cell, or so close to an edge that animation playback could clip it.
+Also fail obvious missing body parts, extra limbs, duplicated features, or a
+walking frame that is not a right-facing side profile. Fail if Peter's face,
+hair, beard, body proportions, or illustration style visibly drift away from
+the fixed master. Clothing and shoes are expected to differ because they come
+from the student's drawing. Use warning only for minor visual inconsistency that
+does not crop the full body. Do not fail merely because the background is opaque.
+
+Return a concise Korean summary and frame-specific issues. Frame numbering is
+left-to-right, top-to-bottom, 1 through 12.
 """.strip()
 
 PIPELINE_PROFILES = {
@@ -146,6 +185,17 @@ def init_db() -> None:
 
 def row_dict(row: Any) -> dict:
     return dict(row)
+
+
+def public_team(row: Any) -> dict:
+    team = row_dict(row)
+    encoded_quality = team.pop("showcase_sprite_quality_json", None)
+    try:
+        quality = json.loads(encoded_quality) if encoded_quality else None
+    except (json.JSONDecodeError, TypeError):
+        quality = None
+    team["showcase_sprite_quality"] = quality
+    return team
 
 
 def inspect_animated_glb(contents: bytes, *, minimum_animations: int = 1) -> dict:
@@ -404,6 +454,10 @@ class SeatingPresetPayload(BaseModel):
 
 class ActiveSeatingPresetPayload(BaseModel):
     preset_id: str = Field(min_length=1, max_length=80)
+
+
+class SpriteApprovalPayload(BaseModel):
+    force: bool = False
 
 
 def profile_config(profile: str) -> dict:
@@ -1175,7 +1229,7 @@ async def list_teams():
             "SELECT * FROM teams WHERE id <= ? ORDER BY id",
             (TEAM_COUNT,),
         ).fetchall()
-        return [row_dict(row) for row in rows]
+        return [public_team(row) for row in rows]
 
 
 @app.get("/api/seating-presets")
@@ -1293,7 +1347,7 @@ async def delete_seating_preset(preset_id: str):
 @app.get("/api/teams/{team_id}")
 async def get_team(team_id: int):
     with connect_db() as db:
-        return row_dict(get_team_or_404(db, team_id))
+        return public_team(get_team_or_404(db, team_id))
 
 
 @app.patch("/api/teams/{team_id}")
@@ -1308,7 +1362,7 @@ async def update_team(team_id: int, payload: TeamUpdate):
             f"UPDATE teams SET {', '.join(assignments)}, updated_at = ? WHERE id = ?",
             [*values.values(), now_iso(), team_id],
         )
-        return row_dict(get_team_or_404(db, team_id))
+        return public_team(get_team_or_404(db, team_id))
 
 
 @app.get("/api/teams/{team_id}/history")
@@ -1438,21 +1492,349 @@ def validate_showcase_sprite_png(sprite: bytes) -> tuple[int, int]:
     return width, height
 
 
+def _median(values: list[int]) -> int:
+    ordered = sorted(values)
+    if not ordered:
+        return 0
+    return ordered[len(ordered) // 2]
+
+
+def _sprite_foreground_mask(cell: Image.Image) -> tuple[Image.Image, tuple[int, int, int], int]:
+    rgb = cell.convert("RGB")
+    width, height = rgb.size
+    border = max(3, round(min(width, height) * 0.018))
+    samples: list[tuple[int, int, int]] = []
+    pixels = rgb.load()
+    for x in range(0, width, 3):
+        for y in (*range(0, border), *range(height - border, height)):
+            samples.append(pixels[x, y])
+    for y in range(border, height - border, 3):
+        for x in (*range(0, border), *range(width - border, width)):
+            samples.append(pixels[x, y])
+    background = tuple(
+        _median([sample[channel] for sample in samples])
+        for channel in range(3)
+    )
+    border_distances = [
+        round(sum((sample[channel] - background[channel]) ** 2 for channel in range(3)) ** 0.5)
+        for sample in samples
+    ]
+    threshold = max(24, min(58, _median(border_distances) + 18))
+    mask = Image.new("L", rgb.size, 0)
+    mask_pixels = mask.load()
+    for y in range(height):
+        for x in range(width):
+            pixel = pixels[x, y]
+            distance = sum(
+                (pixel[channel] - background[channel]) ** 2 for channel in range(3)
+            ) ** 0.5
+            if distance >= threshold:
+                mask_pixels[x, y] = 255
+    return mask.filter(ImageFilter.MedianFilter(3)), background, threshold
+
+
+def analyze_showcase_sprite_pixels(sprite: bytes) -> dict:
+    """Measure every cell so obvious clipping never depends on an AI opinion."""
+    try:
+        atlas = Image.open(io.BytesIO(sprite)).convert("RGB")
+        atlas.load()
+    except (UnidentifiedImageError, OSError, ValueError):
+        return {
+            "status": "failed",
+            "summary": "스프라이트 픽셀을 읽을 수 없어 안전한 애니메이션인지 확인할 수 없습니다.",
+            "can_approve": False,
+            "frames": [],
+            "issues": ["스프라이트 픽셀 디코딩 실패"],
+        }
+
+    width, height = atlas.size
+    if (width, height) != (SHOWCASE_SPRITE_WIDTH, SHOWCASE_SPRITE_HEIGHT):
+        return {
+            "status": "failed",
+            "summary": "스프라이트 캔버스 규격이 달라 프레임을 안전하게 나눌 수 없습니다.",
+            "can_approve": False,
+            "frames": [],
+            "issues": [f"캔버스 {width}x{height}, 필요 {SHOWCASE_SPRITE_SIZE}"],
+        }
+
+    cell_width = width // SHOWCASE_SPRITE_COLUMNS
+    cell_height = height // SHOWCASE_SPRITE_ROWS
+    frames: list[dict] = []
+    baseline_by_row: dict[int, list[int]] = {}
+    failed_frames = 0
+    warning_frames = 0
+
+    for row in range(SHOWCASE_SPRITE_ROWS):
+        for column in range(SHOWCASE_SPRITE_COLUMNS):
+            frame_number = row * SHOWCASE_SPRITE_COLUMNS + column + 1
+            cell = atlas.crop((
+                column * cell_width,
+                row * cell_height,
+                (column + 1) * cell_width,
+                (row + 1) * cell_height,
+            ))
+            mask, background, threshold = _sprite_foreground_mask(cell)
+            bbox = mask.getbbox()
+            issues: list[str] = []
+            status = "passed"
+            margins: dict[str, int] | None = None
+            coverage = sum(mask.getdata()) / 255 / (cell_width * cell_height)
+            if bbox is None or coverage < 0.025:
+                status = "failed"
+                issues.append("캐릭터 전신을 찾지 못함")
+            else:
+                left, top, right, bottom = bbox
+                margins = {
+                    "left": left,
+                    "top": top,
+                    "right": cell_width - right,
+                    "bottom": cell_height - bottom,
+                }
+                baseline_by_row.setdefault(row, []).append(bottom)
+                unsafe = [
+                    edge for edge, value in margins.items()
+                    if value < SHOWCASE_FRAME_SAFE_MARGIN
+                ]
+                if unsafe:
+                    status = "failed"
+                    korean_edges = {
+                        "left": "왼쪽", "top": "위쪽", "right": "오른쪽", "bottom": "아래쪽",
+                    }
+                    issues.append(
+                        f"{', '.join(korean_edges[edge] for edge in unsafe)} 여백 부족"
+                    )
+                elif min(margins.values()) < SHOWCASE_FRAME_SAFE_MARGIN + 8:
+                    status = "warning"
+                    issues.append("프레임 경계와 캐릭터가 가까움")
+                if coverage > 0.72:
+                    status = "failed"
+                    issues.append("캐릭터 또는 배경이 셀 대부분을 차지함")
+
+            if status == "failed":
+                failed_frames += 1
+            elif status == "warning":
+                warning_frames += 1
+            frames.append({
+                "frame": frame_number,
+                "row": row + 1,
+                "column": column + 1,
+                "status": status,
+                "bbox": list(bbox) if bbox else None,
+                "margins": margins,
+                "coverage": round(coverage, 4),
+                "background": list(background),
+                "threshold": threshold,
+                "issues": issues,
+            })
+
+    baseline_issues = []
+    for row, baselines in baseline_by_row.items():
+        if baselines and max(baselines) - min(baselines) > 14:
+            baseline_issues.append(
+                f"{row + 1}행 발 기준선 편차 {max(baselines) - min(baselines)}px"
+            )
+    if failed_frames:
+        status = "failed"
+        summary = f"{failed_frames}개 프레임에서 전신 잘림 위험을 찾았습니다."
+    elif warning_frames or baseline_issues:
+        status = "warning"
+        summary = "전신은 확인됐지만 관리자 확인이 필요한 프레임이 있습니다."
+    else:
+        status = "passed"
+        summary = "12개 프레임 모두 머리부터 발끝까지 안전 여백 안에 있습니다."
+    return {
+        "status": status,
+        "summary": summary,
+        "can_approve": status != "failed",
+        "safe_margin_px": SHOWCASE_FRAME_SAFE_MARGIN,
+        "frames": frames,
+        "issues": baseline_issues,
+    }
+
+
+def _response_output_text(payload: dict) -> str:
+    for item in payload.get("output") or []:
+        if item.get("type") != "message":
+            continue
+        for content in item.get("content") or []:
+            if content.get("type") == "output_text" and isinstance(content.get("text"), str):
+                return content["text"]
+    raise ValueError("Responses API 응답에서 텍스트를 찾지 못했습니다")
+
+
+async def request_showcase_sprite_ai_review(sprite: bytes, deterministic: dict) -> dict:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key.startswith("sk-"):
+        return {
+            "status": "unavailable",
+            "summary": "AI 시각 검수를 실행할 API 키가 없습니다.",
+            "issues": [],
+            "frames": [],
+            "model": OPENAI_SPRITE_QA_MODEL,
+        }
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "status": {"type": "string", "enum": ["passed", "warning", "failed"]},
+            "summary": {"type": "string"},
+            "issues": {"type": "array", "items": {"type": "string"}},
+            "frames": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "frame": {"type": "integer", "minimum": 1, "maximum": 12},
+                        "severity": {
+                            "type": "string",
+                            "enum": ["warning", "failed"],
+                        },
+                        "issue": {"type": "string"},
+                    },
+                    "required": ["frame", "severity", "issue"],
+                },
+            },
+        },
+        "required": ["status", "summary", "issues", "frames"],
+    }
+    prompt = (
+        SHOWCASE_SPRITE_QA_PROMPT
+        + "\n\n픽셀 검사 결과:\n"
+        + json.dumps(
+            {
+                "status": deterministic.get("status"),
+                "summary": deterministic.get("summary"),
+                "frames": [
+                    {
+                        "frame": frame.get("frame"),
+                        "margins": frame.get("margins"),
+                        "issues": frame.get("issues"),
+                    }
+                    for frame in deterministic.get("frames", [])
+                ],
+            },
+            ensure_ascii=False,
+        )
+    )
+    content = [
+        {"type": "input_text", "text": prompt},
+        {
+            "type": "input_image",
+            "image_url": f"data:image/png;base64,{base64.b64encode(sprite).decode('ascii')}",
+            "detail": "high",
+        },
+    ]
+    if SHOWCASE_MASTER_PATH.is_file():
+        content.append({
+            "type": "input_image",
+            "image_url": (
+                "data:image/png;base64,"
+                + base64.b64encode(SHOWCASE_MASTER_PATH.read_bytes()).decode("ascii")
+            ),
+            "detail": "high",
+        })
+    body = {
+        "model": OPENAI_SPRITE_QA_MODEL,
+        "store": False,
+        "input": [{
+            "role": "user",
+            "content": content,
+        }],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "sprite_clipping_review",
+                "strict": True,
+                "schema": schema,
+            },
+        },
+        "max_output_tokens": 1200,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(75.0, connect=10.0)) as client:
+            response = await client.post(
+                OPENAI_RESPONSES_API_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+        if response.status_code >= 400:
+            return {
+                "status": "unavailable",
+                "summary": openai_error_detail(response),
+                "issues": [],
+                "frames": [],
+                "model": OPENAI_SPRITE_QA_MODEL,
+            }
+        review = json.loads(_response_output_text(response.json()))
+        review["model"] = OPENAI_SPRITE_QA_MODEL
+        return review
+    except (httpx.HTTPError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        return {
+            "status": "unavailable",
+            "summary": f"AI 시각 검수를 완료하지 못했습니다: {str(exc)[:160]}",
+            "issues": [],
+            "frames": [],
+            "model": OPENAI_SPRITE_QA_MODEL,
+        }
+
+
+async def inspect_showcase_sprite_quality(sprite: bytes) -> dict:
+    deterministic = analyze_showcase_sprite_pixels(sprite)
+    ai_review = await request_showcase_sprite_ai_review(sprite, deterministic)
+    statuses = {deterministic.get("status"), ai_review.get("status")}
+    if "failed" in statuses:
+        status = "failed"
+    elif "warning" in statuses or "unavailable" in statuses:
+        status = "warning"
+    else:
+        status = "passed"
+    can_approve = deterministic.get("status") != "failed" and ai_review.get("status") != "failed"
+    return {
+        "status": status,
+        "can_approve": can_approve,
+        "summary": (
+            "잘림 위험이 감지되어 재생성이 필요합니다."
+            if not can_approve
+            else "자동 검수를 통과했습니다."
+            if status == "passed"
+            else "자동 검수 일부를 완료하지 못해 관리자 확인이 필요합니다."
+        ),
+        "deterministic": deterministic,
+        "ai": ai_review,
+    }
+
+
 async def request_showcase_sprite(
     reference: bytes,
     content_type: str,
     filename: str,
+    *,
+    correction: str = "",
 ) -> bytes:
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key.startswith("sk-"):
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY가 설정되지 않았습니다")
 
-    files = [
-        ("image[]", (filename, reference, content_type)),
-    ]
+    files = [("image[]", (filename, reference, content_type))]
+    if SHOWCASE_MASTER_PATH.is_file():
+        files.append((
+            "image[]",
+            ("fixed-peter-master.png", SHOWCASE_MASTER_PATH.read_bytes(), "image/png"),
+        ))
+    prompt = SHOWCASE_SPRITE_PROMPT
+    if correction:
+        prompt += (
+            "\n\nCORRECTION REQUIRED AFTER THE PREVIOUS QA REVIEW:\n"
+            + correction[:1800]
+            + "\nFix these issues while preserving every requirement above."
+        )
     data = {
         "model": OPENAI_IMAGE_MODEL,
-        "prompt": SHOWCASE_SPRITE_PROMPT,
+        "prompt": prompt,
         "size": SHOWCASE_SPRITE_SIZE,
         "quality": OPENAI_IMAGE_QUALITY,
         "output_format": "png",
@@ -1527,6 +1909,7 @@ def update_showcase_sprite_status(
     *,
     url: Optional[str] = None,
     error: Optional[str] = None,
+    quality: Optional[dict] = None,
 ) -> dict:
     timestamp = now_iso()
     with connect_db() as db:
@@ -1547,6 +1930,9 @@ def update_showcase_sprite_status(
                 UPDATE teams
                 SET showcase_sprite_url = ?, showcase_sprite_status = ?,
                     showcase_sprite_error = ?, showcase_sprite_model = ?,
+                    showcase_sprite_quality_status = ?,
+                    showcase_sprite_quality_json = ?,
+                    showcase_sprite_qa_model = ?,
                     showcase_sprite_updated_at = ?, updated_at = ?
                 WHERE id = ?
                 """,
@@ -1555,12 +1941,15 @@ def update_showcase_sprite_status(
                     status,
                     error,
                     OPENAI_IMAGE_MODEL,
+                    quality.get("status", "unchecked") if quality else "unchecked",
+                    json.dumps(quality, ensure_ascii=False) if quality else None,
+                    OPENAI_SPRITE_QA_MODEL if quality else None,
                     timestamp,
                     timestamp,
                     team_id,
                 ),
             )
-        return row_dict(get_team_or_404(db, team_id))
+        return public_team(get_team_or_404(db, team_id))
 
 
 @app.post("/api/teams/{team_id}/image")
@@ -1595,16 +1984,23 @@ async def upload_team_image(team_id: int, image: UploadFile = File(...)):
             UPDATE teams
             SET showcase_image_url = ?, showcase_sprite_url = NULL,
                 showcase_sprite_status = 'empty', showcase_sprite_error = NULL,
-                showcase_sprite_model = NULL, showcase_sprite_updated_at = NULL,
+                showcase_sprite_model = NULL,
+                showcase_sprite_quality_status = 'unchecked',
+                showcase_sprite_quality_json = NULL,
+                showcase_sprite_qa_model = NULL,
+                showcase_sprite_updated_at = NULL,
                 updated_at = ?
             WHERE id = ?
             """,
             (image_url, now_iso(), team_id),
         )
-        updated = row_dict(get_team_or_404(db, team_id))
+        updated = public_team(get_team_or_404(db, team_id))
     if previous_team["showcase_image_url"] != image_url:
         await delete_blob_if_managed(previous_team["showcase_image_url"])
-    if previous_team["showcase_sprite_url"]:
+    if (
+        previous_team["showcase_sprite_url"]
+        and previous_team["showcase_sprite_url"] != previous_team["showcase_sprite_active_url"]
+    ):
         await delete_blob_if_managed(previous_team["showcase_sprite_url"])
     return updated
 
@@ -1622,15 +2018,41 @@ async def generate_showcase_sprite(team_id: int, reference: UploadFile = File(..
         raise HTTPException(status_code=409, detail="먼저 이 조의 2D 캐릭터 사진을 등록해주세요")
 
     contents, content_type, _ = await validated_image_upload(reference)
+    correction = ""
+    previous_quality = previous_team.get("showcase_sprite_quality_json")
+    if previous_quality:
+        try:
+            quality_payload = json.loads(previous_quality)
+            correction = json.dumps({
+                "summary": quality_payload.get("summary"),
+                "pixel_issues": quality_payload.get("deterministic", {}).get("issues", []),
+                "ai_issues": quality_payload.get("ai", {}).get("issues", []),
+                "failed_frames": [
+                    frame
+                    for frame in quality_payload.get("deterministic", {}).get("frames", [])
+                    if frame.get("status") == "failed"
+                ],
+                "ai_frames": quality_payload.get("ai", {}).get("frames", []),
+            }, ensure_ascii=False)
+        except (json.JSONDecodeError, TypeError):
+            correction = ""
     update_showcase_sprite_status(team_id, "generating", error=None)
     try:
         sprite = await request_showcase_sprite(
             contents,
             content_type,
             reference.filename or "peter-reference.png",
+            correction=correction,
         )
+        quality = await inspect_showcase_sprite_quality(sprite)
         sprite_url = await persist_showcase_sprite(team_id, sprite)
-        updated = update_showcase_sprite_status(team_id, "review", url=sprite_url, error=None)
+        updated = update_showcase_sprite_status(
+            team_id,
+            "review",
+            url=sprite_url,
+            error=None,
+            quality=quality,
+        )
     except HTTPException as exc:
         update_showcase_sprite_status(team_id, "failed", error=str(exc.detail)[:300])
         raise
@@ -1642,13 +2064,21 @@ async def generate_showcase_sprite(team_id: int, reference: UploadFile = File(..
         ) from exc
 
     previous_url = previous_team["showcase_sprite_url"]
-    if previous_url and previous_url != sprite_url:
+    if (
+        previous_url
+        and previous_url != sprite_url
+        and previous_url != previous_team["showcase_sprite_active_url"]
+    ):
         await delete_blob_if_managed(previous_url)
     return updated
 
 
 @app.post("/api/teams/{team_id}/showcase-sprite/approve")
-async def approve_showcase_sprite(team_id: int):
+async def approve_showcase_sprite(
+    team_id: int,
+    payload: Optional[SpriteApprovalPayload] = None,
+):
+    force = payload.force if payload else False
     with connect_db() as db:
         team = row_dict(get_team_or_404(db, team_id))
     if not team["showcase_sprite_url"]:
@@ -1656,8 +2086,32 @@ async def approve_showcase_sprite(team_id: int):
     if team["showcase_sprite_status"] not in ("review", "ready"):
         raise HTTPException(status_code=409, detail="생성이 완료된 AI 스프라이트만 승인할 수 있습니다")
     if team["showcase_sprite_status"] == "ready":
-        return team
-    return update_showcase_sprite_status(team_id, "ready", error=None)
+        return public_team(team)
+    quality = {}
+    if team.get("showcase_sprite_quality_json"):
+        try:
+            quality = json.loads(team["showcase_sprite_quality_json"])
+        except (json.JSONDecodeError, TypeError):
+            quality = {}
+    if not force and not quality.get("can_approve", False):
+        raise HTTPException(
+            status_code=409,
+            detail="자동 검수에서 잘림 또는 외형 문제가 발견되었습니다. 다시 생성하거나 문제를 확인한 뒤 강제 적용하세요.",
+        )
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_active_url = showcase_sprite_url,
+                showcase_sprite_status = 'ready',
+                showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (timestamp, timestamp, team_id),
+        )
+        return public_team(get_team_or_404(db, team_id))
 
 
 async def validated_glb_upload(glb: UploadFile) -> tuple[bytes, dict]:
