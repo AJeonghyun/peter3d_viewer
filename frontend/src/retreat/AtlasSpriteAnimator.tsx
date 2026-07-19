@@ -69,6 +69,9 @@ function AtlasSpriteAnimatorComponent({
   const rows = fixedMaster ? 5 : 3;
   const column = frame % columns;
   const row = Math.floor(frame / columns);
+  const displayScale = fixedMaster
+    ? Math.min(1.6, Math.max(0.8, contract?.display_scale ?? 1))
+    : 1;
 
   useEffect(() => {
     let active = true;
@@ -109,6 +112,7 @@ function AtlasSpriteAnimatorComponent({
     '--atlas-columns': columns,
     '--atlas-rows': rows,
     '--atlas-flip': flipX ? -1 : 1,
+    '--atlas-display-scale': displayScale,
     '--atlas-image': preparedUrl ? `url(${JSON.stringify(preparedUrl)})` : 'none',
   } as CSSProperties;
 

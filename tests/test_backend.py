@@ -315,6 +315,7 @@ class Peter3DBackendTests(unittest.TestCase):
         generated = backend_main.master_reference_for_ai()
         expected = backend_main.SHOWCASE_MASTER_PATH.read_bytes()
         recorded = {}
+        progress = []
 
         class FakeResponse:
             status_code = 200
@@ -354,6 +355,7 @@ class Peter3DBackendTests(unittest.TestCase):
             actual = asyncio.run(backend_main.request_master_locked_garment_atlas(
                 b"corrected-student-peter",
                 filename="team-1-corrected.png",
+                on_progress=progress.append,
             ))
 
         with Image.open(io.BytesIO(actual)) as atlas:
@@ -369,6 +371,7 @@ class Peter3DBackendTests(unittest.TestCase):
             "image[]",
             ("team-1-corrected.png", b"corrected-student-peter", "image/png"),
         ))
+        self.assertEqual(progress, ["composing"])
 
     def test_openai_sprite_request_sends_reference_and_fixed_contract(self):
         expected_sprite = make_png_header(1536, 1152)
@@ -775,7 +778,11 @@ class Peter3DBackendTests(unittest.TestCase):
             asyncio.run(backend_main.retry_showcase_capture_part(1, "lower"))
         self.assertEqual(caught.exception.status_code, 410)
 
-        atlas = backend_main.SHOWCASE_MASTER_PATH.read_bytes()
+        atlas = backend_main._image_to_png_bytes(
+            backend_main.normalize_master_locked_atlas(
+                backend_main.master_reference_for_ai(),
+            ),
+        )
         atlas_quality = {
             "status": "passed",
             "can_approve": True,
@@ -805,6 +812,7 @@ class Peter3DBackendTests(unittest.TestCase):
         inspect.assert_awaited_once()
         self.assertTrue(generate.await_args.args[0].startswith(b"\x89PNG"))
         self.assertEqual(generate.await_args.kwargs["filename"], "team-1-corrected-peter.png")
+        self.assertTrue(callable(generate.await_args.kwargs["on_progress"]))
 
         self.assertEqual(composed["status"], "review")
         self.assertEqual(composed["contract"], backend_main.GARMENT_TRANSFER_CONTRACT)
@@ -831,18 +839,42 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(restored["status"], "ready")
         self.assertEqual(restored["team"]["showcase_sprite_active_url"], composed["atlas_url"])
 
-    def test_master_locked_normalization_restores_master_scale_and_baseline(self):
+    def test_master_locked_normalization_matches_shared_actor_scale_and_baseline(self):
+        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as source:
+            master_cell = source.convert("RGBA").crop((0, 0, 360, 360))
+        master_bbox = master_cell.getchannel("A").getbbox()
+        self.assertIsNotNone(master_bbox)
+        target_bbox = backend_main.master_display_target_bbox(master_bbox)
+
         normalized = backend_main.normalize_master_locked_atlas(
             backend_main.master_reference_for_ai(),
         )
         report = backend_main.analyze_garment_atlas_pixels(normalized)
+        normalized_bbox = normalized.crop((0, 0, 360, 360)).getchannel("A").getbbox()
 
         self.assertEqual(normalized.size, (1800, 1800))
         self.assertEqual(report["status"], "passed")
+        self.assertIsNotNone(normalized_bbox)
+        self.assertGreater(
+            normalized_bbox[3] - normalized_bbox[1],
+            (master_bbox[3] - master_bbox[1]) * 1.3,
+        )
+        self.assertEqual(normalized_bbox[3] - normalized_bbox[1], target_bbox[3] - target_bbox[1])
         for frame in report["frames"]:
             self.assertLessEqual(abs(frame["anchor_delta"]["center_x"]), 1)
             self.assertLessEqual(abs(frame["anchor_delta"]["baseline"]), 1)
             self.assertGreaterEqual(frame["size_ratio"]["height"], 0.99)
+
+    def test_sprite_contract_scales_existing_small_atlases_only(self):
+        previous = backend_main.public_sprite_contract(
+            backend_main.PREVIOUS_GARMENT_TRANSFER_CONTRACT,
+        )
+        current = backend_main.public_sprite_contract(backend_main.GARMENT_TRANSFER_CONTRACT)
+
+        self.assertEqual(previous["version"], 3)
+        self.assertEqual(previous["display_scale"], backend_main.GARMENT_DISPLAY_SCALE)
+        self.assertEqual(current["version"], 4)
+        self.assertEqual(current["display_scale"], 1.0)
 
     def test_master_atlas_quality_rejects_a_character_shrunk_inside_its_cell(self):
         with Image.open(backend_main.SHOWCASE_MASTER_PATH) as source:
@@ -901,11 +933,30 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(backend_main.SHOWCASE_MASTER_PATH, backend_main.SHOWCASE_SAFE_MASTER_PATH)
         with Image.open(backend_main.SHOWCASE_MASTER_PATH) as master:
             self.assertEqual(master.size, (1800, 1800))
-            report = backend_main.analyze_garment_atlas_pixels(master)
+            for index in range(25):
+                column = index % 5
+                row = index // 5
+                bbox = master.crop((
+                    column * 360,
+                    row * 360,
+                    (column + 1) * 360,
+                    (row + 1) * 360,
+                )).getchannel("A").getbbox()
+                self.assertIsNotNone(bbox)
+                self.assertGreaterEqual(min(
+                    bbox[0],
+                    bbox[1],
+                    360 - bbox[2],
+                    360 - bbox[3],
+                ), 18)
+        normalized = backend_main.normalize_master_locked_atlas(
+            backend_main.master_reference_for_ai(),
+        )
+        report = backend_main.analyze_garment_atlas_pixels(normalized)
         self.assertEqual(report["status"], "passed")
         self.assertEqual(len(report["frames"]), 25)
         for frame in report["frames"]:
-            self.assertGreaterEqual(min(frame["margins"].values()), 18)
+            self.assertGreaterEqual(min(frame["margins"].values()), 14)
 
     def test_showcase_sprite_approval_blocks_failed_qa_without_force(self):
         quality = {

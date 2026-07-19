@@ -111,6 +111,7 @@ select {
   bottom: 2cqh;
   width: min(96cqw, 96cqh);
   height: min(96cqw, 96cqh);
+  scale: var(--atlas-display-scale, 1);
   animation: none;
   image-rendering: auto;
 }

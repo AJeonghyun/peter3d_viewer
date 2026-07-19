@@ -14,7 +14,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -70,7 +70,8 @@ SHOWCASE_SPRITE_WIDTH = 1536
 SHOWCASE_SPRITE_HEIGHT = 1152
 SHOWCASE_SPRITE_SIZE = f"{SHOWCASE_SPRITE_WIDTH}x{SHOWCASE_SPRITE_HEIGHT}"
 LEGACY_GARMENT_TRANSFER_CONTRACT = "fixed-peter-garment-transfer-v2"
-GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v3"
+PREVIOUS_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v3"
+GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v4"
 GARMENT_ATLAS_COLUMNS = 5
 GARMENT_ATLAS_ROWS = 5
 GARMENT_ATLAS_CELL_SIZE = 360
@@ -79,6 +80,7 @@ GARMENT_AI_CELL_SIZE = 384
 GARMENT_AI_ATLAS_SIZE = GARMENT_ATLAS_COLUMNS * GARMENT_AI_CELL_SIZE
 GARMENT_AI_IMAGE_SIZE = f"{GARMENT_AI_ATLAS_SIZE}x{GARMENT_AI_ATLAS_SIZE}"
 GARMENT_AI_BACKGROUND = (0, 255, 0)
+GARMENT_DISPLAY_SCALE = 1.38
 GARMENT_TEMPLATE_SIZE = (1240, 1754)
 GARMENT_PART_CROPS = {
     "upper": (0.12, 0.34, 0.88, 0.62),
@@ -415,10 +417,23 @@ def _loads_json(value: Any) -> Any:
 def public_sprite_contract(value: Any) -> Any:
     if isinstance(value, dict) or value is None:
         return value
-    if value in {LEGACY_GARMENT_TRANSFER_CONTRACT, GARMENT_TRANSFER_CONTRACT}:
+    if value in {
+        LEGACY_GARMENT_TRANSFER_CONTRACT,
+        PREVIOUS_GARMENT_TRANSFER_CONTRACT,
+        GARMENT_TRANSFER_CONTRACT,
+    }:
+        if value == GARMENT_TRANSFER_CONTRACT:
+            version = 4
+            display_scale = 1.0
+        elif value == PREVIOUS_GARMENT_TRANSFER_CONTRACT:
+            version = 3
+            display_scale = GARMENT_DISPLAY_SCALE
+        else:
+            version = 2
+            display_scale = GARMENT_DISPLAY_SCALE
         return {
             "id": str(value),
-            "version": 3 if value == GARMENT_TRANSFER_CONTRACT else 2,
+            "version": version,
             "layout": "5x5",
             "rows": GARMENT_ATLAS_ROWS,
             "columns": GARMENT_ATLAS_COLUMNS,
@@ -426,6 +441,7 @@ def public_sprite_contract(value: Any) -> Any:
             "frame_width": GARMENT_ATLAS_CELL_SIZE,
             "frame_height": GARMENT_ATLAS_CELL_SIZE,
             "safe_frame": "square",
+            "display_scale": display_scale,
         }
     return {"id": str(value), "layout": "4x3", "rows": 3, "columns": 4, "frame_count": 12}
 
@@ -2162,8 +2178,32 @@ def remove_connected_cell_background(cell: Image.Image, *, threshold: int = 56) 
     return rgba
 
 
+def master_display_target_bbox(master_bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """Expand a master frame to the same visual envelope as the shared Peter actor."""
+    left, top, right, bottom = master_bbox
+    source_width = max(1, right - left)
+    source_height = max(1, bottom - top)
+    maximum_width = GARMENT_ATLAS_CELL_SIZE - SHOWCASE_FRAME_SAFE_MARGIN * 2
+    maximum_height = bottom - SHOWCASE_FRAME_SAFE_MARGIN
+    scale = min(
+        GARMENT_DISPLAY_SCALE,
+        maximum_width / source_width,
+        maximum_height / source_height,
+    )
+    target_width = max(1, round(source_width * scale))
+    target_height = max(1, round(source_height * scale))
+    center_x = (left + right) / 2
+    target_left = round(center_x - target_width / 2)
+    target_left = max(
+        SHOWCASE_FRAME_SAFE_MARGIN,
+        min(target_left, GARMENT_ATLAS_CELL_SIZE - SHOWCASE_FRAME_SAFE_MARGIN - target_width),
+    )
+    target_top = bottom - target_height
+    return target_left, target_top, target_left + target_width, bottom
+
+
 def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image.Image:
-    """Re-anchor every AI frame to the canonical master frame without cropping the body."""
+    """Match every AI frame to the shared actor's size and the master's foot anchor."""
     try:
         candidate = (
             Image.open(io.BytesIO(generated)).convert("RGBA")
@@ -2207,11 +2247,12 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
         if generated_bbox is None or master_bbox is None:
             continue
         character = cleaned.crop(generated_bbox)
-        target_width = master_bbox[2] - master_bbox[0]
-        target_height = master_bbox[3] - master_bbox[1]
+        target_bbox = master_display_target_bbox(master_bbox)
+        target_width = target_bbox[2] - target_bbox[0]
+        target_height = target_bbox[3] - target_bbox[1]
         scale = min(
-            target_width / max(1, character.width),
             target_height / max(1, character.height),
+            (GARMENT_ATLAS_CELL_SIZE - SHOWCASE_FRAME_SAFE_MARGIN * 2) / max(1, character.width),
         )
         resized = character.resize(
             (
@@ -2220,9 +2261,13 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
             ),
             Image.Resampling.LANCZOS,
         )
-        target_center_x = (master_bbox[0] + master_bbox[2]) / 2
+        target_center_x = (target_bbox[0] + target_bbox[2]) / 2
         target_x = round(target_center_x - resized.width / 2)
-        target_y = master_bbox[3] - resized.height
+        target_x = max(
+            SHOWCASE_FRAME_SAFE_MARGIN,
+            min(target_x, GARMENT_ATLAS_CELL_SIZE - SHOWCASE_FRAME_SAFE_MARGIN - resized.width),
+        )
+        target_y = target_bbox[3] - resized.height
         output.alpha_composite(
             resized,
             (
@@ -2257,6 +2302,7 @@ async def request_master_locked_garment_atlas(
     *,
     filename: str = "student-peter.png",
     correction: str = "",
+    on_progress: Optional[Callable[[str], None]] = None,
 ) -> bytes:
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key.startswith("sk-"):
@@ -2312,6 +2358,8 @@ async def request_master_locked_garment_atlas(
             detail=openai_error_detail(response),
         )
     try:
+        if on_progress:
+            on_progress("composing")
         encoded = response.json()["data"][0]["b64_json"]
         generated = base64.b64decode(encoded, validate=True)
         atlas = normalize_master_locked_atlas(generated)
@@ -2727,11 +2775,12 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
             if master_bbox is None:
                 issues.append("master_frame_missing")
             else:
-                width_ratio = (right - left) / max(1, master_bbox[2] - master_bbox[0])
-                height_ratio = (bottom - top) / max(1, master_bbox[3] - master_bbox[1])
+                target_bbox = master_display_target_bbox(master_bbox)
+                width_ratio = (right - left) / max(1, target_bbox[2] - target_bbox[0])
+                height_ratio = (bottom - top) / max(1, target_bbox[3] - target_bbox[1])
                 area_ratio = (
                     (right - left) * (bottom - top)
-                    / max(1, (master_bbox[2] - master_bbox[0]) * (master_bbox[3] - master_bbox[1]))
+                    / max(1, (target_bbox[2] - target_bbox[0]) * (target_bbox[3] - target_bbox[1]))
                 )
                 size_ratio = {
                     "width": round(width_ratio, 3),
@@ -2740,9 +2789,9 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
                 }
                 anchor_delta = {
                     "center_x": round(
-                        ((left + right) - (master_bbox[0] + master_bbox[2])) / 2,
+                        ((left + right) - (target_bbox[0] + target_bbox[2])) / 2,
                     ),
-                    "baseline": bottom - master_bbox[3],
+                    "baseline": bottom - target_bbox[3],
                 }
                 if width_ratio < 0.78 or height_ratio < 0.90 or area_ratio < 0.76:
                     issues.append("character_too_small")
@@ -3260,25 +3309,22 @@ async def compose_showcase_capture(team_id: int):
         raise HTTPException(status_code=409, detail="보정된 학생 디자인 이미지가 없습니다")
     corrected_bytes = await read_public_asset_bytes(version["corrected_url"])
     correction = garment_retry_instruction(version.get("qa_json"))
-    timestamp = now_iso()
-    with connect_db() as db:
-        db.execute(
-            """
-            UPDATE teams
-            SET showcase_sprite_status = 'composing', showcase_sprite_error = NULL,
-                showcase_sprite_updated_at = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (timestamp, timestamp, team_id),
-        )
+    update_showcase_sprite_status(team_id, "generating", error=None)
+
+    def report_progress(status: str) -> None:
+        update_showcase_sprite_status(team_id, status, error=None)
+
     try:
         atlas_bytes = await request_master_locked_garment_atlas(
             corrected_bytes,
             filename=f"team-{team_id}-corrected-peter.png",
             correction=correction,
+            on_progress=report_progress,
         )
+        report_progress("reviewing")
         qa = await inspect_garment_atlas_quality(atlas_bytes, corrected_bytes)
-        atlas_url = await persist_showcase_asset(team_id, "sprite-v3-atlas", atlas_bytes)
+        report_progress("saving")
+        atlas_url = await persist_showcase_asset(team_id, "sprite-v4-atlas", atlas_bytes)
     except HTTPException as exc:
         timestamp = now_iso()
         with connect_db() as db:

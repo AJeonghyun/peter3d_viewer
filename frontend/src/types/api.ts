@@ -7,6 +7,8 @@ export type ShowcaseCaptureStatus =
   | 'processing'
   | 'garment_review'
   | 'composing'
+  | 'reviewing'
+  | 'saving'
   | 'review'
   | 'ready'
   | 'failed';
@@ -96,6 +98,7 @@ export interface ShowcaseSpriteContract {
   frame_count?: number;
   frame_width?: number;
   frame_height?: number;
+  display_scale?: number;
   safe_frame?: 'square' | string;
   atlas_url?: string | null;
   [key: string]: unknown;

@@ -26,6 +26,62 @@ interface TeamDraft {
 const EMPTY_DRAFT: TeamDraft = { name: '', color: '#67b8c7', symbol: '', identity_text: '' };
 const TEMPLATE_URL = '/assets/showcase/peter-print-template.png';
 const FIXED_MASTER_URL = '/api/showcase/fixed-master';
+const GENERATION_EXPECTED_SECONDS = 210;
+const GENERATION_STAGES = [
+  {
+    status: 'generating',
+    label: 'AI가 25컷을 그리는 중',
+    detail: '고정 베드로와 학생 디자인을 함께 분석해 새 시트를 생성합니다.',
+    floor: 8,
+    ceiling: 70,
+  },
+  {
+    status: 'composing',
+    label: '크기와 발 기준선을 맞추는 중',
+    detail: '배경을 제거하고 25개 프레임을 공용 캐릭터 크기로 정렬합니다.',
+    floor: 72,
+    ceiling: 84,
+  },
+  {
+    status: 'reviewing',
+    label: '전신과 동작을 자동 검수하는 중',
+    detail: '머리·손·발 잘림, 의상 침범, 크기 차이를 픽셀과 AI로 확인합니다.',
+    floor: 86,
+    ceiling: 96,
+  },
+  {
+    status: 'saving',
+    label: '검수 결과를 저장하는 중',
+    detail: '25컷과 검수 리포트를 저장하고 미리보기를 준비합니다.',
+    floor: 98,
+    ceiling: 99,
+  },
+] as const;
+
+type GenerationStageStatus = typeof GENERATION_STAGES[number]['status'];
+
+function isGenerationStage(status: ShowcaseCaptureStatus): status is GenerationStageStatus {
+  return GENERATION_STAGES.some((stage) => stage.status === status);
+}
+
+function formatGenerationTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes > 0 ? `${minutes}분 ${remainder}초` : `${remainder}초`;
+}
+
+function generationProgress(status: ShowcaseCaptureStatus, elapsedSeconds: number) {
+  const stageIndex = isGenerationStage(status)
+    ? GENERATION_STAGES.findIndex((stage) => stage.status === status)
+    : 0;
+  const stage = GENERATION_STAGES[Math.max(0, stageIndex)];
+  const timedPercent = 8 + (elapsedSeconds / GENERATION_EXPECTED_SECONDS) * 90;
+  const percent = Math.round(Math.min(stage.ceiling, Math.max(stage.floor, timedPercent)));
+  const stageRemaining = [GENERATION_EXPECTED_SECONDS - elapsedSeconds, 55, 30, 8];
+  const remainingSeconds = Math.max(0, stageRemaining[Math.max(0, stageIndex)] ?? 0);
+  const delayed = stageIndex === 0 && remainingSeconds === 0;
+  return { stage, stageIndex, percent, remainingSeconds, delayed };
+}
 
 const SPRITE_REVIEW_PREVIEWS: Array<{
   label: string;
@@ -56,10 +112,12 @@ function draftFromTeam(team: Team): TeamDraft {
 function spriteStatusLabel(status: ShowcaseCaptureStatus) {
   return ({
     empty: '대기',
-    generating: '기존 생성 중',
+    generating: 'AI 25컷 생성 중',
     processing: '사진 품질·보정 중',
     garment_review: 'AI 생성 준비',
-    composing: 'AI 25컷 생성 중',
+    composing: '프레임 크기 정렬 중',
+    reviewing: '전신·동작 자동 검수 중',
+    saving: '25컷 저장 중',
     review: '25컷 최종 검수',
     ready: '전체 페이지 적용 완료',
     failed: '처리 실패',
@@ -224,6 +282,8 @@ export default function AdminPage() {
   const [versions, setVersions] = useState<ShowcaseSpriteVersion[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [restoringVersionId, setRestoringVersionId] = useState<string | number | null>(null);
+  const [generationJob, setGenerationJob] = useState<{ teamId: number; startedAt: number } | null>(null);
+  const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const characterInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -234,6 +294,13 @@ export default function AdminPage() {
   const selectedSpriteUrl = activeSpriteUrl(selected);
   const fixedMaster = isFixedMaster(selected);
   const designReferenceReady = Boolean(correctedCaptureUrl(selected));
+  const generationActive = Boolean(
+    composingSprite && generationJob && selected?.id === generationJob.teamId,
+  );
+  const generationStatus = isGenerationStage(selected?.showcase_sprite_status ?? 'generating')
+    ? selected?.showcase_sprite_status ?? 'generating'
+    : 'generating';
+  const generation = generationProgress(generationStatus, generationElapsedSeconds);
 
   function showToast(message: string) {
     setToast(message);
@@ -304,6 +371,47 @@ export default function AdminPage() {
     void refreshVersions(selectedId);
   }, [selectedId]);
 
+  useEffect(() => {
+    if (!generationJob) {
+      setGenerationElapsedSeconds(0);
+      return undefined;
+    }
+    const updateElapsed = () => {
+      setGenerationElapsedSeconds(Math.max(
+        0,
+        Math.floor((Date.now() - generationJob.startedAt) / 1000),
+      ));
+    };
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [generationJob]);
+
+  useEffect(() => {
+    if (!generationJob) return undefined;
+    let active = true;
+    const pollGenerationStage = async () => {
+      try {
+        const team = await apiRequest<Team>(`/teams/${generationJob.teamId}`, {
+          cache: 'no-store',
+        });
+        if (active) {
+          setTeams((current) => current.map((item) => item.id === team.id ? team : item));
+        }
+      } catch (error) {
+        console.warn('25컷 생성 단계를 확인하지 못했습니다.', error);
+      }
+    };
+    void pollGenerationStage();
+    const timer = window.setInterval(() => {
+      void pollGenerationStage();
+    }, 2000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [generationJob]);
+
   function chooseTeam(team: Team) {
     setSelectedId(team.id);
     setTeamDraft(draftFromTeam(team));
@@ -370,9 +478,10 @@ export default function AdminPage() {
   async function composeShowcaseSprite() {
     if (!selected) return;
     setComposingSprite(true);
+    setGenerationJob({ teamId: selected.id, startedAt: Date.now() });
     setTeams((current) => current.map((team) => (
       team.id === selected.id
-        ? { ...team, showcase_sprite_status: 'composing', showcase_sprite_error: null }
+        ? { ...team, showcase_sprite_status: 'generating', showcase_sprite_error: null }
         : team
     )));
     try {
@@ -392,6 +501,7 @@ export default function AdminPage() {
       showToast(message);
     } finally {
       setComposingSprite(false);
+      setGenerationJob(null);
     }
   }
 
@@ -588,13 +698,55 @@ export default function AdminPage() {
                 onClick={() => { void composeShowcaseSprite(); }}
               >
                 {composingSprite
-                  ? 'AI 25컷 생성·정규화 중…'
+                  ? `${generation.stage.label}…`
                   : selectedSpriteUrl
                     ? 'QA 반영해 25컷 다시 생성'
                     : 'AI로 마스터 고정 25컷 생성'}
               </button>
-              <span>재생성하면 현재 QA의 프레임별 문제를 다음 요청에 자동으로 포함합니다.</span>
+              <span>보통 2~4분 걸립니다. 재생성하면 현재 QA의 프레임별 문제도 자동으로 반영합니다.</span>
             </div>
+            {generationActive && (
+              <div className="sprite-generation-live" role="status" aria-live="polite">
+                <header>
+                  <div>
+                    <strong>{generation.stage.label}</strong>
+                    <span>{generation.stage.detail}</span>
+                  </div>
+                  <b>{generation.percent}%</b>
+                </header>
+                <progress
+                  value={generation.percent}
+                  max={100}
+                  aria-label="마스터 고정 25컷 생성 진행률"
+                />
+                <div className="sprite-generation-time">
+                  <span>{formatGenerationTime(generationElapsedSeconds)} 경과</span>
+                  <span>
+                    {generation.delayed
+                      ? '예상보다 지연 중 · 계속 자동 확인합니다'
+                      : `약 ${formatGenerationTime(generation.remainingSeconds)} 남음`}
+                  </span>
+                </div>
+                <ol>
+                  {GENERATION_STAGES.map((stage, index) => {
+                    const state = index < generation.stageIndex
+                      ? 'complete'
+                      : index === generation.stageIndex ? 'active' : 'pending';
+                    return (
+                      <li
+                        key={stage.status}
+                        data-state={state}
+                        aria-current={state === 'active' ? 'step' : undefined}
+                      >
+                        <i>{state === 'complete' ? '✓' : index + 1}</i>
+                        <span>{stage.label}</span>
+                      </li>
+                    );
+                  })}
+                </ol>
+                <p>예상 시간은 이미지 복잡도와 AI 서버 상태에 따라 달라질 수 있습니다. 이 화면을 그대로 두면 완료 즉시 검수 화면으로 전환됩니다.</p>
+              </div>
+            )}
           </section>
 
           {selected && selectedSpriteUrl && ['review', 'ready'].includes(selected.showcase_sprite_status) && (
