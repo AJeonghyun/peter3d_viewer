@@ -301,6 +301,75 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("handmade texture", prompt)
         self.assertIn("strict 90-degree side-profile walking-right", prompt)
 
+    def test_master_edit_prompt_locks_all_25_poses_and_garment_boundaries(self):
+        prompt = backend_main.GARMENT_MASTER_EDIT_PROMPT
+        self.assertIn("fixed master is an immutable template", prompt)
+        self.assertIn("exactly 25 complete characters", prompt)
+        self.assertIn("upper garment", prompt)
+        self.assertIn("lower garment", prompt)
+        self.assertIn("student-left footwear", prompt)
+        self.assertIn("student-right footwear", prompt)
+        self.assertIn("same bottom-center anchor", prompt)
+
+    def test_master_locked_request_sends_master_first_and_omits_gpt_image_2_fidelity(self):
+        generated = backend_main.master_reference_for_ai()
+        expected = backend_main.SHOWCASE_MASTER_PATH.read_bytes()
+        recorded = {}
+
+        class FakeResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    "data": [{
+                        "b64_json": backend_main.base64.b64encode(generated).decode("ascii"),
+                    }],
+                }
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return None
+
+            async def post(self, url, *, headers, data, files):
+                recorded.update({
+                    "url": url,
+                    "headers": headers,
+                    "data": data,
+                    "files": files,
+                })
+                return FakeResponse()
+
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
+            patch("backend_main.httpx.AsyncClient", return_value=FakeClient()),
+            patch(
+                "backend_main.normalize_master_locked_atlas",
+                return_value=Image.open(io.BytesIO(expected)).convert("RGBA"),
+            ),
+        ):
+            actual = asyncio.run(backend_main.request_master_locked_garment_atlas(
+                b"corrected-student-peter",
+                filename="team-1-corrected.png",
+            ))
+
+        with Image.open(io.BytesIO(actual)) as atlas:
+            self.assertEqual(atlas.size, (1800, 1800))
+        self.assertEqual(recorded["url"], backend_main.OPENAI_IMAGE_API_URL)
+        self.assertEqual(recorded["data"]["model"], "gpt-image-2")
+        self.assertEqual(recorded["data"]["size"], "1920x1920")
+        self.assertEqual(recorded["data"]["quality"], "high")
+        self.assertEqual(recorded["data"]["background"], "opaque")
+        self.assertNotIn("input_fidelity", recorded["data"])
+        self.assertEqual(recorded["files"][0][1][0], "fixed-peter-master-5x5.png")
+        self.assertEqual(recorded["files"][1], (
+            "image[]",
+            ("team-1-corrected.png", b"corrected-student-peter", "image/png"),
+        ))
+
     def test_openai_sprite_request_sends_reference_and_fixed_contract(self):
         expected_sprite = make_png_header(1536, 1152)
         recorded = {}
@@ -655,7 +724,7 @@ class Peter3DBackendTests(unittest.TestCase):
             approved["showcase_sprite_url"],
         )
 
-    def test_capture_v2_process_compose_approve_and_restore_version(self):
+    def test_capture_v3_process_compose_approve_and_restore_version(self):
         quality = {
             "status": "passed",
             "can_process": True,
@@ -689,30 +758,53 @@ class Peter3DBackendTests(unittest.TestCase):
             processed = asyncio.run(backend_main.process_showcase_capture(1, reference))
 
         review.assert_awaited_once()
-        self.assertEqual(processed["status"], "parts_ready")
+        self.assertEqual(processed["status"], "reference_ready")
         self.assertEqual(
             processed["version"]["contract"]["id"],
             backend_main.GARMENT_TRANSFER_CONTRACT,
         )
-        self.assertEqual(processed["version"]["status"], "parts_ready")
-        self.assertEqual(processed["parts"]["template_size"], list(backend_main.GARMENT_TEMPLATE_SIZE))
-        self.assertEqual(set(processed["parts"]["urls"]), set(backend_main.GARMENT_PARTS))
-        for part in backend_main.GARMENT_PARTS:
-            self.assertTrue(processed["parts"]["urls"][part].startswith(f"/uploads/team-1-capture-{part}-"))
-            self.assertTrue((backend_main.UPLOADS_DIR / Path(processed["parts"]["urls"][part]).name).is_file())
-            self.assertEqual(
-                processed["team"]["showcase_garment_parts"][part]["preview_url"],
-                processed["parts"]["urls"][part],
-            )
+        self.assertEqual(processed["version"]["status"], "reference_ready")
+        self.assertEqual(processed["reference"]["mode"], "full-body-master-edit")
+        self.assertEqual(processed["reference"]["template_size"], list(backend_main.GARMENT_TEMPLATE_SIZE))
+        self.assertEqual(processed["reference"]["regions"], list(backend_main.GARMENT_PARTS))
+        self.assertIsNone(processed["team"]["showcase_garment_parts"])
         self.assertTrue(processed["team"]["showcase_capture_source_url"].startswith("/uploads/"))
         self.assertTrue(processed["team"]["showcase_capture_corrected_url"].startswith("/uploads/"))
 
-        retried = asyncio.run(backend_main.retry_showcase_capture_part(1, "lower"))
-        self.assertEqual(retried["part"], "lower")
-        self.assertNotEqual(retried["part_url"], processed["parts"]["urls"]["lower"])
-        self.assertEqual(retried["version"]["status"], "parts_ready")
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(backend_main.retry_showcase_capture_part(1, "lower"))
+        self.assertEqual(caught.exception.status_code, 410)
 
-        composed = asyncio.run(backend_main.compose_showcase_capture(1))
+        atlas = backend_main.SHOWCASE_MASTER_PATH.read_bytes()
+        atlas_quality = {
+            "status": "passed",
+            "can_approve": True,
+            "summary": "마스터 고정 25컷 검수 통과",
+            "deterministic": backend_main.analyze_garment_atlas_pixels(atlas),
+            "ai": {
+                "status": "passed",
+                "summary": "의상 영역과 마스터 정체성 통과",
+                "frames": [],
+                "issues": [],
+                "model": backend_main.OPENAI_SPRITE_QA_MODEL,
+            },
+        }
+        with (
+            patch(
+                "backend_main.request_master_locked_garment_atlas",
+                new=AsyncMock(return_value=atlas),
+            ) as generate,
+            patch(
+                "backend_main.inspect_garment_atlas_quality",
+                new=AsyncMock(return_value=atlas_quality),
+            ) as inspect,
+        ):
+            composed = asyncio.run(backend_main.compose_showcase_capture(1))
+
+        generate.assert_awaited_once()
+        inspect.assert_awaited_once()
+        self.assertTrue(generate.await_args.args[0].startswith(b"\x89PNG"))
+        self.assertEqual(generate.await_args.kwargs["filename"], "team-1-corrected-peter.png")
 
         self.assertEqual(composed["status"], "review")
         self.assertEqual(composed["contract"], backend_main.GARMENT_TRANSFER_CONTRACT)
@@ -738,6 +830,42 @@ class Peter3DBackendTests(unittest.TestCase):
         restored = asyncio.run(backend_main.restore_sprite_version(1, composed["version"]["id"]))
         self.assertEqual(restored["status"], "ready")
         self.assertEqual(restored["team"]["showcase_sprite_active_url"], composed["atlas_url"])
+
+    def test_master_locked_normalization_restores_master_scale_and_baseline(self):
+        normalized = backend_main.normalize_master_locked_atlas(
+            backend_main.master_reference_for_ai(),
+        )
+        report = backend_main.analyze_garment_atlas_pixels(normalized)
+
+        self.assertEqual(normalized.size, (1800, 1800))
+        self.assertEqual(report["status"], "passed")
+        for frame in report["frames"]:
+            self.assertLessEqual(abs(frame["anchor_delta"]["center_x"]), 1)
+            self.assertLessEqual(abs(frame["anchor_delta"]["baseline"]), 1)
+            self.assertGreaterEqual(frame["size_ratio"]["height"], 0.99)
+
+    def test_master_atlas_quality_rejects_a_character_shrunk_inside_its_cell(self):
+        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as source:
+            atlas = source.convert("RGBA")
+        cell = atlas.crop((0, 0, 360, 360))
+        bbox = cell.getchannel("A").getbbox()
+        self.assertIsNotNone(bbox)
+        character = cell.crop(bbox).resize(
+            (
+                round((bbox[2] - bbox[0]) * 0.62),
+                round((bbox[3] - bbox[1]) * 0.62),
+            ),
+            Image.Resampling.LANCZOS,
+        )
+        atlas.paste((0, 0, 0, 0), (0, 0, 360, 360))
+        x = round(((bbox[0] + bbox[2]) - character.width) / 2)
+        y = bbox[3] - character.height
+        atlas.alpha_composite(character, (x, y))
+
+        report = backend_main.analyze_garment_atlas_pixels(atlas)
+
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("character_too_small", report["frames"][0]["issues"])
 
     def test_capture_correction_keeps_phone_photo_corner_orientation(self):
         source = Image.new("RGB", (100, 100), "white")

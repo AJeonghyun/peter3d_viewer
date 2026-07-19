@@ -14,7 +14,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageFilter, ImageOps, UnidentifiedImageError
 from tripo3d import TaskStatus, TripoClient
 from tripo3d.models import RigType
 
@@ -69,11 +69,16 @@ SHOWCASE_SPRITE_ROWS = 3
 SHOWCASE_SPRITE_WIDTH = 1536
 SHOWCASE_SPRITE_HEIGHT = 1152
 SHOWCASE_SPRITE_SIZE = f"{SHOWCASE_SPRITE_WIDTH}x{SHOWCASE_SPRITE_HEIGHT}"
-GARMENT_TRANSFER_CONTRACT = "fixed-peter-garment-transfer-v2"
+LEGACY_GARMENT_TRANSFER_CONTRACT = "fixed-peter-garment-transfer-v2"
+GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v3"
 GARMENT_ATLAS_COLUMNS = 5
 GARMENT_ATLAS_ROWS = 5
 GARMENT_ATLAS_CELL_SIZE = 360
 GARMENT_ATLAS_SIZE = GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_CELL_SIZE
+GARMENT_AI_CELL_SIZE = 384
+GARMENT_AI_ATLAS_SIZE = GARMENT_ATLAS_COLUMNS * GARMENT_AI_CELL_SIZE
+GARMENT_AI_IMAGE_SIZE = f"{GARMENT_AI_ATLAS_SIZE}x{GARMENT_AI_ATLAS_SIZE}"
+GARMENT_AI_BACKGROUND = (0, 255, 0)
 GARMENT_TEMPLATE_SIZE = (1240, 1754)
 GARMENT_PART_CROPS = {
     "upper": (0.12, 0.34, 0.88, 0.62),
@@ -95,6 +100,50 @@ SHOWCASE_MASTER_PATH = (
 )
 SHOWCASE_FRAME_SAFE_MARGIN = 14
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
+
+GARMENT_MASTER_EDIT_PROMPT = """
+You receive exactly two reference images in this order:
+1. FIXED MASTER: the canonical Peter 25-frame animation sheet in a strict 5x5 grid
+2. STUDENT DESIGN: one corrected full-body photo of Peter decorated by students
+
+Create a NEW production-ready 25-frame Peter sheet by editing the fixed master.
+The fixed master is an immutable template for every team. Copy its exact 5x5
+frame order, poses, direction, face, hair, beard, skin, hands, body proportions,
+outline style, character size, bottom-center anchors, and safe padding. Do not
+redesign, redraw, simplify, enlarge, shrink, rotate, reorder, or replace Peter.
+
+Transfer from the student design only:
+- upper garment colors, patterns, writing, marks, and handmade texture
+- lower garment colors, patterns, writing, marks, and handmade texture
+- belt decoration only when the student changed it
+- student-left footwear design onto Peter's left foot
+- student-right footwear design onto Peter's right foot
+
+Keep these four garment regions visually separate in every frame. Upper-garment
+pixels must never spill into the lower garment, belt, hands, skin, hair, beard,
+legs, or shoes. Lower-garment pixels must never spill into the upper garment,
+skin, legs, or shoes. Footwear designs must remain on their corresponding foot.
+Preserve intentional left/right asymmetry. For side views and hidden areas,
+continue only the nearest visible color or motif; invent nothing new.
+
+Ignore the paper, room, lighting, glare, shadows, wrinkles, perspective, printed
+guide marks, and everything outside the student's four decorated regions.
+
+OUTPUT CONTRACT:
+- exactly 1920 by 1920 pixels
+- exactly 25 complete characters in a strict 5-column by 5-row grid
+- every cell is exactly 384 by 384 pixels
+- one complete Peter per cell, matching the corresponding master cell
+- same character scale and same bottom-center anchor as the fixed master
+- full hair, head, beard, raised hands, clothes, legs, feet, and shoe soles visible
+- at least 20 pixels of empty background around every visible body part
+- a perfectly flat, uniform pure chroma-green RGB(0,255,0) background
+- no transparency, gradients, scenery, shadows, grid lines, borders, labels,
+  captions, watermarks, extra people, extra limbs, or duplicated features
+
+This is a master-locked garment edit, not free image generation. If the student
+design is ambiguous, preserve the fixed master rather than guessing.
+""".strip()
 
 SHOWCASE_SPRITE_PROMPT = """
 You receive two reference images in this exact order:
@@ -366,10 +415,10 @@ def _loads_json(value: Any) -> Any:
 def public_sprite_contract(value: Any) -> Any:
     if isinstance(value, dict) or value is None:
         return value
-    if value == GARMENT_TRANSFER_CONTRACT:
+    if value in {LEGACY_GARMENT_TRANSFER_CONTRACT, GARMENT_TRANSFER_CONTRACT}:
         return {
-            "id": GARMENT_TRANSFER_CONTRACT,
-            "version": 2,
+            "id": str(value),
+            "version": 3 if value == GARMENT_TRANSFER_CONTRACT else 2,
             "layout": "5x5",
             "rows": GARMENT_ATLAS_ROWS,
             "columns": GARMENT_ATLAS_COLUMNS,
@@ -2072,6 +2121,215 @@ def _image_to_png_bytes(image: Image.Image) -> bytes:
     return stream.getvalue()
 
 
+def master_reference_for_ai() -> bytes:
+    """Render the transparent canonical atlas on the key color requested from GPT Image."""
+    if not SHOWCASE_MASTER_PATH.is_file():
+        raise HTTPException(status_code=500, detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다")
+    with Image.open(SHOWCASE_MASTER_PATH) as source:
+        master = source.convert("RGBA").resize(
+            (GARMENT_AI_ATLAS_SIZE, GARMENT_AI_ATLAS_SIZE),
+            Image.Resampling.LANCZOS,
+        )
+    reference = Image.new(
+        "RGBA",
+        (GARMENT_AI_ATLAS_SIZE, GARMENT_AI_ATLAS_SIZE),
+        (*GARMENT_AI_BACKGROUND, 255),
+    )
+    reference.alpha_composite(master)
+    return _image_to_png_bytes(reference.convert("RGB"))
+
+
+def remove_connected_cell_background(cell: Image.Image, *, threshold: int = 56) -> Image.Image:
+    """Remove only edge-connected background so a matching garment color remains intact."""
+    rgba = cell.convert("RGBA")
+    rgb = rgba.convert("RGB")
+    marker = (1, 2, 3)
+    work = rgb.copy()
+    width, height = work.size
+    for seed in ((0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)):
+        if work.getpixel(seed) != marker:
+            ImageDraw.floodfill(work, seed, marker, thresh=threshold)
+    source_alpha = rgba.getchannel("A")
+    alpha = Image.new("L", rgba.size, 255)
+    alpha_pixels = alpha.load()
+    source_alpha_pixels = source_alpha.load()
+    work_pixels = work.load()
+    for y in range(height):
+        for x in range(width):
+            alpha_pixels[x, y] = 0 if work_pixels[x, y] == marker else source_alpha_pixels[x, y]
+    alpha = alpha.filter(ImageFilter.MedianFilter(3))
+    rgba.putalpha(alpha)
+    return rgba
+
+
+def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image.Image:
+    """Re-anchor every AI frame to the canonical master frame without cropping the body."""
+    try:
+        candidate = (
+            Image.open(io.BytesIO(generated)).convert("RGBA")
+            if isinstance(generated, bytes)
+            else generated.convert("RGBA")
+        )
+        candidate.load()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError("AI 25컷 이미지를 읽을 수 없습니다") from exc
+    if candidate.width != candidate.height:
+        raise ValueError("AI 25컷 결과는 정사각형이어야 합니다")
+    if candidate.size != (GARMENT_AI_ATLAS_SIZE, GARMENT_AI_ATLAS_SIZE):
+        candidate = candidate.resize(
+            (GARMENT_AI_ATLAS_SIZE, GARMENT_AI_ATLAS_SIZE),
+            Image.Resampling.LANCZOS,
+        )
+    if not SHOWCASE_MASTER_PATH.is_file():
+        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
+    with Image.open(SHOWCASE_MASTER_PATH) as source:
+        master = source.convert("RGBA")
+        master.load()
+    output = Image.new("RGBA", (GARMENT_ATLAS_SIZE, GARMENT_ATLAS_SIZE), (0, 0, 0, 0))
+    for index in range(GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS):
+        column = index % GARMENT_ATLAS_COLUMNS
+        row = index // GARMENT_ATLAS_COLUMNS
+        source_cell = candidate.crop((
+            column * GARMENT_AI_CELL_SIZE,
+            row * GARMENT_AI_CELL_SIZE,
+            (column + 1) * GARMENT_AI_CELL_SIZE,
+            (row + 1) * GARMENT_AI_CELL_SIZE,
+        ))
+        cleaned = remove_connected_cell_background(source_cell)
+        generated_bbox = cleaned.getchannel("A").getbbox()
+        master_cell = master.crop((
+            column * GARMENT_ATLAS_CELL_SIZE,
+            row * GARMENT_ATLAS_CELL_SIZE,
+            (column + 1) * GARMENT_ATLAS_CELL_SIZE,
+            (row + 1) * GARMENT_ATLAS_CELL_SIZE,
+        ))
+        master_bbox = master_cell.getchannel("A").getbbox()
+        if generated_bbox is None or master_bbox is None:
+            continue
+        character = cleaned.crop(generated_bbox)
+        target_width = master_bbox[2] - master_bbox[0]
+        target_height = master_bbox[3] - master_bbox[1]
+        scale = min(
+            target_width / max(1, character.width),
+            target_height / max(1, character.height),
+        )
+        resized = character.resize(
+            (
+                max(1, round(character.width * scale)),
+                max(1, round(character.height * scale)),
+            ),
+            Image.Resampling.LANCZOS,
+        )
+        target_center_x = (master_bbox[0] + master_bbox[2]) / 2
+        target_x = round(target_center_x - resized.width / 2)
+        target_y = master_bbox[3] - resized.height
+        output.alpha_composite(
+            resized,
+            (
+                column * GARMENT_ATLAS_CELL_SIZE + target_x,
+                row * GARMENT_ATLAS_CELL_SIZE + target_y,
+            ),
+        )
+    return output
+
+
+def garment_retry_instruction(value: Any) -> str:
+    qa = _loads_json(value) if isinstance(value, str) else value
+    if not isinstance(qa, dict):
+        return ""
+    notes: list[str] = []
+    deterministic = qa.get("deterministic")
+    if isinstance(deterministic, dict):
+        for frame in deterministic.get("frames") or []:
+            if isinstance(frame, dict) and frame.get("issues"):
+                notes.append(f"{frame.get('frame')}컷: {', '.join(map(str, frame['issues']))}")
+    ai = qa.get("ai")
+    if isinstance(ai, dict):
+        notes.extend(str(issue) for issue in (ai.get("issues") or []))
+        for frame in ai.get("frames") or []:
+            if isinstance(frame, dict) and frame.get("issue"):
+                notes.append(f"{frame.get('frame')}컷: {frame['issue']}")
+    return "\n".join(notes[:20])[:1800]
+
+
+async def request_master_locked_garment_atlas(
+    student_reference: bytes,
+    *,
+    filename: str = "student-peter.png",
+    correction: str = "",
+) -> bytes:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key.startswith("sk-"):
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY가 설정되지 않았습니다")
+    prompt = GARMENT_MASTER_EDIT_PROMPT
+    if correction:
+        prompt += (
+            "\n\nTHE PREVIOUS CANDIDATE FAILED QA. Regenerate from the fixed master and fix "
+            "these exact issues without changing any other master property:\n"
+            + correction
+        )
+    files = [
+        (
+            "image[]",
+            ("fixed-peter-master-5x5.png", master_reference_for_ai(), "image/png"),
+        ),
+        ("image[]", (filename, student_reference, "image/png")),
+    ]
+    data = {
+        "model": OPENAI_IMAGE_MODEL,
+        "prompt": prompt,
+        "size": GARMENT_AI_IMAGE_SIZE,
+        "quality": OPENAI_IMAGE_QUALITY,
+        "output_format": "png",
+        "background": "opaque",
+        "n": "1",
+    }
+    if OPENAI_IMAGE_MODEL == "gpt-image-1":
+        data["input_fidelity"] = OPENAI_IMAGE_INPUT_FIDELITY
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(170.0, connect=10.0),
+        ) as client:
+            response = await client.post(
+                OPENAI_IMAGE_API_URL,
+                headers={"Authorization": f"Bearer {api_key}"},
+                data=data,
+                files=files,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="AI 25컷 생성 시간이 초과되었습니다. 다시 시도해주세요.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenAI 이미지 생성 서버에 연결하지 못했습니다.",
+        ) from exc
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=response.status_code if response.status_code < 500 else 502,
+            detail=openai_error_detail(response),
+        )
+    try:
+        encoded = response.json()["data"][0]["b64_json"]
+        generated = base64.b64decode(encoded, validate=True)
+        atlas = normalize_master_locked_atlas(generated)
+        atlas_bytes = _image_to_png_bytes(atlas)
+    except (
+        KeyError,
+        IndexError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        base64.binascii.Error,
+    ) as exc:
+        raise HTTPException(status_code=502, detail=f"AI 25컷 응답을 처리하지 못했습니다: {exc}") from exc
+    if len(atlas_bytes) > MAX_SPRITE_BYTES:
+        raise HTTPException(status_code=502, detail="AI 25컷 파일이 너무 큽니다")
+    return atlas_bytes
+
+
 async def persist_showcase_asset(
     team_id: int,
     kind: str,
@@ -2426,8 +2684,12 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
             "frames": [],
             "issues": ["invalid_size"],
         }
+    with Image.open(SHOWCASE_MASTER_PATH) as source:
+        master = source.convert("RGBA")
+        master.load()
     frames = []
     failed = 0
+    atlas_issues: list[str] = []
     for index in range(GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS):
         column = index % GARMENT_ATLAS_COLUMNS
         row = index // GARMENT_ATLAS_COLUMNS
@@ -2440,6 +2702,8 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
         bbox = cell.getchannel("A").getbbox()
         issues = []
         margins = None
+        size_ratio = None
+        anchor_delta = None
         if bbox is None:
             failed += 1
             issues.append("empty_frame")
@@ -2452,14 +2716,51 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
                 "bottom": GARMENT_ATLAS_CELL_SIZE - bottom,
             }
             if min(margins.values()) < 8:
-                failed += 1
                 issues.append("unsafe_margin")
+            master_cell = master.crop((
+                column * GARMENT_ATLAS_CELL_SIZE,
+                row * GARMENT_ATLAS_CELL_SIZE,
+                (column + 1) * GARMENT_ATLAS_CELL_SIZE,
+                (row + 1) * GARMENT_ATLAS_CELL_SIZE,
+            ))
+            master_bbox = master_cell.getchannel("A").getbbox()
+            if master_bbox is None:
+                issues.append("master_frame_missing")
+            else:
+                width_ratio = (right - left) / max(1, master_bbox[2] - master_bbox[0])
+                height_ratio = (bottom - top) / max(1, master_bbox[3] - master_bbox[1])
+                area_ratio = (
+                    (right - left) * (bottom - top)
+                    / max(1, (master_bbox[2] - master_bbox[0]) * (master_bbox[3] - master_bbox[1]))
+                )
+                size_ratio = {
+                    "width": round(width_ratio, 3),
+                    "height": round(height_ratio, 3),
+                    "area": round(area_ratio, 3),
+                }
+                anchor_delta = {
+                    "center_x": round(
+                        ((left + right) - (master_bbox[0] + master_bbox[2])) / 2,
+                    ),
+                    "baseline": bottom - master_bbox[3],
+                }
+                if width_ratio < 0.78 or height_ratio < 0.90 or area_ratio < 0.76:
+                    issues.append("character_too_small")
+                if width_ratio > 1.12 or height_ratio > 1.08 or area_ratio > 1.18:
+                    issues.append("character_too_large")
+                if abs(anchor_delta["center_x"]) > 8 or abs(anchor_delta["baseline"]) > 8:
+                    issues.append("master_anchor_mismatch")
+            if issues:
+                failed += 1
+                atlas_issues.append(f"{index + 1}컷: {', '.join(issues)}")
         frames.append({
             "frame": index + 1,
             "row": row + 1,
             "column": column + 1,
             "alpha_bbox": list(bbox) if bbox else None,
             "margins": margins,
+            "size_ratio": size_ratio,
+            "anchor_delta": anchor_delta,
             "regions_checked": ["head", "hands", "feet", "shoes"],
             "issues": issues,
             "status": "failed" if issues else "passed",
@@ -2471,11 +2772,15 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
         "contract": GARMENT_TRANSFER_CONTRACT,
         "safe_margin_px": 8,
         "frames": frames,
-        "issues": [],
+        "issues": atlas_issues,
     }
 
 
-async def request_garment_atlas_ai_review(atlas: bytes, deterministic: dict) -> dict:
+async def request_garment_atlas_ai_review(
+    atlas: bytes,
+    deterministic: dict,
+    student_reference: Optional[bytes] = None,
+) -> dict:
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key.startswith("sk-"):
         return {
@@ -2509,27 +2814,48 @@ async def request_garment_atlas_ai_review(atlas: bytes, deterministic: dict) -> 
         },
         "required": ["status", "summary", "issues", "frames"],
     }
+    review_content = [
+        {
+            "type": "input_text",
+            "text": (
+                "The images are: (1) candidate 25-frame atlas, (2) immutable fixed master, "
+                "(3, when supplied) corrected student full-body design. Review all 25 cells. "
+                "Fail any frame where the pose, direction, face, hair, beard, skin, hands, "
+                "body proportions, character size, baseline, or visual style drifts from the "
+                "corresponding master cell. Fail clipping or missing/extra body parts. "
+                "Also fail garment semantics: upper and lower designs must stay clearly "
+                "separate, no garment texture may spill onto skin/hair/beard/hands/legs, and "
+                "left/right footwear must remain distinct and on the correct foot. The student "
+                "image controls clothing only. Return the summary and issues in Korean.\n\n"
+                + json.dumps({"deterministic": deterministic}, ensure_ascii=False)[:6000]
+            ),
+        },
+        {
+            "type": "input_image",
+            "image_url": f"data:image/png;base64,{base64.b64encode(atlas).decode('ascii')}",
+            "detail": "high",
+        },
+        {
+            "type": "input_image",
+            "image_url": (
+                "data:image/png;base64,"
+                + base64.b64encode(SHOWCASE_MASTER_PATH.read_bytes()).decode("ascii")
+            ),
+            "detail": "high",
+        },
+    ]
+    if student_reference:
+        review_content.append({
+            "type": "input_image",
+            "image_url": f"data:image/png;base64,{base64.b64encode(student_reference).decode('ascii')}",
+            "detail": "high",
+        })
     body = {
         "model": OPENAI_SPRITE_QA_MODEL,
         "store": False,
         "input": [{
             "role": "user",
-            "content": [
-                {
-                    "type": "input_text",
-                    "text": (
-                        "Review this fixed Peter 5x5 garment-transfer atlas. There are exactly 25 frames. "
-                        "Check clipping, animation consistency, and whether clothing texture transfer keeps Peter's master identity. "
-                        "Do not fail because left and right shoes differ; that distinction is intentional.\n\n"
-                        + json.dumps({"deterministic": deterministic}, ensure_ascii=False)[:4000]
-                    ),
-                },
-                {
-                    "type": "input_image",
-                    "image_url": f"data:image/png;base64,{base64.b64encode(atlas).decode('ascii')}",
-                    "detail": "high",
-                },
-            ],
+            "content": review_content,
         }],
         "text": {
             "format": {
@@ -2572,9 +2898,12 @@ async def request_garment_atlas_ai_review(atlas: bytes, deterministic: dict) -> 
         }
 
 
-async def inspect_garment_atlas_quality(atlas: bytes) -> dict:
+async def inspect_garment_atlas_quality(
+    atlas: bytes,
+    student_reference: Optional[bytes] = None,
+) -> dict:
     deterministic = analyze_garment_atlas_pixels(atlas)
-    ai = await request_garment_atlas_ai_review(atlas, deterministic)
+    ai = await request_garment_atlas_ai_review(atlas, deterministic, student_reference)
     statuses = {deterministic.get("status"), ai.get("status")}
     if "failed" in statuses:
         status = "failed"
@@ -2764,30 +3093,22 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
     corrected = correct_capture_image(contents, quality)
     corrected_bytes = _image_to_png_bytes(corrected)
     corrected_url = await persist_showcase_asset(team_id, "capture-corrected", corrected_bytes)
-    parts = extract_garment_parts(corrected)
-    part_urls: dict[str, str] = {}
-    for part, image in parts.items():
-        part_urls[part] = await persist_showcase_asset(
-            team_id,
-            f"capture-{part}",
-            _image_to_png_bytes(image),
-        )
     version_id = uuid.uuid4().hex
     timestamp = now_iso()
-    parts_payload = {
+    reference_payload = {
         "contract": GARMENT_TRANSFER_CONTRACT,
         "template_size": list(GARMENT_TEMPLATE_SIZE),
-        "crops": {part: list(crop) for part, crop in GARMENT_PART_CROPS.items()},
-        "urls": part_urls,
+        "mode": "full-body-master-edit",
+        "corrected_url": corrected_url,
+        "regions": ["upper", "lower", "left_shoe", "right_shoe"],
     }
     with connect_db() as db:
         db.execute(
             """
             INSERT INTO sprite_versions (
                 id, team_id, contract, status, source_url, corrected_url,
-                upper_url, lower_url, left_shoe_url, right_shoe_url,
                 quality_json, parts_json, model, created_at, updated_at
-            ) VALUES (?, ?, ?, 'parts_ready', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, 'reference_ready', ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 version_id,
@@ -2795,13 +3116,9 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
                 GARMENT_TRANSFER_CONTRACT,
                 source_url,
                 corrected_url,
-                part_urls["upper"],
-                part_urls["lower"],
-                part_urls["left_shoe"],
-                part_urls["right_shoe"],
                 json.dumps(quality, ensure_ascii=False),
-                json.dumps(parts_payload, ensure_ascii=False),
-                OPENAI_SPRITE_QA_MODEL,
+                json.dumps(reference_payload, ensure_ascii=False),
+                OPENAI_IMAGE_MODEL,
                 timestamp,
                 timestamp,
             ),
@@ -2814,7 +3131,7 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
                 showcase_capture_corrected_url = ?,
                 showcase_capture_status = 'garment_review',
                 showcase_capture_quality_json = ?,
-                showcase_garment_parts_json = ?,
+                showcase_garment_parts_json = NULL,
                 showcase_sprite_contract = ?,
                 showcase_sprite_version_id = ?,
                 showcase_sprite_status = 'garment_review',
@@ -2828,7 +3145,6 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
                 source_url,
                 corrected_url,
                 json.dumps(quality, ensure_ascii=False),
-                json.dumps(parts_payload, ensure_ascii=False),
                 GARMENT_TRANSFER_CONTRACT,
                 version_id,
                 timestamp,
@@ -2840,8 +3156,8 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
             "team": public_team(get_team_or_404(db, team_id)),
             "version": public_sprite_version(get_sprite_version_or_404(db, team_id, version_id)),
             "quality": quality,
-            "parts": parts_payload,
-            "status": "parts_ready",
+            "reference": reference_payload,
+            "status": "reference_ready",
         }
 
 
@@ -2861,6 +3177,11 @@ async def retry_showcase_capture_part(
         if not version_id:
             raise HTTPException(status_code=409, detail="먼저 캡처를 처리해주세요")
         version = row_dict(get_sprite_version_or_404(db, team_id, version_id))
+    if version.get("contract") == GARMENT_TRANSFER_CONTRACT:
+        raise HTTPException(
+            status_code=410,
+            detail="마스터 고정 생성에서는 영역별 재추출을 사용하지 않습니다. 전체 사진을 다시 올리거나 25컷을 다시 생성해주세요.",
+        )
     if reference is not None:
         contents, content_type, _ = await validated_image_upload(reference)
         quality = await request_capture_quality_review(contents, content_type)
@@ -2935,30 +3256,63 @@ async def compose_showcase_capture(team_id: int):
         if not version_id:
             raise HTTPException(status_code=409, detail="먼저 캡처를 처리해주세요")
         version = row_dict(get_sprite_version_or_404(db, team_id, version_id))
-    missing = [part for part in GARMENT_PARTS if not version.get(f"{part}_url")]
-    if missing:
-        raise HTTPException(status_code=409, detail=f"의상 영역이 누락되었습니다: {', '.join(missing)}")
-    parts: dict[str, Image.Image] = {}
-    for part in GARMENT_PARTS:
-        part_bytes = await read_public_asset_bytes(version[f"{part}_url"])
-        parts[part] = Image.open(io.BytesIO(part_bytes)).convert("RGB")
-    atlas = compose_garment_atlas(parts)
-    atlas_bytes = _image_to_png_bytes(atlas)
-    if len(atlas_bytes) > MAX_SPRITE_BYTES:
-        raise HTTPException(status_code=502, detail="합성 스프라이트 파일이 너무 큽니다")
-    qa = await inspect_garment_atlas_quality(atlas_bytes)
-    atlas_url = await persist_showcase_asset(team_id, "sprite-v2-atlas", atlas_bytes)
+    if not version.get("corrected_url"):
+        raise HTTPException(status_code=409, detail="보정된 학생 디자인 이미지가 없습니다")
+    corrected_bytes = await read_public_asset_bytes(version["corrected_url"])
+    correction = garment_retry_instruction(version.get("qa_json"))
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = 'composing', showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (timestamp, timestamp, team_id),
+        )
+    try:
+        atlas_bytes = await request_master_locked_garment_atlas(
+            corrected_bytes,
+            filename=f"team-{team_id}-corrected-peter.png",
+            correction=correction,
+        )
+        qa = await inspect_garment_atlas_quality(atlas_bytes, corrected_bytes)
+        atlas_url = await persist_showcase_asset(team_id, "sprite-v3-atlas", atlas_bytes)
+    except HTTPException as exc:
+        timestamp = now_iso()
+        with connect_db() as db:
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_status = 'failed', showcase_sprite_error = ?,
+                    showcase_sprite_updated_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (str(exc.detail)[:300], timestamp, timestamp, team_id),
+            )
+            db.execute(
+                """
+                UPDATE sprite_versions
+                SET status = 'failed', error = ?, updated_at = ?
+                WHERE id = ? AND team_id = ?
+                """,
+                (str(exc.detail)[:300], timestamp, version_id, team_id),
+            )
+        raise
     timestamp = now_iso()
     with connect_db() as db:
         db.execute(
             """
             UPDATE sprite_versions
-            SET status = 'review', atlas_url = ?, qa_json = ?, updated_at = ?
+            SET status = 'review', error = NULL, atlas_url = ?, qa_json = ?,
+                model = ?, updated_at = ?
             WHERE id = ? AND team_id = ?
             """,
             (
                 atlas_url,
                 json.dumps(qa, ensure_ascii=False),
+                OPENAI_IMAGE_MODEL,
                 timestamp,
                 version_id,
                 team_id,
@@ -2982,7 +3336,7 @@ async def compose_showcase_capture(team_id: int):
             """,
             (
                 atlas_url,
-                "pillow-garment-transfer",
+                OPENAI_IMAGE_MODEL,
                 qa.get("status", "unchecked"),
                 json.dumps(qa, ensure_ascii=False),
                 OPENAI_SPRITE_QA_MODEL,

@@ -7,8 +7,6 @@ import type {
   ShowcaseCaptureResponse,
   ShowcaseCaptureStatus,
   ShowcaseComposeResponse,
-  ShowcaseGarmentPart,
-  ShowcaseGarmentPartKey,
   ShowcaseSpriteVersion,
   ShowcaseRestoreResponse,
   ShowcaseVersionListResponse,
@@ -27,13 +25,7 @@ interface TeamDraft {
 
 const EMPTY_DRAFT: TeamDraft = { name: '', color: '#67b8c7', symbol: '', identity_text: '' };
 const TEMPLATE_URL = '/assets/showcase/peter-print-template.png';
-
-const GARMENT_PARTS: Array<{ key: ShowcaseGarmentPartKey; label: string; hint: string }> = [
-  { key: 'upper', label: '상의', hint: '셔츠와 겉옷 무늬' },
-  { key: 'lower', label: '하의', hint: '바지 또는 치마 무늬' },
-  { key: 'left_shoe', label: '왼쪽 신발', hint: '학생 기준 왼발' },
-  { key: 'right_shoe', label: '오른쪽 신발', hint: '학생 기준 오른발' },
-];
+const FIXED_MASTER_URL = '/api/showcase/fixed-master';
 
 const SPRITE_REVIEW_PREVIEWS: Array<{
   label: string;
@@ -65,11 +57,11 @@ function spriteStatusLabel(status: ShowcaseCaptureStatus) {
   return ({
     empty: '대기',
     generating: '기존 생성 중',
-    processing: '사진 보정·추출 중',
-    garment_review: '부위 검수 필요',
-    composing: '25컷 합성 중',
+    processing: '사진 품질·보정 중',
+    garment_review: 'AI 생성 준비',
+    composing: 'AI 25컷 생성 중',
     review: '25컷 최종 검수',
-    ready: '전체 페이지 적용 중',
+    ready: '전체 페이지 적용 완료',
     failed: '처리 실패',
   } as const)[status] ?? status;
 }
@@ -104,14 +96,6 @@ function correctedCaptureUrl(team: Team | null) {
     || team?.showcase_corrected_capture_url
     || team?.showcase_capture_url
     || team?.showcase_image_url
-    || '';
-}
-
-function partPreviewUrl(part?: ShowcaseGarmentPart) {
-  return part?.preview_url
-    || part?.extracted_url
-    || part?.image_url
-    || part?.source_url
     || '';
 }
 
@@ -235,7 +219,6 @@ export default function AdminPage() {
   const [toast, setToast] = useState('');
   const [savingTeam, setSavingTeam] = useState(false);
   const [uploadingCapture, setUploadingCapture] = useState(false);
-  const [retryingPart, setRetryingPart] = useState<ShowcaseGarmentPartKey | null>(null);
   const [composingSprite, setComposingSprite] = useState(false);
   const [approvingSprite, setApprovingSprite] = useState(false);
   const [versions, setVersions] = useState<ShowcaseSpriteVersion[]>([]);
@@ -250,7 +233,7 @@ export default function AdminPage() {
   );
   const selectedSpriteUrl = activeSpriteUrl(selected);
   const fixedMaster = isFixedMaster(selected);
-  const allPartsReady = GARMENT_PARTS.every(({ key }) => partPreviewUrl(selected?.showcase_garment_parts?.[key]));
+  const designReferenceReady = Boolean(correctedCaptureUrl(selected));
 
   function showToast(message: string) {
     setToast(message);
@@ -369,7 +352,7 @@ export default function AdminPage() {
       if (response.can_process === false) {
         showToast(response.quality?.summary || '촬영 품질 문제로 처리를 중단했습니다. 사진을 다시 촬영해주세요.');
       } else {
-        showToast(`촬영 사진을 보정하고 4개 부위를 추출했습니다${prepared.optimized ? ' · PNG 자동 최적화됨' : ''}`);
+        showToast(`촬영 사진을 보정하고 AI 디자인 참조를 준비했습니다${prepared.optimized ? ' · PNG 자동 최적화됨' : ''}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '촬영 사진을 처리하지 못했습니다';
@@ -381,29 +364,6 @@ export default function AdminPage() {
       showToast(message);
     } finally {
       setUploadingCapture(false);
-    }
-  }
-
-  async function retryPart(part: ShowcaseGarmentPartKey, image: File | null) {
-    if (!selected || !image) {
-      showToast('다시 추출할 사진을 선택해주세요');
-      return;
-    }
-    setRetryingPart(part);
-    try {
-      const prepared = await prepareCharacterUploadImage(image);
-      const form = new FormData();
-      form.append('reference', prepared.file);
-      const response = await apiRequest<ShowcaseCaptureResponse>(`/teams/${selected.id}/capture/parts/${part}/retry`, {
-        method: 'POST',
-        body: form,
-      });
-      updateTeam(response.team);
-      showToast(`${GARMENT_PARTS.find((candidate) => candidate.key === part)?.label ?? part}를 다시 추출했습니다`);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '부위를 다시 추출하지 못했습니다');
-    } finally {
-      setRetryingPart(null);
     }
   }
 
@@ -421,7 +381,7 @@ export default function AdminPage() {
       });
       updateTeam(response.team);
       void refreshVersions(response.team.id);
-      showToast(`${response.team.name}의 25컷 5×5 아틀라스를 만들었습니다. 최종 QA 후 승인해주세요.`);
+      showToast(`${response.team.name}의 마스터 고정 25컷을 만들었습니다. 실제 동작을 확인해주세요.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : '25컷 아틀라스를 만들지 못했습니다';
       setTeams((current) => current.map((team) => (
@@ -535,7 +495,7 @@ export default function AdminPage() {
                 <input ref={characterInputRef} type="file" accept="image/png,image/jpeg" required />
                 <div className="character-upload-actions">
                   <button className="primary" disabled={!selected || uploadingCapture}>
-                    {uploadingCapture ? '사진 처리 중…' : '사진 보정·4부위 추출'}
+                    {uploadingCapture ? '사진 처리 중…' : '사진 품질검사·자동 보정'}
                   </button>
                   <span className="capture-tip">{spriteStatusLabel(captureStatus(selected))}</span>
                 </div>
@@ -549,7 +509,7 @@ export default function AdminPage() {
                   <div>
                     <h3>2. 촬영 품질·보정 사진 확인</h3>
                     <p className="muted">
-                      서버가 기울기와 테두리를 보정한 사진을 확인한 뒤, 추출된 네 부위를 개별 검수합니다.
+                      종이의 기울기·색상·테두리가 보정된 전신 사진을 확인합니다. 이 한 장이 AI의 의상 디자인 참조가 됩니다.
                     </p>
                   </div>
                   <span>{spriteStatusLabel(selected?.showcase_sprite_status ?? 'empty')}</span>
@@ -581,64 +541,59 @@ export default function AdminPage() {
             </div>
           </section>
 
-          <section className="garment-parts-card" aria-label="추출 부위별 검수">
+          <section className="garment-parts-card" aria-label="마스터 고정 25컷 생성">
             <header className="sprite-review-header">
               <div>
                 <span>3</span>
                 <div>
-                  <h3>4개 원본 부위 검수</h3>
-                  <p className="muted">상의, 하의, 학생 기준 왼쪽 신발, 학생 기준 오른쪽 신발을 각각 확인하고 필요한 부위만 재시도합니다.</p>
+                  <h3>마스터 고정 25컷 새로 만들기</h3>
+                  <p className="muted">
+                    AI가 고정 베드로의 얼굴·몸·25개 동작·크기를 잠그고, 보정 사진에서 상의·하의·양쪽 신발 디자인만 옮깁니다.
+                  </p>
                 </div>
               </div>
-              <strong>{allPartsReady ? '4개 부위 준비' : '추출 대기'}</strong>
+              <strong>{designReferenceReady ? '생성 준비 완료' : '보정 사진 대기'}</strong>
             </header>
-            <div className="garment-part-grid">
-              {GARMENT_PARTS.map((partMeta) => {
-                const part = selected?.showcase_garment_parts?.[partMeta.key];
-                const preview = partPreviewUrl(part);
-                return (
-                  <article key={partMeta.key} className="garment-part-card" data-ready={preview ? 'true' : 'false'}>
-                    <div className="garment-part-preview">
-                      {preview ? (
-                        <img src={preview} alt={`${partMeta.label} 추출 원본`} />
-                      ) : (
-                        <span>추출 전</span>
-                      )}
-                    </div>
-                    <div>
-                      <strong>{partMeta.label}</strong>
-                      <span>{partMeta.hint}</span>
-                      <small>{stringifyQuality(part?.quality) || part?.error || '개별 품질 리포트 대기'}</small>
-                    </div>
-                    <form
-                      className="part-retry-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const input = event.currentTarget.elements.namedItem('reference') as HTMLInputElement | null;
-                        void retryPart(partMeta.key, input?.files?.[0] ?? null).then(() => {
-                          if (input) input.value = '';
-                        });
-                      }}
-                    >
-                      <input name="reference" type="file" accept="image/png,image/jpeg" />
-                      <button className="secondary" disabled={!selected || retryingPart === partMeta.key}>
-                        {retryingPart === partMeta.key ? '재추출 중…' : `${partMeta.label} 재시도`}
-                      </button>
-                    </form>
-                  </article>
-                );
-              })}
+            <div className="master-edit-reference-grid">
+              <article className="master-edit-reference">
+                <span>고정 25컷 마스터</span>
+                <div><img src={FIXED_MASTER_URL} alt="모든 조가 공유하는 고정 베드로 25컷 마스터" /></div>
+                <p>얼굴 · 헤어 · 수염 · 몸 비율 · 동작 · 프레임 크기 고정</p>
+              </article>
+              <article className="master-edit-reference">
+                <span>학생 디자인 참조</span>
+                <div>
+                  <img
+                    src={correctedCaptureUrl(selected) || TEMPLATE_URL}
+                    alt={selected ? `${selected.name} 학생 디자인 참조` : '학생 디자인 참조'}
+                  />
+                </div>
+                <p>상의 · 하의 · 왼쪽 신발 · 오른쪽 신발 디자인만 반영</p>
+              </article>
+              <article className="master-edit-contract">
+                <strong>생성 후 자동 처리</strong>
+                <ul>
+                  <li>25개 프레임을 마스터와 같은 크기로 정규화</li>
+                  <li>각 프레임의 하단 중앙 기준점 고정</li>
+                  <li>머리·손·발·신발 잘림과 의상 침범 검사</li>
+                  <li>문제 발생 시 QA 내용을 반영해 다시 생성</li>
+                </ul>
+              </article>
             </div>
             <div className="sprite-review-actions">
               <button
                 type="button"
                 className="primary"
-                disabled={!selected || composingSprite || !allPartsReady}
+                disabled={!selected || composingSprite || !designReferenceReady}
                 onClick={() => { void composeShowcaseSprite(); }}
               >
-                {composingSprite ? '25컷 합성 중…' : '고정 25컷 5×5 아틀라스 합성'}
+                {composingSprite
+                  ? 'AI 25컷 생성·정규화 중…'
+                  : selectedSpriteUrl
+                    ? 'QA 반영해 25컷 다시 생성'
+                    : 'AI로 마스터 고정 25컷 생성'}
               </button>
-              <span>합성 전 네 부위가 학생 기준 좌우와 일치하는지 확인하세요.</span>
+              <span>재생성하면 현재 QA의 프레임별 문제를 다음 요청에 자동으로 포함합니다.</span>
             </div>
           </section>
 
@@ -653,7 +608,7 @@ export default function AdminPage() {
                   <span>4</span>
                   <div>
                     <h3>25컷 최종 QA</h3>
-                    <p className="muted">5×5 아틀라스와 실제 동작을 확인한 뒤 PAGE 1·2·3·showcase 공통 적용을 승인하세요.</p>
+                    <p className="muted">마스터와 같은 크기로 정렬된 5×5 아틀라스와 실제 동작을 확인한 뒤 전체 화면 적용을 승인하세요.</p>
                   </div>
                 </div>
                 <strong>{selected.showcase_sprite_status === 'ready' ? '승인·적용 완료' : '승인 전'}</strong>
@@ -732,7 +687,8 @@ export default function AdminPage() {
 
               <ul className="sprite-review-checklist">
                 <li>25컷 모두 정사각형 안전 프레임 안에서 머리부터 신발 밑창까지 온전히 보이나요?</li>
-                <li>상의, 하의, 왼쪽 신발, 오른쪽 신발이 학생 기준 좌우와 일치하나요?</li>
+                <li>상의와 하의가 분리되어 있고, 왼쪽·오른쪽 신발이 학생 기준 좌우와 일치하나요?</li>
+                <li>기존 마스터와 얼굴·몸 비율·캐릭터 크기가 동일하게 보이나요?</li>
                 <li>idle 0·9, walk 1-8, run 10-17, wave 18, jump 20, kneel 21, pray 22, point 24 매핑이 맞나요?</li>
                 <li>PAGE 1·2·3·showcase에서 동일한 active 버전으로 보일 준비가 되었나요?</li>
               </ul>
@@ -767,7 +723,7 @@ export default function AdminPage() {
                       문제 확인함 · 강제 적용
                     </button>
                   )}
-                <span>문제가 있으면 해당 부위 재시도 후 다시 25컷을 합성하세요.</span>
+                <span>문제가 있으면 프레임별 QA를 반영해 마스터 고정 25컷을 다시 생성하세요.</span>
               </div>
             </section>
           )}
@@ -778,7 +734,7 @@ export default function AdminPage() {
                 <span>5</span>
                 <div>
                   <h3>버전 기록 복원</h3>
-                  <p className="muted">승인 또는 합성된 이전 25컷 버전을 선택해 active 버전으로 되돌립니다.</p>
+                  <p className="muted">승인 또는 생성된 이전 25컷 버전을 선택해 active 버전으로 되돌립니다.</p>
                 </div>
               </div>
               <strong>{loadingVersions ? '불러오는 중' : `${versions.length}개`}</strong>

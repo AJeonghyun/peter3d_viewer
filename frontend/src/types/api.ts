@@ -23,6 +23,15 @@ export interface SpriteQualityFrame {
     right: number;
     bottom: number;
   } | null;
+  size_ratio?: {
+    width: number;
+    height: number;
+    area: number;
+  } | null;
+  anchor_delta?: {
+    center_x: number;
+    baseline: number;
+  } | null;
   issues: string[];
 }
 
@@ -149,6 +158,13 @@ export interface ShowcaseCaptureResponse {
   team: Team;
   version?: ShowcaseSpriteVersion;
   quality?: ShowcaseCaptureQuality;
+  reference?: {
+    contract: string;
+    template_size: number[];
+    mode: 'full-body-master-edit';
+    corrected_url: string;
+    regions: ShowcaseGarmentPartKey[];
+  };
   can_process?: boolean;
   status?: string;
 }
