@@ -1,6 +1,6 @@
 import type { AnimationDefinition, CharacterDefinition } from './types';
 
-const FRAME_ROOT = '/assets/peter/frames';
+const FRAME_ROOT = '/assets/hyobe/frames';
 const FRAME_WIDTH = 280;
 const FRAME_HEIGHT = 340;
 

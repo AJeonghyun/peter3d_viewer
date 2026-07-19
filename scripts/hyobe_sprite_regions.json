@@ -1,0 +1,47 @@
+{
+  "source": "frontend/public/assets/hyobe/hyobe-master.png",
+  "output": "frontend/public/assets/hyobe/frames",
+  "canvas": {
+    "width": 280,
+    "height": 340,
+    "baselineY": 320,
+    "targetContentHeight": 300,
+    "maxContentWidth": 260
+  },
+  "background": {
+    "type": "transparent",
+    "removeCheckerboard": false
+  },
+  "frames": {
+    "idle-front": { "x": 0, "y": 0, "width": 314, "height": 314, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "walk-01": { "x": 314, "y": 0, "width": 313, "height": 314, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-02": { "x": 627, "y": 0, "width": 314, "height": 314, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-03": { "x": 941, "y": 0, "width": 313, "height": 314, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-04": { "x": 0, "y": 314, "width": 314, "height": 313, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-05": { "x": 314, "y": 314, "width": 313, "height": 313, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-06": { "x": 627, "y": 314, "width": 314, "height": 313, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "run-01": { "x": 941, "y": 314, "width": 313, "height": 313, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-02": { "x": 0, "y": 627, "width": 314, "height": 314, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-03": { "x": 314, "y": 627, "width": 313, "height": 314, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-04": { "x": 627, "y": 627, "width": 314, "height": 314, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-05": { "x": 941, "y": 627, "width": 313, "height": 314, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "wave-01": { "x": 0, "y": 941, "width": 314, "height": 313, "anchorX": 0.5, "anchorY": 1.0 },
+    "jump-01": { "x": 314, "y": 941, "width": 313, "height": 313, "anchorX": 0.5, "anchorY": 1.0 },
+    "pray-01": { "x": 627, "y": 941, "width": 314, "height": 313, "anchorX": 0.5, "anchorY": 1.0 },
+    "kneel-01": { "x": 627, "y": 941, "width": 314, "height": 313, "anchorX": 0.5, "anchorY": 1.0 },
+    "point-01": { "x": 941, "y": 941, "width": 313, "height": 313, "anchorX": 0.5, "anchorY": 1.0 }
+  },
+  "animations": {
+    "idle": ["idle-front"],
+    "walk": ["walk-01", "walk-02", "walk-03", "walk-04", "walk-05", "walk-06"],
+    "run": ["run-01", "run-02", "run-03", "run-04", "run-05"],
+    "wave": ["wave-01"],
+    "jump": ["jump-01"],
+    "pray": ["pray-01"],
+    "kneel": ["kneel-01"],
+    "point": ["point-01"]
+  }
+}
