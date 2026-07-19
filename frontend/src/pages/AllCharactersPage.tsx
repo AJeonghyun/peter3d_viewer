@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { useReducedMotion } from '../spriteLab/useReducedMotion';
 import type { AnimationName } from '../spriteLab/types';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
@@ -123,12 +122,11 @@ function nicknameFor(group: RetreatGroup) {
 }
 
 export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) {
-  const { settings, updateSettings } = useRetreat();
-  const reducedMotion = useReducedMotion();
+  const { settings } = useRetreat();
   const [localPaused, setLocalPaused] = useState(false);
-  const playing = settings.animationPlaying && !localPaused && !reducedMotion;
+  const playing = !localPaused;
   const clock = useLoopClock(playing);
-  const timelineTime = reducedMotion ? 6_500 : clock;
+  const timelineTime = clock;
   const located = locateScene(timelineTime);
   const groups = useMemo(
     () => [...settings.groups]
@@ -150,15 +148,12 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
         return;
       }
       if (event.key.toLowerCase() === 'p') {
-        updateSettings((current) => ({
-          ...current,
-          animationPlaying: !current.animationPlaying,
-        }));
+        setLocalPaused((current) => !current);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [updateSettings]);
+  }, []);
 
   useEffect(() => {
     const pauseForCapture = () => setLocalPaused(true);
@@ -252,6 +247,7 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
               group={actor.group}
               animation={actor.animation}
               playing={playing}
+              respectReducedMotion={false}
               flipX={false}
               className="retreat-parade__character"
             />
@@ -286,6 +282,7 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
                     group={group}
                     animation={animation}
                     playing={playing}
+                    respectReducedMotion={false}
                     className="retreat-parade__passenger-character"
                   />
                   <span className="retreat-parade__nameplate">{nicknameFor(group)}</span>

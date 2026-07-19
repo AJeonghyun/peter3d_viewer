@@ -728,11 +728,3 @@ body {
     font-size: 11px;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .retreat-parade *,
-  .retreat-parade *::before,
-  .retreat-parade *::after {
-    animation: none !important;
-  }
-}

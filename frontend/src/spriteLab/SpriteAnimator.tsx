@@ -12,6 +12,7 @@ interface SpriteAnimatorProps {
   speedMultiplier?: number;
   flipX?: boolean;
   playing?: boolean;
+  respectReducedMotion?: boolean;
   onAnimationEnd?: () => void;
 }
 
@@ -22,6 +23,7 @@ function SpriteAnimatorComponent({
   speedMultiplier = 1,
   flipX = false,
   playing = true,
+  respectReducedMotion = true,
   onAnimationEnd,
 }: SpriteAnimatorProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -89,7 +91,7 @@ function SpriteAnimatorComponent({
   } as CSSProperties;
   const shouldAnimate = playing
     && visible
-    && !reducedMotion
+    && (!respectReducedMotion || !reducedMotion)
     && definition.frameCount > 1;
 
   return (

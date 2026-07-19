@@ -10,6 +10,7 @@ interface RetreatCharacterProps {
   animation?: AnimationName;
   playing?: boolean;
   flipX?: boolean;
+  respectReducedMotion?: boolean;
   className?: string;
 }
 
@@ -18,6 +19,7 @@ function RetreatCharacterComponent({
   animation = group.defaultAnimation,
   playing = true,
   flipX = false,
+  respectReducedMotion = true,
   className = '',
 }: RetreatCharacterProps) {
   const [uploadedUrl, setUploadedUrl] = useState('');
@@ -91,6 +93,7 @@ function RetreatCharacterComponent({
           animation={animation}
           playing={playing}
           flipX={flipX}
+          respectReducedMotion={respectReducedMotion}
         />
       )}
     </div>
