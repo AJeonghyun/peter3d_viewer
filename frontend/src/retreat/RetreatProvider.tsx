@@ -31,13 +31,32 @@ function normalizeSettings(candidate: RetreatSettings | null): RetreatSettings {
     return structuredClone(DEFAULT_RETREAT_SETTINGS);
   }
   const defaults = structuredClone(DEFAULT_RETREAT_SETTINGS);
+  const groups = defaults.groups.map((fallback) => ({
+    ...fallback,
+    ...(candidate.groups.find((group) => group.id === fallback.id) ?? {}),
+  }));
+  const candidatePlans = Array.isArray(candidate.seatingPlans) ? candidate.seatingPlans : [];
+  const seatingPlans = candidatePlans.length > 0
+    ? candidatePlans.map((plan, index) => ({
+        id: plan.id || `seating-${index + 1}`,
+        name: plan.name || `자리표 ${index + 1}`,
+        title: plan.title || defaults.groupLayout.title,
+        timeLabel: plan.timeLabel || '',
+        slotGroupIds: Array.isArray(plan.slotGroupIds) && plan.slotGroupIds.length
+          ? plan.slotGroupIds.slice(0, 21)
+          : groups.map((group) => group.id),
+        active: Boolean(plan.active),
+      }))
+    : defaults.seatingPlans;
+  if (!seatingPlans.some((plan) => plan.active) && seatingPlans[0]) {
+    seatingPlans[0] = { ...seatingPlans[0], active: true };
+  }
+
   return {
     ...defaults,
     ...candidate,
-    groups: defaults.groups.map((fallback) => ({
-      ...fallback,
-      ...(candidate.groups.find((group) => group.id === fallback.id) ?? {}),
-    })),
+    groups,
+    seatingPlans,
     groupLayout: { ...defaults.groupLayout, ...candidate.groupLayout },
     notice: {
       ...defaults.notice,

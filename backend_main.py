@@ -25,6 +25,10 @@ from tripo3d import TaskStatus, TripoClient
 from tripo3d.models import RigType
 
 from peter3d_storage import (
+    DEFAULT_SEATING_PRESET_ID,
+    DEFAULT_SEATING_PRESET_NAME,
+    DEFAULT_SEATING_PRESET_TIME_LABEL,
+    DEFAULT_SEATING_PRESET_TITLE,
     blob_configured,
     connect_database,
     delete_blob_if_managed,
@@ -268,6 +272,95 @@ def get_team_or_404(db: Any, team_id: int):
     return row
 
 
+def validate_group_order(group_order: List[int]) -> List[int]:
+    if len(group_order) != TEAM_COUNT:
+        raise HTTPException(status_code=422, detail=f"group_order는 정확히 {TEAM_COUNT}개여야 합니다")
+    expected = set(range(1, TEAM_COUNT + 1))
+    actual = set(group_order)
+    if actual != expected or len(actual) != len(group_order):
+        raise HTTPException(
+            status_code=422,
+            detail=f"group_order는 1부터 {TEAM_COUNT}까지 중복 없이 포함해야 합니다",
+        )
+    return group_order
+
+
+def public_seating_preset(row: Any) -> dict:
+    preset = row_dict(row)
+    try:
+        group_order = json.loads(preset["group_order"])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail="자리표 프리셋 데이터가 손상되었습니다") from exc
+    if not isinstance(group_order, list) or not all(isinstance(value, int) for value in group_order):
+        raise HTTPException(status_code=500, detail="자리표 프리셋 데이터가 손상되었습니다")
+    preset["group_order"] = group_order
+    return preset
+
+
+def ensure_default_seating_preset(db: Any) -> None:
+    exists = db.execute("SELECT 1 FROM seating_presets LIMIT 1").fetchone()
+    if exists is None:
+        timestamp = now_iso()
+        db.execute(
+            """
+            INSERT INTO seating_presets (
+                id, name, title, time_label, group_order, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                DEFAULT_SEATING_PRESET_ID,
+                DEFAULT_SEATING_PRESET_NAME,
+                DEFAULT_SEATING_PRESET_TITLE,
+                DEFAULT_SEATING_PRESET_TIME_LABEL,
+                json.dumps(list(range(1, TEAM_COUNT + 1)), separators=(",", ":")),
+                timestamp,
+                timestamp,
+            ),
+        )
+    active = db.execute(
+        """
+        SELECT value FROM app_settings
+        WHERE key = 'active_seating_preset_id'
+          AND value IN (SELECT id FROM seating_presets)
+        """
+    ).fetchone()
+    if active is not None:
+        return
+    timestamp = now_iso()
+    fallback = db.execute(
+        """
+        SELECT id FROM seating_presets
+        ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, updated_at DESC, id
+        LIMIT 1
+        """,
+        (DEFAULT_SEATING_PRESET_ID,),
+    ).fetchone()
+    db.execute(
+        """
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ('active_seating_preset_id', ?, ?)
+        ON CONFLICT (key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        """,
+        (fallback["id"], timestamp),
+    )
+
+
+def get_active_seating_preset_id(db: Any) -> str:
+    ensure_default_seating_preset(db)
+    return db.execute(
+        "SELECT value FROM app_settings WHERE key = 'active_seating_preset_id'"
+    ).fetchone()["value"]
+
+
+def get_seating_preset_or_404(db: Any, preset_id: str):
+    row = db.execute("SELECT * FROM seating_presets WHERE id = ?", (preset_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="자리표 프리셋을 찾을 수 없습니다")
+    return row
+
+
 def derive_title(team: dict) -> str:
     stats = {key: int(team[key]) for key in STAT_KEYS}
     if min(stats.values()) >= 80:
@@ -300,6 +393,17 @@ class GrowthCreate(BaseModel):
 
 class ModelAssetApply(BaseModel):
     team_ids: List[int] = Field(min_length=1, max_length=TEAM_COUNT)
+
+
+class SeatingPresetPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=80)
+    time_label: str = Field(default="", max_length=80)
+    group_order: List[int] = Field(min_length=TEAM_COUNT, max_length=TEAM_COUNT)
+
+
+class ActiveSeatingPresetPayload(BaseModel):
+    preset_id: str = Field(min_length=1, max_length=80)
 
 
 def profile_config(profile: str) -> dict:
@@ -1072,6 +1176,118 @@ async def list_teams():
             (TEAM_COUNT,),
         ).fetchall()
         return [row_dict(row) for row in rows]
+
+
+@app.get("/api/seating-presets")
+async def list_seating_presets():
+    with connect_db() as db:
+        ensure_default_seating_preset(db)
+        rows = db.execute(
+            "SELECT * FROM seating_presets ORDER BY updated_at DESC, name, id"
+        ).fetchall()
+        return {
+            "presets": [public_seating_preset(row) for row in rows],
+            "active_preset_id": get_active_seating_preset_id(db),
+        }
+
+
+@app.post("/api/seating-presets", status_code=201)
+async def create_seating_preset(payload: SeatingPresetPayload):
+    group_order = validate_group_order(payload.group_order)
+    timestamp = now_iso()
+    preset_id = uuid.uuid4().hex
+    with connect_db() as db:
+        db.execute(
+            """
+            INSERT INTO seating_presets (
+                id, name, title, time_label, group_order, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                preset_id,
+                payload.name,
+                payload.title,
+                payload.time_label,
+                json.dumps(group_order, separators=(",", ":")),
+                timestamp,
+                timestamp,
+            ),
+        )
+        return public_seating_preset(get_seating_preset_or_404(db, preset_id))
+
+
+@app.put("/api/seating-presets/active")
+async def set_active_seating_preset(payload: ActiveSeatingPresetPayload):
+    timestamp = now_iso()
+    with connect_db() as db:
+        preset = get_seating_preset_or_404(db, payload.preset_id)
+        db.execute(
+            """
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES ('active_seating_preset_id', ?, ?)
+            ON CONFLICT (key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            """,
+            (payload.preset_id, timestamp),
+        )
+        return {
+            "active_preset_id": payload.preset_id,
+            "preset": public_seating_preset(preset),
+        }
+
+
+@app.put("/api/seating-presets/{preset_id}")
+async def update_seating_preset(preset_id: str, payload: SeatingPresetPayload):
+    group_order = validate_group_order(payload.group_order)
+    timestamp = now_iso()
+    with connect_db() as db:
+        get_seating_preset_or_404(db, preset_id)
+        db.execute(
+            """
+            UPDATE seating_presets
+            SET name = ?, title = ?, time_label = ?, group_order = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                payload.name,
+                payload.title,
+                payload.time_label,
+                json.dumps(group_order, separators=(",", ":")),
+                timestamp,
+                preset_id,
+            ),
+        )
+        return public_seating_preset(get_seating_preset_or_404(db, preset_id))
+
+
+@app.delete("/api/seating-presets/{preset_id}")
+async def delete_seating_preset(preset_id: str):
+    timestamp = now_iso()
+    with connect_db() as db:
+        get_seating_preset_or_404(db, preset_id)
+        db.execute("DELETE FROM seating_presets WHERE id = ?", (preset_id,))
+        ensure_default_seating_preset(db)
+        active_id = get_active_seating_preset_id(db)
+        if active_id == preset_id:
+            replacement = db.execute(
+                """
+                SELECT id FROM seating_presets
+                ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, updated_at DESC, id
+                LIMIT 1
+                """,
+                (DEFAULT_SEATING_PRESET_ID,),
+            ).fetchone()
+            db.execute(
+                """
+                UPDATE app_settings
+                SET value = ?, updated_at = ?
+                WHERE key = 'active_seating_preset_id'
+                """,
+                (replacement["id"], timestamp),
+            )
+            active_id = replacement["id"]
+        return {"deleted": preset_id, "active_preset_id": active_id}
 
 
 @app.get("/api/teams/{team_id}")

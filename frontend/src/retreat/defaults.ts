@@ -1,4 +1,4 @@
-import type { RetreatGroup, RetreatSettings } from './types';
+import type { RetreatGroup, RetreatSettings, SeatingPlan } from './types';
 
 const ACCENTS = [
   '#f26d6d', '#f59f45', '#e1b83b', '#85b85b', '#49a985', '#4aa8b8', '#508fd8',
@@ -30,13 +30,50 @@ export function createDefaultGroups(): RetreatGroup[] {
   });
 }
 
+export function createDefaultSeatingPlans(groups = createDefaultGroups()): SeatingPlan[] {
+  const groupIds = groups.slice(0, 21).map((group) => group.id);
+  return [
+    {
+      id: 'first-day-main',
+      name: '첫째 날 기본',
+      title: '첫째 날 자리표',
+      timeLabel: '',
+      slotGroupIds: groupIds,
+      active: true,
+    },
+    {
+      id: 'first-day-evening',
+      name: '첫째 날 저녁',
+      title: '첫째 날 저녁 자리표',
+      timeLabel: '저녁 집회',
+      slotGroupIds: [
+        ...groupIds.slice(7),
+        ...groupIds.slice(0, 7),
+      ],
+      active: false,
+    },
+    {
+      id: 'second-day-main',
+      name: '둘째 날 기본',
+      title: '둘째 날 자리표',
+      timeLabel: '',
+      slotGroupIds: [
+        ...groupIds.filter((_, index) => index % 2 === 1),
+        ...groupIds.filter((_, index) => index % 2 === 0),
+      ],
+      active: false,
+    },
+  ];
+}
+
 export const DEFAULT_RETREAT_SETTINGS: RetreatSettings = {
   version: 1,
   currentPage: 'group-layout',
   animationPlaying: true,
   groups: createDefaultGroups(),
+  seatingPlans: createDefaultSeatingPlans(),
   groupLayout: {
-    title: '함께 걸어가는 21개 조',
+    title: '첫째 날 자리표',
     showMembers: false,
     animationEnabled: true,
     background: 'lake',
@@ -70,17 +107,17 @@ export const DEFAULT_RETREAT_SETTINGS: RetreatSettings = {
     physicsEnabled: true,
     intensity: 'medium',
     speed: 1,
-    gravity: 0.9,
-    jumpForce: 13,
+    gravity: 0.55,
+    jumpForce: 7,
     maxFallSpeed: 18,
-    minimumDistance: 96,
-    walkProbability: 0.48,
-    runProbability: 0.12,
-    jumpProbability: 0.12,
-    dropProbability: 0.08,
-    ropeProbability: 0.1,
-    holeProbability: 0.08,
-    platformChangeProbability: 0.28,
-    safeZoneHeight: 24,
+    minimumDistance: 118,
+    walkProbability: 0.64,
+    runProbability: 0.14,
+    jumpProbability: 0.015,
+    dropProbability: 0,
+    ropeProbability: 0,
+    holeProbability: 0,
+    platformChangeProbability: 0,
+    safeZoneHeight: 7,
   },
 };

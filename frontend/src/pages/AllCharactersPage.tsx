@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
 import {
@@ -158,12 +158,10 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
         style={{ height: `${settings.world.safeZoneHeight}%` }}
         aria-hidden="true"
       />
-      <header className="retreat-world__title">
-        <p>{settings.world.verse}</p>
-        <h1>{settings.world.title}</h1>
-        {settings.world.caption ? <strong>{settings.world.caption}</strong> : null}
-      </header>
       <div className="retreat-world__sky" aria-hidden="true" />
+      <div className="retreat-world__sea" aria-hidden="true" />
+      <div className="retreat-world__foam" aria-hidden="true" />
+      <div className="retreat-world__sand" aria-hidden="true" />
       <div className="retreat-world__ropes" aria-hidden="true">
         {snapshot.ropes.map((rope) => (
           <span
@@ -217,9 +215,8 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
                 left: actor.x,
                 top: actor.y,
                 zIndex: actor.zIndex,
-                transform: `translate3d(-50%, -100%, 0) rotate(${actor.rotation}rad)`,
-                '--group-accent': group.accentColor,
-              } as React.CSSProperties}
+                transform: `translate3d(-50%, -100%, 0) rotate(${actor.rotation}rad) scale(${actor.scale})`,
+              } as CSSProperties}
             >
               <RetreatCharacter
                 group={group}
@@ -228,7 +225,9 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
                 flipX={actor.flipX}
                 className="retreat-world__character"
               />
-              <span className="retreat-world__badge">{actor.groupNumber}</span>
+              <span className="retreat-world__nameplate">
+                {group.groupName || `${actor.groupNumber}조`}
+              </span>
             </div>
           );
         })}

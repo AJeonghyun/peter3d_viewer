@@ -49,6 +49,15 @@ export interface GroupLayoutSettings {
   background: 'lake' | 'sand' | 'paper';
 }
 
+export interface SeatingPlan {
+  id: string;
+  name: string;
+  title: string;
+  timeLabel: string;
+  slotGroupIds: string[];
+  active: boolean;
+}
+
 export interface NoticeCharacterRotationSettings {
   enabledGroupIds: string[];
   maxVisibleCharacters: number;
@@ -108,6 +117,7 @@ export interface RetreatSettings {
   currentPage: RetreatPage;
   animationPlaying: boolean;
   groups: RetreatGroup[];
+  seatingPlans: SeatingPlan[];
   groupLayout: GroupLayoutSettings;
   notice: NoticeSettings;
   world: WorldSettings;

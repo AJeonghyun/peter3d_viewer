@@ -4,6 +4,7 @@ import './styles/retreat.css';
 
 type PageName =
   | 'admin'
+  | 'admin-seating'
   | 'world-3d'
   | 'sprite-lab'
   | 'showcase'
@@ -13,6 +14,7 @@ type PageName =
   | 'all-characters';
 
 function resolvePage(pathname: string): PageName {
+  if (pathname === '/admin/seating' || pathname.startsWith('/admin/seating/')) return 'admin-seating';
   if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin';
   if (pathname === '/world-3d' || pathname.startsWith('/world-3d/')) return 'world-3d';
   if (pathname === '/editor' || pathname.startsWith('/editor/')) return 'editor';
@@ -28,6 +30,11 @@ function resolvePage(pathname: string): PageName {
   ) return 'notice';
   if (pathname === '/showcase' || pathname.startsWith('/showcase/')) return 'showcase';
   if (
+    pathname === '/display/all-characters'
+    || pathname.startsWith('/display/all-characters/')
+    || pathname === '/page-3'
+  ) return 'all-characters';
+  if (
     pathname === '/sprite-lab'
     || pathname.startsWith('/sprite-lab/')
     || pathname === '/sprite-demo'
@@ -39,23 +46,17 @@ function resolvePage(pathname: string): PageName {
 }
 
 const page = resolvePage(window.location.pathname);
-const Page = page === 'admin'
-  ? lazy(() => import('./pages/AdminPage'))
-  : page === 'editor'
-    ? lazy(() => import('./pages/EditorPage'))
-    : page === 'group-layout'
-      ? lazy(() => import('./pages/GroupLayoutPage'))
-      : page === 'notice'
-        ? lazy(() => import('./pages/NoticePage'))
-        : page === 'all-characters'
-          ? lazy(() => import('./pages/AllCharactersPage'))
-          : page === 'showcase'
-            ? lazy(() => import('./pages/ShowcasePage'))
-  : page === 'sprite-lab'
-    ? lazy(() => import('./pages/SpriteLabPage'))
-    : page === 'world-3d'
-      ? lazy(() => import('./pages/WorldPage'))
-      : lazy(() => import('./pages/AllCharactersPage'));
+const Page = ({
+  admin: lazy(() => import('./pages/AdminPage')),
+  'admin-seating': lazy(() => import('./pages/SeatingAdminPage')),
+  editor: lazy(() => import('./pages/EditorPage')),
+  'group-layout': lazy(() => import('./pages/GroupLayoutPage')),
+  notice: lazy(() => import('./pages/NoticePage')),
+  'all-characters': lazy(() => import('./pages/AllCharactersPage')),
+  showcase: lazy(() => import('./pages/ShowcasePage')),
+  'sprite-lab': lazy(() => import('./pages/SpriteLabPage')),
+  'world-3d': lazy(() => import('./pages/WorldPage')),
+} satisfies Record<PageName, ReturnType<typeof lazy>>)[page];
 
 export default function App() {
   return (

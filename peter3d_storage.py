@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable, Optional
+
+
+DEFAULT_SEATING_PRESET_ID = "default"
+DEFAULT_SEATING_PRESET_NAME = "기본 자리표"
+DEFAULT_SEATING_PRESET_TITLE = "첫째 날 자리표"
+DEFAULT_SEATING_PRESET_TIME_LABEL = ""
 
 
 def database_url() -> str:
@@ -152,6 +159,24 @@ SQLITE_SCHEMA = (
         updated_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS seating_presets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        time_label TEXT NOT NULL DEFAULT '',
+        group_order TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
 )
 
 
@@ -244,6 +269,24 @@ POSTGRES_SCHEMA = (
         glb_triangles INTEGER,
         glb_animations INTEGER,
         created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS seating_presets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        time_label TEXT NOT NULL DEFAULT '',
+        group_order TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
     """,
@@ -349,6 +392,52 @@ def initialize_database(sqlite_path: Path, timestamp: str, *, team_count: int = 
               )
             """
         )
+        default_group_order = json.dumps(list(range(1, team_count + 1)), separators=(",", ":"))
+        db.execute(
+            """
+            INSERT INTO seating_presets (
+                id, name, title, time_label, group_order, created_at, updated_at
+            )
+            SELECT ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (SELECT 1 FROM seating_presets)
+            """,
+            (
+                DEFAULT_SEATING_PRESET_ID,
+                DEFAULT_SEATING_PRESET_NAME,
+                DEFAULT_SEATING_PRESET_TITLE,
+                DEFAULT_SEATING_PRESET_TIME_LABEL,
+                default_group_order,
+                timestamp,
+                timestamp,
+            ),
+        )
+        active_exists = db.execute(
+            """
+            SELECT 1 FROM app_settings
+            WHERE key = 'active_seating_preset_id'
+              AND value IN (SELECT id FROM seating_presets)
+            """
+        ).fetchone()
+        if active_exists is None:
+            active = db.execute(
+                """
+                SELECT id FROM seating_presets
+                ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, updated_at DESC, id
+                LIMIT 1
+                """,
+                (DEFAULT_SEATING_PRESET_ID,),
+            ).fetchone()
+            if active is not None:
+                db.execute(
+                    """
+                    INSERT INTO app_settings (key, value, updated_at)
+                    VALUES ('active_seating_preset_id', ?, ?)
+                    ON CONFLICT (key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (active["id"], timestamp),
+                )
 
 
 def blob_configured() -> bool:

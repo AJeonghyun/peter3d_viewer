@@ -119,6 +119,82 @@ class Peter3DBackendTests(unittest.TestCase):
         }.issubset(team_columns))
         self.assertIsNotNone(asset_table)
 
+    def test_initializes_default_seating_preset_and_active_setting(self):
+        result = asyncio.run(backend_main.list_seating_presets())
+
+        self.assertEqual(result["active_preset_id"], "default")
+        self.assertEqual(len(result["presets"]), 1)
+        preset = result["presets"][0]
+        self.assertEqual(preset["id"], "default")
+        self.assertEqual(preset["name"], "기본 자리표")
+        self.assertEqual(preset["title"], "첫째 날 자리표")
+        self.assertEqual(preset["time_label"], "")
+        self.assertEqual(preset["group_order"], list(range(1, 22)))
+
+    def test_seating_preset_crud_and_active_selection(self):
+        created = asyncio.run(backend_main.create_seating_preset(
+            backend_main.SeatingPresetPayload(
+                name="첫째 날 저녁",
+                title="첫째 날 저녁 자리표",
+                time_label="저녁 집회",
+                group_order=list(range(21, 0, -1)),
+            )
+        ))
+
+        self.assertEqual(created["name"], "첫째 날 저녁")
+        self.assertEqual(created["title"], "첫째 날 저녁 자리표")
+        self.assertEqual(created["time_label"], "저녁 집회")
+        self.assertEqual(created["group_order"], list(range(21, 0, -1)))
+
+        updated = asyncio.run(backend_main.update_seating_preset(
+            created["id"],
+            backend_main.SeatingPresetPayload(
+                name="둘째 날 아침",
+                title="둘째 날 아침 자리표",
+                time_label="아침 QT",
+                group_order=[2, *range(3, 22), 1],
+            ),
+        ))
+        self.assertEqual(updated["name"], "둘째 날 아침")
+        self.assertEqual(updated["group_order"], [2, *range(3, 22), 1])
+
+        active = asyncio.run(backend_main.set_active_seating_preset(
+            backend_main.ActiveSeatingPresetPayload(preset_id=created["id"])
+        ))
+        self.assertEqual(active["active_preset_id"], created["id"])
+        self.assertEqual(active["preset"]["id"], created["id"])
+
+        listed = asyncio.run(backend_main.list_seating_presets())
+        self.assertEqual(listed["active_preset_id"], created["id"])
+        self.assertEqual({preset["id"] for preset in listed["presets"]}, {"default", created["id"]})
+
+        deleted = asyncio.run(backend_main.delete_seating_preset(created["id"]))
+        self.assertEqual(deleted["deleted"], created["id"])
+        self.assertEqual(deleted["active_preset_id"], "default")
+
+    def test_seating_preset_rejects_missing_or_duplicate_group_slots(self):
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(backend_main.create_seating_preset(
+                backend_main.SeatingPresetPayload(
+                    name="잘못된 자리표",
+                    title="잘못된 자리표",
+                    time_label="",
+                    group_order=[1] * 21,
+                )
+            ))
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("중복 없이", caught.exception.detail)
+
+    def test_seating_preset_delete_recreates_default_when_none_remain(self):
+        deleted = asyncio.run(backend_main.delete_seating_preset("default"))
+        listed = asyncio.run(backend_main.list_seating_presets())
+
+        self.assertEqual(deleted["deleted"], "default")
+        self.assertEqual(listed["active_preset_id"], "default")
+        self.assertEqual(len(listed["presets"]), 1)
+        self.assertEqual(listed["presets"][0]["group_order"], list(range(1, 22)))
+
     def test_generation_profiles_keep_provider_face_limits_valid(self):
         h3 = backend_main.image_model_options("h3_smart")
         p1 = backend_main.image_model_options("p1")

@@ -61,10 +61,10 @@ interface CaptureActorState {
   cooldownUntil: number;
 }
 
-const ACTOR_WIDTH = 54;
-const ACTOR_HEIGHT = 86;
-const ACTOR_VISUAL_WIDTH = 88;
-const ACTOR_PERSONAL_SPACE = ACTOR_VISUAL_WIDTH + 8;
+const ACTOR_WIDTH = 80;
+const ACTOR_HEIGHT = 126;
+const ACTOR_VISUAL_WIDTH = 168;
+const ACTOR_PERSONAL_SPACE = ACTOR_VISUAL_WIDTH + 10;
 const PLATFORM_CATEGORY = 0x0001;
 const ACTOR_CATEGORY = 0x0002;
 const GROUND_EPSILON = 5;
@@ -98,13 +98,16 @@ export function createRetreatPlatforms(
   height: number,
   safeZoneHeight: number,
 ): PlatformArea[] {
-  const topSafe = clamp(safeZoneHeight, 0, 32) / 100 * height;
-  const yTop = Math.max(topSafe + 112, height * 0.36);
-  const yMiddle = Math.max(yTop + 126, height * 0.58);
-  const yBottom = Math.max(yMiddle + 126, height * 0.82);
-  const xStart = width * 0.08;
-  const xEnd = width * 0.92;
-  const gap = width * 0.045;
+  const topSafe = clamp(safeZoneHeight, 0, 18) / 100 * height;
+  const laneGap = clamp(height * 0.26, 150, 250);
+  const yTop = Math.max(topSafe + 120, height * 0.32);
+  const yMiddle = Math.max(yTop + laneGap, height * 0.58);
+  const yBottom = Math.min(
+    height * 0.91,
+    Math.max(yMiddle + laneGap, height * 0.86),
+  );
+  const xStart = width * 0.035;
+  const xEnd = width * 0.965;
 
   return [
     {
@@ -112,40 +115,28 @@ export function createRetreatPlatforms(
       xStart,
       xEnd,
       y: yTop,
-      thickness: 18,
+      thickness: 20,
       leftEdgeType: 'wall',
-      rightEdgeType: 'rope-down',
-      connectedPlatformIds: ['middle'],
-      jumpTargets: ['middle'],
-      dropTargets: ['middle'],
-      ropeAccessIds: ['right-rope'],
-      holeZones: [{
-        id: 'upper-hole',
-        platformId: 'upper',
-        xStart: width * 0.46 - gap,
-        xEnd: width * 0.46 + gap,
-        dropToPlatformId: 'middle',
-      }],
+      rightEdgeType: 'wall',
+      connectedPlatformIds: [],
+      jumpTargets: [],
+      dropTargets: [],
+      ropeAccessIds: [],
+      holeZones: [],
     },
     {
       id: 'middle',
       xStart,
       xEnd,
       y: yMiddle,
-      thickness: 18,
-      leftEdgeType: 'rope-down',
-      rightEdgeType: 'rope-down',
-      connectedPlatformIds: ['upper', 'lower'],
-      jumpTargets: ['upper', 'lower'],
-      dropTargets: ['lower'],
-      ropeAccessIds: ['left-rope', 'right-rope'],
-      holeZones: [{
-        id: 'middle-hole',
-        platformId: 'middle',
-        xStart: width * 0.58 - gap,
-        xEnd: width * 0.58 + gap,
-        dropToPlatformId: 'lower',
-      }],
+      thickness: 20,
+      leftEdgeType: 'wall',
+      rightEdgeType: 'wall',
+      connectedPlatformIds: [],
+      jumpTargets: [],
+      dropTargets: [],
+      ropeAccessIds: [],
+      holeZones: [],
     },
     {
       id: 'lower',
@@ -155,39 +146,18 @@ export function createRetreatPlatforms(
       thickness: 20,
       leftEdgeType: 'wall',
       rightEdgeType: 'wall',
-      connectedPlatformIds: ['middle'],
-      jumpTargets: ['middle'],
+      connectedPlatformIds: [],
+      jumpTargets: [],
       dropTargets: [],
-      ropeAccessIds: ['left-rope'],
+      ropeAccessIds: [],
       holeZones: [],
     },
   ];
 }
 
 export function createRetreatRopes(platforms: PlatformArea[]): RopeZone[] {
-  const upper = platforms[0];
-  const middle = platforms[1];
-  const lower = platforms[2];
-  if (!upper || !middle || !lower) return [];
-
-  return [
-    {
-      id: 'right-rope',
-      x: upper.xEnd - 58,
-      yTop: upper.y - 26,
-      yBottom: middle.y - 10,
-      connectsPlatformIds: ['upper', 'middle'],
-      mode: 'both',
-    },
-    {
-      id: 'left-rope',
-      x: lower.xStart + 66,
-      yTop: middle.y - 22,
-      yBottom: lower.y - 8,
-      connectsPlatformIds: ['middle', 'lower'],
-      mode: 'both',
-    },
-  ];
+  void platforms;
+  return [];
 }
 
 export class RetreatPhysicsWorld {
@@ -409,10 +379,10 @@ export class RetreatPhysicsWorld {
           ? 1.45
           : 1;
       const probability = (value: number) => clamp(value * intensityMultiplier, 0, 0.7);
-      const ropeProbability = probability(this.settings.ropeProbability);
-      const holeProbability = probability(this.settings.holeProbability);
-      const jumpProbability = probability(this.settings.jumpProbability);
-      const dropProbability = probability(this.settings.dropProbability);
+      const ropeProbability = 0;
+      const holeProbability = 0;
+      const jumpProbability = probability(Math.min(this.settings.jumpProbability, 0.015));
+      const dropProbability = 0;
       const roll = Math.random();
       const platform = this.platformsById.get(actor.platformId);
       if (!platform) return;

@@ -1,7 +1,7 @@
 :root {
-  font-family: "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
-  color: #183242;
-  background: #8bcfe1;
+  font-family: "SUIT Variable", Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  color: #123956;
+  background: #7bd9ee;
   font-synthesis: none;
 }
 
@@ -19,29 +19,27 @@ body,
 }
 
 body {
-  background: #8bcfe1;
+  background: #7bd9ee;
 }
 
 .retreat-group-page {
   display: grid;
   width: 100%;
   height: 100%;
-  min-height: 100vh;
-  place-items: center;
+  min-height: 100dvh;
   overflow: hidden;
-  background: #214f66;
+  place-items: center;
+  background: #147d9e;
 }
 
 .retreat-group-stage {
   position: relative;
-  width: min(100%, calc(100vh * 16 / 9));
+  width: min(100%, calc(100dvh * 16 / 9));
   height: min(100%, calc(100vw * 9 / 16));
-  aspect-ratio: 16 / 9;
   overflow: hidden;
   isolation: isolate;
   container-type: size;
-  background:
-    linear-gradient(180deg, rgb(139 207 225) 0 42%, rgb(114 174 184) 42% 60%, rgb(185 171 132) 60% 100%);
+  background: #9beaff;
 }
 
 .retreat-group-page[data-preview="true"] {
@@ -53,17 +51,10 @@ body {
   height: 100%;
 }
 
-.retreat-group-stage[data-background="sand"] {
-  background:
-    linear-gradient(180deg, rgb(156 213 223) 0 41%, rgb(159 194 181) 41% 58%, rgb(205 178 126) 58% 100%);
-}
-
-.retreat-group-stage[data-background="paper"] {
-  background:
-    linear-gradient(180deg, rgb(237 226 198) 0 41%, rgb(203 214 192) 41% 58%, rgb(214 193 151) 58% 100%);
-}
-
+.retreat-group-stage__sun,
 .retreat-group-stage__sky,
+.retreat-group-stage__sea,
+.retreat-group-stage__waves,
 .retreat-group-stage__shore {
   position: absolute;
   inset-inline: 0;
@@ -73,99 +64,137 @@ body {
 .retreat-group-stage__sky {
   z-index: 0;
   top: 0;
-  height: 62%;
+  height: 58%;
   background:
-    radial-gradient(circle at 50% 33%, rgb(255 239 186 / 60%) 0 9%, transparent 19%),
-    radial-gradient(ellipse at 51% 74%, rgb(255 255 255 / 24%), transparent 36%),
-    linear-gradient(180deg, rgb(112 181 211 / 36%), transparent 72%);
+    radial-gradient(circle at 22% 14%, rgb(255 255 225 / 78%) 0 4%, transparent 13%),
+    radial-gradient(ellipse at 50% 44%, rgb(255 255 255 / 58%) 0 12%, transparent 46%),
+    linear-gradient(180deg, #b9f1ff 0%, #8adff2 72%, #70cee5 100%);
+}
+
+.retreat-group-stage__sun {
+  z-index: 1;
+  top: 8%;
+  left: 14%;
+  width: 7cqw;
+  height: 7cqw;
+  border: max(2px, 0.18cqw) solid rgb(255 255 255 / 54%);
+  border-radius: 50%;
+  background: #fff8bd;
+}
+
+.retreat-group-stage__sea {
+  z-index: 1;
+  top: 39%;
+  height: 39%;
+  background:
+    repeating-linear-gradient(178deg, transparent 0 7%, rgb(255 255 255 / 20%) 7.3% 8.2%, transparent 8.5% 17%),
+    linear-gradient(180deg, #36c9df 0%, #16accb 48%, #098baa 100%);
+}
+
+.retreat-group-stage__waves {
+  z-index: 2;
+  height: 8%;
+  background-size: 12cqw 100%;
+  opacity: 0.9;
+}
+
+.retreat-group-stage__waves--back {
+  top: 51%;
+  background-image:
+    radial-gradient(ellipse at 50% 100%, transparent 54%, rgb(235 252 255 / 82%) 56% 65%, transparent 67%);
+}
+
+.retreat-group-stage__waves--front {
+  top: 66%;
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgb(250 254 255 / 92%) 0 19%, transparent 21%),
+    radial-gradient(ellipse at 0 100%, transparent 44%, rgb(244 254 255 / 86%) 46% 56%, transparent 58%);
+  background-position: 0 0, 6cqw 0;
 }
 
 .retreat-group-stage__shore {
   z-index: 1;
-  top: 60%;
+  top: 72%;
   bottom: 0;
   background:
-    repeating-linear-gradient(174deg, transparent 0 34px, rgb(255 255 255 / 9%) 35px 37px, transparent 38px 72px),
-    radial-gradient(ellipse at 50% 0%, rgb(68 50 27 / 16%), transparent 55%);
+    radial-gradient(ellipse at 18% 18%, rgb(255 255 255 / 22%) 0 1%, transparent 1.4%),
+    radial-gradient(ellipse at 72% 54%, rgb(183 137 63 / 10%) 0 0.7%, transparent 1.2%),
+    linear-gradient(177deg, #ffe8ab 0%, #f7d994 100%);
+  background-size: 13cqw 8cqh, 17cqw 9cqh, auto;
 }
 
 .retreat-group-stage__header {
   position: relative;
-  z-index: 4;
+  z-index: 6;
   display: grid;
   justify-items: center;
-  padding-top: 2.3cqh;
+  padding-top: 1.9cqh;
   text-align: center;
-  text-shadow: 0 2px 0 rgb(255 255 255 / 48%);
 }
 
 .retreat-group-stage__header p {
-  margin: 0 0 0.45cqh;
-  color: rgb(35 82 92 / 78%);
-  font-size: clamp(10px, 1.1cqw, 15px);
-  font-weight: 700;
-  letter-spacing: 0;
+  margin: 0 0 0.25cqh;
+  color: #137998;
+  font-size: clamp(12px, 1.05cqw, 18px);
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  line-height: 1;
   text-transform: uppercase;
 }
 
 .retreat-group-stage__header h1 {
-  max-width: 86%;
+  max-width: 82%;
   margin: 0;
-  color: #173247;
-  font-family: "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
-  font-size: clamp(27px, 4.1cqw, 55px);
-  line-height: 1;
-  letter-spacing: 0;
+  color: #123956;
+  font-size: clamp(34px, 4cqw, 66px);
+  font-weight: 900;
+  letter-spacing: -0.055em;
+  line-height: 0.96;
+  text-wrap: balance;
 }
 
 .retreat-group-grid {
   position: relative;
   z-index: 5;
   display: grid;
-  gap: 0.8cqh;
+  gap: 0.72cqh;
   width: 88%;
-  margin: 1.6cqh auto 0;
+  margin: 1.55cqh auto 0;
 }
 
 .retreat-group-grid__row {
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
-  gap: 0.85cqw;
+  gap: 0.78cqw;
   justify-content: center;
   margin-inline: auto;
 }
 
 .retreat-group-grid__row[data-row-size="4"] {
-  width: min(100%, 76cqw);
+  width: min(100%, 77cqw);
 }
 
 .retreat-group-grid__row[data-row-size="3"] {
-  width: min(100%, 57cqw);
+  width: min(100%, 58cqw);
 }
 
 .retreat-group-grid__row[data-row-size="2"] {
-  width: min(100%, 38cqw);
+  width: min(100%, 39cqw);
 }
 
 .retreat-group-card {
-  --group-accent: #4f9eaa;
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 55%) minmax(0, 45%);
+  grid-template-columns: minmax(0, 1fr) 34%;
   min-width: 0;
-  height: 12.25cqh;
+  height: 12.65cqh;
   min-height: 0;
-  padding: 0.45cqh 0.65cqw 0.35cqh;
   overflow: hidden;
-  border: 2px solid rgb(31 63 73 / 42%);
-  border-radius: 8px;
-  color: #15303c;
-  text-align: center;
-  background:
-    linear-gradient(90deg, var(--group-accent) 0 6px, transparent 6px),
-    rgb(255 251 235 / 93%);
-  box-shadow: 0 7px 0 rgb(57 65 52 / 13%), 0 14px 22px rgb(31 52 46 / 14%);
+  border: max(1px, 0.1cqw) solid rgb(255 255 255 / 88%);
+  border-radius: clamp(8px, 0.7cqw, 13px);
+  color: #123956;
+  background: rgb(250 254 255 / 91%);
 }
 
 .retreat-group-card__text {
@@ -173,32 +202,40 @@ body {
   z-index: 2;
   display: grid;
   min-width: 0;
-  min-height: 0;
-  place-items: center;
   align-content: center;
-  overflow: hidden;
+  justify-items: start;
+  padding: 0.7cqh 0.35cqw 0.7cqh 1.12cqw;
+  text-align: left;
 }
 
 .retreat-group-card__number {
-  color: color-mix(in srgb, var(--group-accent) 66%, #163041);
-  font-family: "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
-  font-size: clamp(14px, 1.45cqw, 22px);
-  font-weight: 700;
-  line-height: 1;
+  color: #123956;
+  font-size: clamp(25px, 2.15cqw, 40px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  letter-spacing: -0.07em;
+  line-height: 0.92;
 }
 
-.retreat-group-card strong {
+.retreat-group-card__name {
   max-width: 100%;
-  overflow-wrap: anywhere;
-  font-size: clamp(10px, 0.95cqw, 15px);
-  line-height: 1.06;
+  margin-top: 0.48cqh;
+  overflow: hidden;
+  color: #2d6d82;
+  font-size: clamp(11px, 0.86cqw, 16px);
+  font-weight: 750;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .retreat-group-card__details {
   max-width: 100%;
+  margin-top: 0.32cqh;
   overflow: hidden;
-  color: rgb(21 48 60 / 78%);
-  font-size: clamp(8px, 0.72cqw, 11px);
+  color: #527584;
+  font-size: clamp(8px, 0.65cqw, 12px);
+  font-weight: 650;
   line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -213,50 +250,27 @@ body {
   pointer-events: none;
 }
 
-.retreat-group-card__actor-zone::before {
+.retreat-group-card__actor.retreat-character {
   position: absolute;
-  inset: auto 8% 5% 8%;
-  height: 28%;
-  border-radius: 50%;
-  background: rgb(56 76 53 / 14%);
-  content: "";
+  right: 3%;
+  bottom: 0;
+  width: 94%;
+  height: 98%;
+  transform-origin: 50% 100%;
 }
 
-.retreat-group-card__actor {
-  position: absolute;
-  left: 50%;
-  bottom: -10%;
-  width: clamp(38px, 4.5cqw, 72px);
-  height: clamp(50px, 5.8cqw, 94px);
-  transform: translateX(-50%);
-  transform-origin: 50% 88%;
-  animation: retreat-group-roam var(--actor-duration) ease-in-out var(--actor-delay) infinite alternate;
-  opacity: 0.98;
-  will-change: transform;
-}
-
-.retreat-group-card__actor .retreat-character {
-  width: 100%;
-  height: 100%;
-  transform-origin: 50% 88%;
-  filter: drop-shadow(0 5px 4px rgb(47 55 43 / 20%));
-}
-
-.retreat-group-card__actor .retreat-character img,
-.retreat-group-card__actor .sprite-animator {
+.retreat-group-card__actor .sprite-animator,
+.retreat-group-card__actor .sprite-animator__motion,
+.retreat-group-card__actor .sprite-animator__motion > *,
+.retreat-group-card__actor img {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.retreat-group-card__actor .retreat-character img {
+.retreat-group-card__actor img {
   object-fit: contain;
-}
-
-.retreat-group-card__actor .sprite-animator__motion,
-.retreat-group-card__actor .sprite-animator__motion > * {
-  width: 100%;
-  height: 100%;
+  object-position: center bottom;
 }
 
 .retreat-group-card__actor .sprite-animator__fallback {
@@ -264,29 +278,115 @@ body {
   width: 100%;
   height: 100%;
   place-items: center;
-  border: 2px solid rgb(47 66 57 / 28%);
-  border-radius: 50% 50% 44% 44%;
-  color: #244151;
-  font-size: 10px;
-  background: rgb(255 248 220 / 80%);
+  color: #2d6d82;
+  font-size: 9px;
+  font-weight: 800;
+  background: rgb(224 247 251 / 70%);
 }
 
-@keyframes retreat-group-roam {
-  0% {
-    transform: translateX(calc(-50% - var(--actor-travel))) translateY(1px);
-  }
+.retreat-group-plan {
+  position: absolute;
+  z-index: 12;
+  top: 1.55cqh;
+  right: 1.45cqw;
+  display: grid;
+  justify-items: end;
+  color: #123956;
+}
 
-  42% {
-    transform: translateX(-50%) translateY(-3px);
-  }
+.retreat-group-plan__trigger {
+  max-width: 15cqw;
+  min-height: 3.2cqh;
+  padding: 0.48cqh 0.78cqw;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 88%);
+  border-radius: 999px;
+  color: #123956;
+  background: rgb(250 254 255 / 84%);
+  cursor: pointer;
+  font-size: clamp(9px, 0.72cqw, 13px);
+  font-weight: 850;
+  text-overflow: ellipsis;
+  transition: background 180ms ease, transform 180ms ease;
+  white-space: nowrap;
+}
 
-  100% {
-    transform: translateX(calc(-50% + var(--actor-travel))) translateY(1px);
-  }
+.retreat-group-plan__trigger:hover {
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.retreat-group-plan__trigger:active {
+  transform: translateY(1px);
+}
+
+.retreat-group-plan button:focus-visible,
+.retreat-group-plan a:focus-visible {
+  outline: 3px solid #ff826f;
+  outline-offset: 2px;
+}
+
+.retreat-group-plan__menu {
+  display: grid;
+  gap: 0.42cqh;
+  width: min(16cqw, 280px);
+  margin-top: 0.55cqh;
+  padding: 0.7cqh 0.55cqw;
+  border: 1px solid rgb(255 255 255 / 92%);
+  border-radius: 12px;
+  background: rgb(250 254 255 / 96%);
+}
+
+.retreat-group-plan__option {
+  display: grid;
+  gap: 0.18cqh;
+  width: 100%;
+  min-width: 0;
+  padding: 0.65cqh 0.55cqw;
+  border: 0;
+  border-radius: 8px;
+  color: #123956;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.retreat-group-plan__option:hover,
+.retreat-group-plan__option[data-active="true"] {
+  background: #ddf6fb;
+}
+
+.retreat-group-plan__option span {
+  font-size: clamp(9px, 0.7cqw, 13px);
+  font-weight: 850;
+}
+
+.retreat-group-plan__option small,
+.retreat-group-plan__message,
+.retreat-group-plan__admin {
+  overflow: hidden;
+  color: #527584;
+  font-size: clamp(8px, 0.58cqw, 11px);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retreat-group-plan__message {
+  padding: 0.35cqh 0.55cqw;
+  color: #b05748;
+}
+
+.retreat-group-plan__admin {
+  justify-self: start;
+  padding: 0.45cqh 0.55cqw;
+  color: #087f9f;
+  font-weight: 850;
+  text-decoration: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .retreat-group-card__actor {
-    animation: none;
+  .retreat-group-plan__trigger {
+    transition: none;
   }
 }

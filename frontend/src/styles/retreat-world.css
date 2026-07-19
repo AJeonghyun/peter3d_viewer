@@ -1,7 +1,7 @@
 :root {
-  font-family: "Gowun Dodum", "Apple SD Gothic Neo", sans-serif;
-  color: #183b49;
-  background: #8ed0e1;
+  font-family: "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  color: #12324d;
+  background: #aee9f7;
   font-synthesis: none;
 }
 
@@ -19,7 +19,7 @@ body,
 }
 
 body {
-  background: #8ed0e1;
+  background: #aee9f7;
 }
 
 .retreat-world {
@@ -30,61 +30,76 @@ body {
   overflow: hidden;
   isolation: isolate;
   background:
-    linear-gradient(180deg, rgba(255, 249, 214, 0.88), rgba(166, 224, 225, 0.9) 31%, rgba(111, 181, 180, 0.72) 72%),
-    #94d5df;
+    radial-gradient(circle at 15% 14%, rgb(255 255 255 / 82%) 0 9%, transparent 20%),
+    linear-gradient(180deg, #c9f5ff 0 36%, #54cde0 36% 52%, #fff0c6 52% 100%);
 }
 
 .retreat-world[data-preview="true"] {
   min-height: 0;
 }
 
-.retreat-world__sky {
+.retreat-world__sky,
+.retreat-world__sea,
+.retreat-world__foam,
+.retreat-world__sand,
+.retreat-world__safe-zone {
   position: absolute;
-  inset: 0;
-  z-index: 0;
+  inset-inline: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.64), transparent 18%),
-    radial-gradient(circle at 83% 30%, rgba(255, 255, 255, 0.44), transparent 16%),
-    linear-gradient(180deg, transparent 0 55%, rgba(53, 119, 116, 0.18) 100%);
 }
 
 .retreat-world__safe-zone {
-  position: absolute;
   z-index: 10;
+  top: 0;
+  min-height: 52px;
+}
+
+.retreat-world__sky {
   inset: 0 0 auto;
-  min-height: 118px;
-  pointer-events: none;
+  z-index: 0;
+  height: 44%;
+  background:
+    radial-gradient(ellipse at 72% 17%, rgb(255 255 255 / 70%) 0 5%, transparent 13%),
+    radial-gradient(ellipse at 28% 25%, rgb(255 255 255 / 55%) 0 5%, transparent 14%),
+    linear-gradient(180deg, rgb(255 255 255 / 18%), transparent 84%);
+}
+
+.retreat-world__sea {
+  z-index: 1;
+  top: 34%;
+  height: 27%;
+  background:
+    repeating-linear-gradient(174deg, rgb(255 255 255 / 0%) 0 42px, rgb(255 255 255 / 18%) 43px 45px, rgb(255 255 255 / 0%) 46px 92px),
+    linear-gradient(180deg, #60d6e7 0%, #1aadc8 100%);
+}
+
+.retreat-world__foam {
+  z-index: 2;
+  top: 49%;
+  height: 13%;
+  background:
+    radial-gradient(ellipse at 8% 55%, rgb(255 255 255 / 92%) 0 11%, transparent 12%),
+    radial-gradient(ellipse at 25% 50%, rgb(255 255 255 / 90%) 0 13%, transparent 14%),
+    radial-gradient(ellipse at 44% 58%, rgb(255 255 255 / 88%) 0 12%, transparent 13%),
+    radial-gradient(ellipse at 63% 46%, rgb(255 255 255 / 92%) 0 14%, transparent 15%),
+    radial-gradient(ellipse at 83% 55%, rgb(255 255 255 / 88%) 0 12%, transparent 13%),
+    linear-gradient(180deg, rgb(234 255 255 / 76%), rgb(255 255 255 / 54));
+  border-radius: 0 0 50% 50%;
+}
+
+.retreat-world__sand {
+  z-index: 1;
+  top: 58%;
+  bottom: 0;
+  background:
+    radial-gradient(ellipse at 18% 74%, rgb(231 184 99 / 22%), transparent 25%),
+    radial-gradient(ellipse at 78% 78%, rgb(232 187 103 / 26%), transparent 30%),
+    repeating-linear-gradient(168deg, transparent 0 42px, rgb(197 151 73 / 10%) 43px 45px, transparent 46px 96px),
+    linear-gradient(180deg, #fff1c8, #f5d997);
 }
 
 .retreat-world__title {
-  position: absolute;
-  z-index: 11;
-  top: clamp(18px, 3.5vh, 44px);
-  left: 50%;
-  width: min(850px, calc(100% - 44px));
-  transform: translateX(-50%);
-  text-align: center;
-  color: #17324a;
-  pointer-events: none;
-  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.52);
-}
-
-.retreat-world__title p,
-.retreat-world__title strong {
-  display: block;
-  margin: 0;
-  font-size: clamp(15px, 1.45vw, 22px);
-  line-height: 1.3;
-  font-weight: 700;
-}
-
-.retreat-world__title h1 {
-  margin: 4px 0 0;
-  font-family: "Gaegu", "Gowun Dodum", sans-serif;
-  font-size: clamp(42px, 6.4vw, 96px);
-  line-height: 0.94;
-  letter-spacing: 0;
+  display: none;
 }
 
 .retreat-world__platforms,
@@ -96,99 +111,47 @@ body {
 
 .retreat-world__platforms {
   z-index: 2;
+  pointer-events: none;
 }
 
 .retreat-world__ropes {
-  z-index: 1;
+  display: none;
 }
 
 .retreat-world__actors {
   z-index: 4;
 }
 
-.retreat-world__platform {
-  position: absolute;
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 236, 161, 0.88), rgba(211, 157, 73, 0.94) 44%, rgba(143, 96, 50, 0.96));
-  box-shadow:
-    inset 0 3px 0 rgba(255, 255, 255, 0.38),
-    0 16px 22px rgba(67, 65, 42, 0.18);
+.retreat-world__platform,
+.retreat-world__hole,
+.retreat-world__rope {
+  opacity: 0;
 }
 
-.retreat-world__platform::before {
-  content: "";
-  position: absolute;
-  left: 3%;
-  right: 3%;
-  bottom: -8px;
-  height: 10px;
-  border-radius: 0 0 8px 8px;
-  background: rgba(106, 72, 39, 0.42);
+.retreat-world__platform {
+  height: 5px !important;
+  border-radius: 999px;
+  opacity: 0.5;
+  background: rgb(255 250 226 / 72%);
 }
 
 .retreat-world__platform[data-platform="upper"] {
-  filter: saturate(0.96);
+  background: rgb(255 255 255 / 82%);
 }
 
-.retreat-world__platform[data-platform="middle"] {
-  filter: saturate(1.04);
-}
-
+.retreat-world__platform[data-platform="middle"],
 .retreat-world__platform[data-platform="lower"] {
-  filter: saturate(1.12);
-}
-
-.retreat-world__hole {
-  position: absolute;
-  top: -2px;
-  height: calc(100% + 5px);
-  border-radius: 999px;
-  background:
-    radial-gradient(ellipse at center, rgba(50, 54, 44, 0.62), rgba(71, 58, 38, 0.42) 55%, transparent 72%);
-  box-shadow: inset 0 4px 8px rgba(46, 37, 28, 0.35);
-}
-
-.retreat-world__rope {
-  position: absolute;
-  width: 10px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background:
-    repeating-linear-gradient(
-      180deg,
-      #8a653d 0,
-      #8a653d 8px,
-      #d6ae72 8px,
-      #d6ae72 15px
-    );
-  box-shadow:
-    inset 2px 0 0 rgba(255, 235, 187, 0.45),
-    0 5px 12px rgba(75, 58, 37, 0.18);
+  background: rgb(225 184 105 / 22%);
 }
 
 .retreat-world__actor {
   position: absolute;
-  width: 88px;
-  height: 112px;
+  width: 148px;
+  height: 196px;
   transform-origin: 50% 100%;
   pointer-events: none;
-  will-change: transform, left, top;
-  filter:
-    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.82))
-    drop-shadow(0 10px 8px rgba(50, 77, 69, 0.22));
-}
-
-.retreat-world__actor::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: -7px;
-  width: 42px;
-  height: 10px;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: rgba(48, 77, 65, 0.2);
+  will-change: transform;
+  filter: none;
 }
 
 .retreat-world__character {
@@ -242,67 +205,47 @@ body {
   width: 100%;
   height: 100%;
   place-items: center;
-  border: 2px dashed rgba(255, 255, 255, 0.58);
-  border-radius: 8px;
-  color: #31535b;
-  font-size: 12px;
-  font-weight: 700;
+  border: 2px solid rgb(18 50 77 / 20%);
+  border-radius: 16px;
+  color: #12324d;
+  font-size: 13px;
+  font-weight: 900;
   text-align: center;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgb(255 255 255 / 58%);
 }
 
-.retreat-world__badge {
+.retreat-world__nameplate {
   position: absolute;
-  right: -7px;
-  bottom: 8px;
+  left: 50%;
+  bottom: -20px;
   display: grid;
+  min-width: 86px;
+  max-width: 142px;
+  min-height: 27px;
   place-items: center;
-  min-width: 24px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--group-accent, #5b9faf);
-  color: #fffaf2;
-  font-size: 12px;
-  font-weight: 700;
+  transform: translateX(-50%);
+  border: 2px solid rgb(255 246 213 / 92%);
+  border-radius: 9px;
+  padding: 3px 10px 4px;
+  overflow: hidden;
+  color: #fffaf0;
+  font-size: 14px;
+  font-weight: 900;
   line-height: 1;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.5) inset,
-    0 4px 9px rgba(38, 56, 57, 0.2);
+  text-align: center;
+  text-overflow: ellipsis;
+  text-shadow: none;
+  white-space: nowrap;
+  background:
+    linear-gradient(180deg, rgb(44 83 120 / 92%), rgb(17 45 76 / 96%));
 }
 
 .retreat-world__actor[data-state="waving"] {
   animation: retreat-wave-pop 1.25s ease-in-out infinite;
 }
 
-.retreat-world__actor[data-state="praying"] {
-  filter:
-    drop-shadow(0 0 5px rgba(255, 244, 180, 0.84))
-    drop-shadow(0 11px 8px rgba(50, 77, 69, 0.18));
-}
-
-.retreat-world__actor[data-state="jumping"],
-.retreat-world__actor[data-state="falling"],
-.retreat-world__actor[data-state="droppingThroughHole"] {
-  filter:
-    drop-shadow(0 2px 0 rgba(255, 255, 255, 0.86))
-    drop-shadow(0 16px 11px rgba(45, 73, 66, 0.18));
-}
-
-.retreat-world__actor[data-state="climbingRope"],
-.retreat-world__actor[data-state="descendingRope"] {
-  filter:
-    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.74))
-    drop-shadow(0 8px 7px rgba(68, 53, 37, 0.24));
-}
-
 .retreat-world[data-paused="true"] .retreat-world__actor {
   transition: opacity 180ms ease;
-}
-
-.retreat-world[data-preview="true"] .retreat-world__title {
-  transform: translateX(-50%) scale(0.82);
-  transform-origin: 50% 0;
 }
 
 @keyframes retreat-wave-pop {
@@ -312,33 +255,30 @@ body {
   }
 
   50% {
-    translate: 0 -5px;
+    translate: 0 -4px;
   }
 }
 
 @media (max-width: 720px) {
   .retreat-world__safe-zone {
-    min-height: 96px;
-  }
-
-  .retreat-world__title {
-    top: 14px;
-    width: calc(100% - 28px);
-  }
-
-  .retreat-world__title h1 {
-    font-size: clamp(36px, 12vw, 64px);
+    min-height: 40px;
   }
 
   .retreat-world__actor {
-    width: 58px;
-    height: 78px;
+    width: 96px;
+    height: 127px;
   }
 
-  .retreat-world__badge {
-    right: -5px;
-    min-width: 21px;
-    height: 21px;
-    font-size: 11px;
+  .retreat-world__nameplate {
+    bottom: -15px;
+    min-width: 70px;
+    min-height: 24px;
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retreat-world__actor[data-state="waving"] {
+    animation: none;
   }
 }
