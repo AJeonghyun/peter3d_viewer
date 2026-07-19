@@ -878,6 +878,23 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("openai_configured", result)
         self.assertEqual(result["openai_image_model"], backend_main.OPENAI_IMAGE_MODEL)
         self.assertEqual(result["openai_image_quality"], "high")
+        self.assertTrue(result["fixed_peter_master_available"])
+        self.assertEqual(result["fixed_peter_master_frames"], 25)
+
+    def test_fixed_peter_master_endpoint_serves_safe_25_frame_atlas(self):
+        response = asyncio.run(backend_main.fixed_peter_master())
+        self.assertEqual(Path(response.path), backend_main.SHOWCASE_SAFE_MASTER_PATH)
+        self.assertEqual(response.media_type, "image/png")
+        self.assertEqual(response.headers["cache-control"], "public, max-age=3600")
+
+    def test_vercel_function_bundle_includes_fixed_peter_master(self):
+        config = json.loads((backend_main.ROOT / "vercel.json").read_text())
+        function = config["functions"]["api/index.py"]
+        self.assertEqual(
+            function["includeFiles"],
+            "runtime-assets/peter-sober-master-safe.png",
+        )
+        self.assertTrue(backend_main.SHOWCASE_SAFE_MASTER_PATH.is_file())
 
     def test_public_job_hides_internal_paths_and_provider_task_ids(self):
         with backend_main.connect_db() as db:

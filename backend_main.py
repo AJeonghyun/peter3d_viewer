@@ -86,7 +86,7 @@ SHOWCASE_SOURCE_MASTER_PATH = (
     ROOT / "frontend" / "public" / "assets" / "peter-sober" / "peter-sober-master.png"
 )
 SHOWCASE_SAFE_MASTER_PATH = (
-    ROOT / "frontend" / "public" / "assets" / "peter-sober" / "peter-sober-master-safe.png"
+    ROOT / "runtime-assets" / "peter-sober-master-safe.png"
 )
 SHOWCASE_MASTER_PATH = (
     SHOWCASE_SAFE_MASTER_PATH
@@ -1241,10 +1241,30 @@ async def health():
         "openai_configured": openai_key.startswith("sk-"),
         "openai_image_model": OPENAI_IMAGE_MODEL,
         "openai_image_quality": OPENAI_IMAGE_QUALITY,
+        "fixed_peter_master_available": SHOWCASE_MASTER_PATH.is_file(),
+        "fixed_peter_master_frames": (
+            GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS
+            if SHOWCASE_MASTER_PATH.is_file()
+            else 0
+        ),
         "persistent_storage": persistent if SERVERLESS_RUNTIME else True,
         "database": "postgres" if using_postgres() else "sqlite",
         "object_storage": "vercel-blob" if blob_configured() else "local",
     }
+
+
+@app.get("/api/showcase/fixed-master")
+async def fixed_peter_master():
+    if not SHOWCASE_MASTER_PATH.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다",
+        )
+    return FileResponse(
+        SHOWCASE_MASTER_PATH,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 async def sync_recent_task_usage(limit: int = 25) -> None:

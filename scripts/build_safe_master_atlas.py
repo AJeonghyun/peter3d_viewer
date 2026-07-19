@@ -28,10 +28,7 @@ DEFAULT_MASTER = (
 )
 DEFAULT_OUTPUT = (
     PROJECT_ROOT
-    / "frontend"
-    / "public"
-    / "assets"
-    / "peter-sober"
+    / "runtime-assets"
     / "peter-sober-master-safe.png"
 )
 
