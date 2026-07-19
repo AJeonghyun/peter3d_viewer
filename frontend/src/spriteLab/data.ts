@@ -1,8 +1,8 @@
 import type { AnimationDefinition, CharacterDefinition } from './types';
 
-const FRAME_ROOT = '/assets/hyobe/frames';
-const FRAME_WIDTH = 280;
-const FRAME_HEIGHT = 340;
+const FRAME_ROOT = '/assets/peter-sober/frames';
+const FRAME_WIDTH = 300;
+const FRAME_HEIGHT = 360;
 
 function animationSheet(
   name: string,
@@ -26,12 +26,12 @@ export const peterAnimations = {
     fps: 1,
     loop: true,
   }),
-  walk: animationSheet('walk', 6, {
-    fps: 8,
+  walk: animationSheet('walk', 8, {
+    fps: 10,
     loop: true,
   }),
-  run: animationSheet('run', 5, {
-    fps: 11,
+  run: animationSheet('run', 8, {
+    fps: 14,
     loop: true,
   }),
   wave: animationSheet('wave', 1, {
@@ -40,8 +40,8 @@ export const peterAnimations = {
     holdLastFrame: true,
     durationMs: 1_350,
   }),
-  jump: animationSheet('jump', 1, {
-    fps: 1,
+  jump: animationSheet('jump', 3, {
+    fps: 5,
     loop: false,
     holdLastFrame: true,
     durationMs: 900,
