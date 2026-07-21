@@ -21,9 +21,8 @@ import type {
 import '../styles/retreat-editor.css';
 
 const PAGE_META: Array<{ id: RetreatPage; label: string; path: string }> = [
-  { id: 'group-layout', label: '페이지 1 · 조 배치', path: '/display/group-layout' },
-  { id: 'notice', label: '페이지 2 · 안내 화면', path: '/display/notice' },
-  { id: 'all-characters', label: '페이지 3 · 전체 캐릭터', path: '/display/all-characters' },
+  { id: 'walk', label: '베드로 걷기', path: '/display/walk' },
+  { id: 'campfire', label: '갈릴리 모닥불', path: '/display/campfire' },
 ];
 
 function downloadJson(settings: RetreatSettings) {
@@ -224,226 +223,10 @@ export default function EditorPage() {
           </div>
         </section>
 
-        {settings.currentPage === 'group-layout' && (
-          <section className="editor-section">
-            <h2>조 배치 화면</h2>
-            <label>화면 제목
-              <input
-                value={settings.groupLayout.title}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  groupLayout: { ...current.groupLayout, title: event.target.value },
-                }))}
-              />
-            </label>
-            <label>배경
-              <select
-                value={settings.groupLayout.background}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  groupLayout: {
-                    ...current.groupLayout,
-                    background: event.target.value as typeof current.groupLayout.background,
-                  },
-                }))}
-              >
-                <option value="lake">갈릴리 호수</option>
-                <option value="sand">모래빛</option>
-                <option value="paper">밝은 종이</option>
-              </select>
-            </label>
-            <label className="editor-switch">
-              <input
-                type="checkbox"
-                checked={settings.groupLayout.showMembers}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  groupLayout: { ...current.groupLayout, showMembers: event.target.checked },
-                }))}
-              />
-              조원 이름 표시
-            </label>
-          </section>
-        )}
 
-        {settings.currentPage === 'notice' && (
-          <section className="editor-section">
-            <h2>안내·공지 화면</h2>
-            <label>선택적 제목
-              <input
-                value={settings.notice.title}
-                placeholder="비워두면 제목 영역을 숨깁니다"
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: { ...current.notice, title: event.target.value },
-                }))}
-              />
-            </label>
-            <label>부제목
-              <input
-                value={settings.notice.subtitle}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: { ...current.notice, subtitle: event.target.value },
-                }))}
-              />
-            </label>
-            <label>본문
-              <textarea
-                rows={5}
-                maxLength={520}
-                value={settings.notice.body}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: { ...current.notice, body: event.target.value },
-                }))}
-              />
-              <small>{settings.notice.body.length}/520자</small>
-            </label>
-            <label>강조 문구
-              <input
-                value={settings.notice.emphasis}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: { ...current.notice, emphasis: event.target.value },
-                }))}
-              />
-            </label>
-            <label>하단 보조 문구
-              <input
-                value={settings.notice.footer}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: { ...current.notice, footer: event.target.value },
-                }))}
-              />
-            </label>
-            <label>동시 등장 캐릭터
-              <input
-                type="range"
-                min="1"
-                max="4"
-                value={settings.notice.rotation.maxVisibleCharacters}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: {
-                    ...current.notice,
-                    rotation: {
-                      ...current.notice.rotation,
-                      maxVisibleCharacters: Number(event.target.value),
-                    },
-                  },
-                }))}
-              />
-              <small>{settings.notice.rotation.maxVisibleCharacters}명</small>
-            </label>
-            <label>등장 순서
-              <select
-                value={settings.notice.rotation.order}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: {
-                    ...current.notice,
-                    rotation: {
-                      ...current.notice.rotation,
-                      order: event.target.value as typeof current.notice.rotation.order,
-                    },
-                  },
-                }))}
-              >
-                <option value="sequential">1조부터 순서대로</option>
-                <option value="random">무작위</option>
-                <option value="selected">선택된 조 고정</option>
-              </select>
-            </label>
-            <label>장면 모드
-              <select
-                value={settings.notice.scene}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: {
-                    ...current.notice,
-                    scene: event.target.value as typeof current.notice.scene,
-                  },
-                }))}
-              >
-                <option value="mixed-seated-standing">앉기·서기 혼합</option>
-                <option value="fire-circle-seated">모닥불 둘레 앉기</option>
-                <option value="fire-circle-standing">모닥불 둘레 서기</option>
-                <option value="galilee-shore-conversation">호숫가 대화</option>
-                <option value="follow-me">나를 따르라</option>
-                <option value="calm-lake">차분한 호수</option>
-              </select>
-            </label>
-            <label>텍스트 정렬
-              <select
-                value={settings.notice.textAlign}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: {
-                    ...current.notice,
-                    textAlign: event.target.value as typeof current.notice.textAlign,
-                  },
-                }))}
-              >
-                <option value="left">왼쪽</option>
-                <option value="center">가운데</option>
-                <option value="right">오른쪽</option>
-              </select>
-            </label>
-            <label>본문 글자 크기 <small>{settings.notice.fontSize}px</small>
-              <input
-                type="range"
-                min="34"
-                max="90"
-                value={settings.notice.fontSize}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: { ...current.notice, fontSize: Number(event.target.value) },
-                }))}
-              />
-            </label>
-            <label>줄 간격 <small>{settings.notice.lineHeight.toFixed(2)}</small>
-              <input
-                type="range"
-                min="1"
-                max="1.8"
-                step="0.05"
-                value={settings.notice.lineHeight}
-                onChange={(event) => updateSettings((current) => ({
-                  ...current,
-                  notice: { ...current.notice, lineHeight: Number(event.target.value) },
-                }))}
-              />
-            </label>
-            <div className="editor-probability-grid">
-              <label>본문 색상
-                <input
-                  type="color"
-                  value={settings.notice.textColor}
-                  onChange={(event) => updateSettings((current) => ({
-                    ...current,
-                    notice: { ...current.notice, textColor: event.target.value },
-                  }))}
-                />
-              </label>
-              <label>강조 색상
-                <input
-                  type="color"
-                  value={settings.notice.emphasisColor}
-                  onChange={(event) => updateSettings((current) => ({
-                    ...current,
-                    notice: { ...current.notice, emphasisColor: event.target.value },
-                  }))}
-                />
-              </label>
-            </div>
-          </section>
-        )}
 
-        {settings.currentPage === 'all-characters' && (
-          <section className="editor-section">
-            <h2>전체 캐릭터 물리 설정</h2>
+        <section className="editor-section">
+            <h2>걷기·모닥불 화면 설정</h2>
             <label>메인 제목
               <input
                 value={settings.world.title}
@@ -609,7 +392,6 @@ export default function EditorPage() {
               ))}
             </div>
           </section>
-        )}
 
         <section className="editor-section">
           <h2>21개 조 데이터</h2>

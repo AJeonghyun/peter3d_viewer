@@ -18,9 +18,8 @@ npm run dev
 | 용도 | 경로 |
 | --- | --- |
 | 운영자 편집기 | `/editor` |
-| 페이지 1 · 조 배치 송출 | `/display/group-layout` |
-| 페이지 2 · 안내·공지 송출 | `/display/notice` |
-| 페이지 3 · 전체 캐릭터 송출 | `/display/all-characters` |
+| 베드로 걷기 송출 | `/display/walk` |
+| 갈릴리 모닥불 송출 | `/display/campfire` |
 | AI 캐릭터·조 정보 관리 | `/admin` |
 | 기존 3D 월드 | `/world-3d` |
 
@@ -38,9 +37,8 @@ macOS `Control + Command + F`로 실행합니다.
 
 | 화면 | OBS Browser Source URL |
 | --- | --- |
-| 페이지 1 · 조 배치 | `/display/group-layout?obs=1` |
-| 페이지 2 · 안내·공지 | `/display/notice?obs=1` |
-| 페이지 3 · 전체 캐릭터 | `/display/all-characters?obs=1` |
+| 베드로 걷기 | `/display/walk?obs=1` |
+| 갈릴리 모닥불 | `/display/campfire?obs=1` |
 
 `?obs=1`은 다른 브라우저의 저장 설정과 관계없이 실제 알파 투명 배경을
 강제합니다. `?background=transparent`도 같은 방식으로 사용할 수 있으며,
@@ -97,22 +95,7 @@ python3 scripts/apply_garment_design.py \
 
 ## 페이지별 사용법
 
-### 페이지 1 · 조 배치
-
-21개 조를 `4,4,4,4,3,2` 순서의 6개 행으로 한 화면에 표시합니다. 5행과
-6행은 자동으로 가운데 정렬됩니다. 조 정보는 카드 중앙의 고정 영역에, 캐릭터는
-카드 하단 38%의 잘린 이동 영역에 배치되어 이름을 가리거나 카드 밖으로 나가지
-않습니다. 편집기에서 제목·배경·조원 표시 여부와 조별 캐릭터 크기를 설정합니다.
-
-### 페이지 2 · 안내·공지
-
-선택적 제목, 부제목, 본문, 강조 문구와 하단 문구를 실시간으로 편집합니다.
-제목을 비우면 제목 DOM 자체가 렌더링되지 않으며 `공지사항`이라는 고정 문구도
-나오지 않습니다. 긴 본문은 글자 크기를 자동으로 줄입니다. 하단 25~35%에는
-예수님·모닥불·1~4명의 조별 베드로가 표시되며 순차·무작위·선택 방식으로
-교대합니다. 장면 모드와 텍스트 정렬도 편집기에서 바꿀 수 있습니다.
-
-### 페이지 3 · 전체 캐릭터 물리 월드
+### 베드로 걷기 · 갈릴리 모닥불
 
 활성화된 최대 21명의 캐릭터를 Matter.js 전역 물리 월드 하나에서 시작 시
 7·7·7명으로 배치합니다. 세 플랫폼은 정적 충돌체이며 캐릭터는 중력, 착지,
@@ -223,11 +206,10 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 `.env`는 Git에서 제외됩니다. 실제 키는 백엔드에서만 읽으며, `VITE_` 접두사가
 붙은 환경 변수나 프론트엔드 코드에 넣지 마세요.
 
-- 페이지 3 · 21개 조 전체 캐릭터: `http://localhost:8000/page-3`
-- 페이지 3 송출 별칭: `http://localhost:8000/display/all-characters`
-- 페이지 3 장면 선택·모닥불 배치: `http://localhost:8000/page-3?layout=1`
-- 페이지 3 걷기 고정: `http://localhost:8000/page-3?scene=walk`
-- 페이지 3 모닥불 고정: `http://localhost:8000/page-3?scene=campfire`
+- 베드로 걷기 송출: `http://localhost:8000/display/walk`
+- 갈릴리 모닥불 송출: `http://localhost:8000/display/campfire`
+- 모닥불 배치 편집: `http://localhost:8000/display/campfire?layout=1`
+- 구 페이지 3 별칭(걷기로 연결): `http://localhost:8000/page-3`
 - 기존 3D 월드: `http://localhost:8000/world-3d`
 - 운영진 관리: `http://localhost:8000/admin`
 - 21프레임 애니메이션 실험실: `http://localhost:8000/sprite-lab`

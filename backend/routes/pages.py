@@ -37,11 +37,11 @@ async def legacy_world_page():
     return frontend_index()
 
 
-@router.get("/page-1")
-@router.get("/page-2")
+@router.get("/walk")
+@router.get("/campfire")
+@router.get("/display/walk")
+@router.get("/display/campfire")
 @router.get("/page-3")
-@router.get("/display/group-layout")
-@router.get("/display/notice")
 @router.get("/display/all-characters")
 @router.get("/showcase")
 @router.get("/print-template")

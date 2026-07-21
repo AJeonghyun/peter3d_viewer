@@ -1,8 +1,7 @@
 import type { AnimationName } from '../spriteLab/types';
 import type { ShowcaseSpriteContract } from '../types/api';
 
-export type RetreatPage = 'group-layout' | 'notice' | 'all-characters';
-export type TextAlign = 'left' | 'center' | 'right';
+export type RetreatPage = 'walk' | 'campfire';
 export type MotionIntensity = 'low' | 'medium' | 'high';
 export type ExportFormat = 'png' | 'jpeg';
 export type CaptureMode = 'current' | 'paused' | 'balanced';
@@ -46,13 +45,6 @@ export interface RetreatGroup {
   excludedActions: WorldCharacterState[];
 }
 
-export interface GroupLayoutSettings {
-  title: string;
-  showMembers: boolean;
-  animationEnabled: boolean;
-  background: 'lake' | 'sand' | 'paper';
-}
-
 export interface SeatingPlan {
   id: string;
   name: string;
@@ -60,38 +52,6 @@ export interface SeatingPlan {
   timeLabel: string;
   slotGroupIds: string[];
   active: boolean;
-}
-
-export interface NoticeCharacterRotationSettings {
-  enabledGroupIds: string[];
-  maxVisibleCharacters: number;
-  order: 'sequential' | 'random' | 'selected';
-  stayDurationMs: number;
-  enterMode: 'walk' | 'fade';
-  exitMode: 'walk' | 'fade';
-}
-
-export type NoticeScene =
-  | 'fire-circle-seated'
-  | 'fire-circle-standing'
-  | 'mixed-seated-standing'
-  | 'galilee-shore-conversation'
-  | 'follow-me'
-  | 'calm-lake';
-
-export interface NoticeSettings {
-  title: string;
-  subtitle: string;
-  body: string;
-  emphasis: string;
-  footer: string;
-  textAlign: TextAlign;
-  fontSize: number;
-  lineHeight: number;
-  textColor: string;
-  emphasisColor: string;
-  scene: NoticeScene;
-  rotation: NoticeCharacterRotationSettings;
 }
 
 export interface WorldSettings {
@@ -123,8 +83,6 @@ export interface RetreatSettings {
   transparentBackground: boolean;
   groups: RetreatGroup[];
   seatingPlans: SeatingPlan[];
-  groupLayout: GroupLayoutSettings;
-  notice: NoticeSettings;
   world: WorldSettings;
 }
 

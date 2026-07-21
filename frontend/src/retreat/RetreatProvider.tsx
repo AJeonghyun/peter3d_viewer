@@ -38,12 +38,14 @@ function normalizeSettings(candidate: RetreatSettings | null): RetreatSettings {
     ...fallback,
     ...(candidate.groups.find((group) => group.id === fallback.id) ?? {}),
   }));
+  // Saved settings may predate the walk/campfire split (e.g. 'group-layout').
+  const currentPage = candidate.currentPage === 'campfire' ? 'campfire' : 'walk';
   const candidatePlans = Array.isArray(candidate.seatingPlans) ? candidate.seatingPlans : [];
   const seatingPlans = candidatePlans.length > 0
     ? candidatePlans.map((plan, index) => ({
         id: plan.id || `seating-${index + 1}`,
         name: plan.name || `자리표 ${index + 1}`,
-        title: plan.title || defaults.groupLayout.title,
+        title: plan.title || '자리표',
         timeLabel: plan.timeLabel || '',
         slotGroupIds: Array.isArray(plan.slotGroupIds) && plan.slotGroupIds.length
           ? plan.slotGroupIds.slice(0, 21)
@@ -56,16 +58,12 @@ function normalizeSettings(candidate: RetreatSettings | null): RetreatSettings {
   }
 
   return {
-    ...defaults,
-    ...candidate,
+    version: 1,
+    currentPage,
+    animationPlaying: candidate.animationPlaying ?? defaults.animationPlaying,
+    transparentBackground: candidate.transparentBackground ?? defaults.transparentBackground,
     groups,
     seatingPlans,
-    groupLayout: { ...defaults.groupLayout, ...candidate.groupLayout },
-    notice: {
-      ...defaults.notice,
-      ...candidate.notice,
-      rotation: { ...defaults.notice.rotation, ...candidate.notice?.rotation },
-    },
     world: { ...defaults.world, ...candidate.world },
   };
 }

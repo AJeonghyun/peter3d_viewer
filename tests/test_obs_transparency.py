@@ -24,18 +24,12 @@ class ObsTransparencyTests(unittest.TestCase):
         self.assertGreaterEqual(editor.count("OBS URL 복사"), 1)
         self.assertIn("buildObsDisplayUrl", editor)
 
-    def test_all_three_page_background_layers_are_removed_in_transparent_mode(self):
-        group_css = (FRONTEND / "src" / "styles" / "retreat-group.css").read_text()
-        notice_css = (FRONTEND / "src" / "styles" / "retreat-notice.css").read_text()
+    def test_display_page_background_layers_are_removed_in_transparent_mode(self):
         world_css = (FRONTEND / "src" / "styles" / "retreat-world.css").read_text()
 
-        for stylesheet in (group_css, notice_css, world_css):
-            self.assertIn('html[data-background-mode="transparent"]', stylesheet)
-            self.assertIn("background: transparent !important", stylesheet)
-            self.assertIn("display: none", stylesheet)
-
-        self.assertIn(".retreat-group-stage__shore", group_css)
-        self.assertIn(".retreat-notice-scene__shore", notice_css)
+        self.assertIn('html[data-background-mode="transparent"]', world_css)
+        self.assertIn("background: transparent !important", world_css)
+        self.assertIn("display: none", world_css)
         self.assertIn(".retreat-parade__sand", world_css)
 
     def test_provider_applies_mode_to_the_document_root(self):
@@ -47,13 +41,12 @@ class ObsTransparencyTests(unittest.TestCase):
         self.assertIn("data-background-mode={displayMode.backgroundMode}", shell)
         self.assertIn('html[data-background-mode="transparent"] #root', base_css)
 
-        for page in ("GroupLayoutPage.tsx", "NoticePage.tsx", "AllCharactersPage.tsx"):
-            source = (FRONTEND / "src" / "pages" / page).read_text()
-            self.assertIn("data-obs={backgroundDisplayMode.obsMode", source)
-            self.assertIn(
-                "data-background-mode={backgroundDisplayMode.backgroundMode}",
-                source,
-            )
+        source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
+        self.assertIn("data-obs={backgroundDisplayMode.obsMode", source)
+        self.assertIn(
+            "data-background-mode={backgroundDisplayMode.backgroundMode}",
+            source,
+        )
 
 
 if __name__ == "__main__":

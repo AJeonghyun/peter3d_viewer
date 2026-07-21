@@ -1,7 +1,5 @@
 import { forwardRef, type HTMLAttributes } from 'react';
 import AllCharactersPage from '../pages/AllCharactersPage';
-import GroupLayoutPage from '../pages/GroupLayoutPage';
-import NoticePage from '../pages/NoticePage';
 import { useRetreat } from './RetreatProvider';
 import { getEffectiveDisplayMode } from './displayMode';
 import type { RetreatPage } from './types';
@@ -27,13 +25,7 @@ export const RetreatDisplay = forwardRef<HTMLDivElement, RetreatDisplayProps>(
         data-background-mode={displayMode.backgroundMode}
         {...props}
       >
-        {activePage === 'group-layout' ? (
-          <GroupLayoutPage preview={preview} />
-        ) : activePage === 'notice' ? (
-          <NoticePage preview={preview} />
-        ) : (
-          <AllCharactersPage preview={preview} />
-        )}
+        <AllCharactersPage preview={preview} scene={activePage} />
       </div>
     );
   },

@@ -16,6 +16,7 @@ import '../styles/retreat-world.css';
 
 interface AllCharactersPageProps {
   preview?: boolean;
+  scene?: DisplayMode;
 }
 
 type ParadeScene =
@@ -126,6 +127,9 @@ function readCampfireLayout(): CampfireLayout {
 
 function readDisplayMode(): DisplayMode {
   if (typeof window === 'undefined') return 'walk';
+  const pathname = window.location.pathname;
+  if (pathname === '/display/campfire' || pathname === '/campfire') return 'campfire';
+  if (pathname === '/display/walk' || pathname === '/walk') return 'walk';
   const requested = new URLSearchParams(window.location.search).get('scene');
   if (requested === 'walk' || requested === 'campfire') return requested;
   return window.localStorage.getItem(DISPLAY_MODE_STORAGE_KEY) === 'campfire'
@@ -218,7 +222,7 @@ function nicknameFor(group: RetreatGroup) {
   return nickname || `${group.groupNumber}조`;
 }
 
-export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) {
+export function AllCharactersWorld({ preview = false, scene }: AllCharactersPageProps) {
   const { settings } = useRetreat();
   const backgroundDisplayMode = getEffectiveDisplayMode(settings.transparentBackground);
   const worldRef = useRef<HTMLElement | null>(null);
@@ -228,7 +232,7 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
   );
   const [layoutGroupStart, setLayoutGroupStart] = useState(0);
   const [campfireLayout, setCampfireLayout] = useState(readCampfireLayout);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>(readDisplayMode);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => scene ?? readDisplayMode());
   const [selectedLayoutKey, setSelectedLayoutKey] = useState('fire');
   const [localPaused, setLocalPaused] = useState(false);
   const scenes = displayMode === 'walk' ? WALK_SCENES : CAMPFIRE_SCENES;
@@ -258,9 +262,13 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
   );
 
   useEffect(() => {
+    if (scene) setDisplayMode(scene);
+  }, [scene]);
+
+  useEffect(() => {
     document.title = displayMode === 'campfire'
-      ? '페이지 3 | 갈릴리 모닥불'
-      : '페이지 3 | 베드로 걷기';
+      ? '갈릴리 모닥불'
+      : '베드로 걷기';
   }, [displayMode]);
 
   useEffect(() => {

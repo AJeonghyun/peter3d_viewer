@@ -140,10 +140,6 @@ export default function SeatingAdminPage() {
     if (!plan) return;
     updateSettings((current) => ({
       ...current,
-      groupLayout: {
-        ...current.groupLayout,
-        title: plan?.title ?? current.groupLayout.title,
-      },
       seatingPlans: current.seatingPlans.map((item) => ({
         ...item,
         active: item.id === planId,

@@ -10,8 +10,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STYLES = ROOT / "frontend" / "src" / "styles"
 DISPLAY_SHEETS = (
-    STYLES / "retreat-group.css",
-    STYLES / "retreat-notice.css",
     STYLES / "retreat-world.css",
 )
 
@@ -41,10 +39,6 @@ class ObsCssFallbackTests(unittest.TestCase):
                     f"{sheet.name}: `{match.group('prop')}: "
                     f"{match.group('value')}`에 vw/vh 폴백이 없습니다",
                 )
-
-    def test_group_stage_box_keeps_a_vh_fallback(self):
-        source = (STYLES / "retreat-group.css").read_text(encoding="utf-8")
-        self.assertIn("min(100%, calc(100vh * 16 / 9))", source)
 
     def test_atlas_sprite_frame_avoids_translate_and_scale_properties(self):
         source = (STYLES / "retreat.css").read_text(encoding="utf-8")

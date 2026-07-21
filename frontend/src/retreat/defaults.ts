@@ -44,65 +44,16 @@ export function createDefaultSeatingPlans(groups = createDefaultGroups()): Seati
       slotGroupIds: groupIds,
       active: true,
     },
-    {
-      id: 'first-day-evening',
-      name: '첫째 날 저녁',
-      title: '첫째 날 저녁 자리표',
-      timeLabel: '저녁 집회',
-      slotGroupIds: [
-        ...groupIds.slice(7),
-        ...groupIds.slice(0, 7),
-      ],
-      active: false,
-    },
-    {
-      id: 'second-day-main',
-      name: '둘째 날 기본',
-      title: '둘째 날 자리표',
-      timeLabel: '',
-      slotGroupIds: [
-        ...groupIds.filter((_, index) => index % 2 === 1),
-        ...groupIds.filter((_, index) => index % 2 === 0),
-      ],
-      active: false,
-    },
   ];
 }
 
 export const DEFAULT_RETREAT_SETTINGS: RetreatSettings = {
   version: 1,
-  currentPage: 'group-layout',
+  currentPage: 'walk',
   animationPlaying: true,
   transparentBackground: false,
   groups: createDefaultGroups(),
   seatingPlans: createDefaultSeatingPlans(),
-  groupLayout: {
-    title: '첫째 날 자리표',
-    showMembers: false,
-    animationEnabled: true,
-    background: 'lake',
-  },
-  notice: {
-    title: '',
-    subtitle: '지금 안내드려요',
-    body: '안내 내용을 입력해 주세요.',
-    emphasis: '',
-    footer: '',
-    textAlign: 'center',
-    fontSize: 64,
-    lineHeight: 1.28,
-    textColor: '#17324a',
-    emphasisColor: '#d86b4b',
-    scene: 'mixed-seated-standing',
-    rotation: {
-      enabledGroupIds: createDefaultGroups().map((group) => group.id),
-      maxVisibleCharacters: 3,
-      order: 'sequential',
-      stayDurationMs: 7_000,
-      enterMode: 'walk',
-      exitMode: 'fade',
-    },
-  },
   world: {
     title: 'DO YOU LOVE ME?',
     verse: '네가 나를 사랑하느냐 · 요한복음 21:15',

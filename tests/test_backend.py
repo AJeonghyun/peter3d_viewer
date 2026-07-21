@@ -627,11 +627,11 @@ class Peter3DBackendTests(unittest.TestCase):
         registered_paths = {route.path for route in backend_main.app.routes}
         self.assertTrue(
             {
-                "/page-1",
-                "/page-2",
+                "/walk",
+                "/campfire",
+                "/display/walk",
+                "/display/campfire",
                 "/page-3",
-                "/display/group-layout",
-                "/display/notice",
                 "/display/all-characters",
                 "/showcase",
                 "/print-template",
