@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from starlette.datastructures import Headers
 
 import backend_main
+from backend import config
 
 
 def make_glb(document: dict) -> bytes:
@@ -82,28 +83,28 @@ def make_garment_capture() -> bytes:
 class Peter3DBackendTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
-        self.original_db_path = backend_main.DB_PATH
-        self.original_models_dir = backend_main.MODELS_DIR
-        self.original_uploads_dir = backend_main.UPLOADS_DIR
-        self.original_frontend_dist = backend_main.FRONTEND_DIST
-        backend_main.DB_PATH = Path(self.tempdir.name) / "test.db"
-        backend_main.MODELS_DIR = Path(self.tempdir.name) / "models"
-        backend_main.UPLOADS_DIR = Path(self.tempdir.name) / "uploads"
-        backend_main.FRONTEND_DIST = Path(self.tempdir.name) / "frontend" / "dist"
-        backend_main.MODELS_DIR.mkdir()
-        backend_main.UPLOADS_DIR.mkdir()
-        backend_main.FRONTEND_DIST.mkdir(parents=True)
-        (backend_main.FRONTEND_DIST / "index.html").write_text(
+        self.original_db_path = config.DB_PATH
+        self.original_models_dir = config.MODELS_DIR
+        self.original_uploads_dir = config.UPLOADS_DIR
+        self.original_frontend_dist = config.FRONTEND_DIST
+        config.DB_PATH = Path(self.tempdir.name) / "test.db"
+        config.MODELS_DIR = Path(self.tempdir.name) / "models"
+        config.UPLOADS_DIR = Path(self.tempdir.name) / "uploads"
+        config.FRONTEND_DIST = Path(self.tempdir.name) / "frontend" / "dist"
+        config.MODELS_DIR.mkdir()
+        config.UPLOADS_DIR.mkdir()
+        config.FRONTEND_DIST.mkdir(parents=True)
+        (config.FRONTEND_DIST / "index.html").write_text(
             '<!doctype html><div id="root"></div>',
             encoding="utf-8",
         )
         backend_main.init_db()
 
     def tearDown(self):
-        backend_main.DB_PATH = self.original_db_path
-        backend_main.MODELS_DIR = self.original_models_dir
-        backend_main.UPLOADS_DIR = self.original_uploads_dir
-        backend_main.FRONTEND_DIST = self.original_frontend_dist
+        config.DB_PATH = self.original_db_path
+        config.MODELS_DIR = self.original_models_dir
+        config.UPLOADS_DIR = self.original_uploads_dir
+        config.FRONTEND_DIST = self.original_frontend_dist
         self.tempdir.cleanup()
 
     def test_initializes_exactly_21_teams(self):
@@ -259,21 +260,6 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(len(listed["presets"]), 1)
         self.assertEqual(listed["presets"][0]["group_order"], list(range(1, 22)))
 
-    def test_generation_profiles_keep_provider_face_limits_valid(self):
-        h3 = backend_main.image_model_options("h3_smart")
-        p1 = backend_main.image_model_options("p1")
-
-        self.assertTrue(h3["enable_image_autofix"])
-        self.assertEqual(h3["model_version"], "v3.1-20260211")
-        self.assertEqual(h3["face_limit"], 40_000)
-        self.assertNotIn("smart_low_poly", h3)
-        self.assertTrue(p1["enable_image_autofix"])
-        self.assertEqual(p1["model_version"], "P1-20260311")
-        self.assertEqual(p1["face_limit"], 20_000)
-        self.assertNotIn("smart_low_poly", p1)
-        self.assertNotIn("geometry_quality", p1)
-        self.assertNotIn("texture_quality", p1)
-        self.assertNotIn("compress", p1)
 
     def test_showcase_sprite_contract_uses_square_four_by_three_cells(self):
         self.assertEqual(backend_main.SHOWCASE_SPRITE_SIZE, "1536x1152")
@@ -401,9 +387,9 @@ class Peter3DBackendTests(unittest.TestCase):
 
         with (
             patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
-            patch("backend_main.httpx.AsyncClient", return_value=FakeClient()),
+            patch("backend.ai_generation.httpx.AsyncClient", return_value=FakeClient()),
             patch(
-                "backend_main.normalize_master_locked_atlas",
+                "backend.ai_generation.normalize_master_locked_atlas",
                 return_value=Image.open(io.BytesIO(expected)).convert("RGBA"),
             ),
         ):
@@ -461,7 +447,7 @@ class Peter3DBackendTests(unittest.TestCase):
 
         with (
             patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
-            patch("backend_main.httpx.AsyncClient", return_value=FakeClient()),
+            patch("backend.ai_generation.httpx.AsyncClient", return_value=FakeClient()),
         ):
             actual = asyncio.run(
                 backend_main.request_showcase_sprite(
@@ -525,8 +511,8 @@ class Peter3DBackendTests(unittest.TestCase):
 
         with (
             patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
-            patch.object(backend_main, "OPENAI_IMAGE_MODEL", "gpt-image-1"),
-            patch("backend_main.httpx.AsyncClient", return_value=FakeClient()),
+            patch.object(config, "OPENAI_IMAGE_MODEL", "gpt-image-1"),
+            patch("backend.ai_generation.httpx.AsyncClient", return_value=FakeClient()),
         ):
             asyncio.run(
                 backend_main.request_showcase_sprite(
@@ -575,7 +561,7 @@ class Peter3DBackendTests(unittest.TestCase):
 
         with (
             patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
-            patch("backend_main.httpx.AsyncClient", return_value=FakeClient()),
+            patch("backend.ai_review.httpx.AsyncClient", return_value=FakeClient()),
         ):
             actual = asyncio.run(backend_main.request_showcase_sprite_ai_review(
                 make_sprite_atlas(),
@@ -589,49 +575,8 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertTrue(all(item["detail"] == "high" for item in content[1:]))
         self.assertTrue(recorded["body"]["text"]["format"]["strict"])
 
-    def test_multiview_fallback_reuses_generated_views(self):
-        payload = backend_main.multiview_model_payload("h3_smart", "views-task")
 
-        self.assertEqual(payload["type"], "multiview_to_model")
-        self.assertEqual(payload["original_task_id"], "views-task")
-        self.assertEqual(payload["face_limit"], 40_000)
-        self.assertNotIn("smart_low_poly", payload)
 
-    def test_task_failure_message_keeps_provider_error_code(self):
-        task = type("FailedTask", (), {"error_code": 1004, "error_msg": None})()
-
-        self.assertEqual(
-            backend_main.task_failure_message(task, "모델링 실패"),
-            "모델링 실패 (Tripo 오류 코드: 1004)",
-        )
-
-    def test_rig_and_animation_tasks_use_biped_v1_and_two_clips(self):
-        class FakeClient:
-            def __init__(self):
-                self.rig_kwargs = None
-                self.animation_kwargs = None
-
-            async def rig_model(self, **kwargs):
-                self.rig_kwargs = kwargs
-                return "rig-task"
-
-            async def retarget_animation(self, **kwargs):
-                self.animation_kwargs = kwargs
-                return "animation-task"
-
-        client = FakeClient()
-        rig_id = asyncio.run(backend_main.create_rig_task(client, "model-task"))
-        animation_id = asyncio.run(backend_main.create_animation_task(client, rig_id))
-
-        self.assertEqual(client.rig_kwargs["model_version"], "v1.0-20240301")
-        self.assertEqual(
-            client.animation_kwargs["animation"],
-            [
-                "preset:biped:standing_relax",
-                "preset:biped:walk",
-            ],
-        )
-        self.assertEqual(animation_id, "animation-task")
 
     def test_growth_updates_stats_talents_and_title(self):
         result = asyncio.run(
@@ -674,7 +619,7 @@ class Peter3DBackendTests(unittest.TestCase):
         admin = asyncio.run(backend_main.admin_page())
         legacy_world = asyncio.run(backend_main.legacy_world_page())
         retreat_display = asyncio.run(backend_main.retreat_display_page())
-        expected = backend_main.FRONTEND_DIST / "index.html"
+        expected = config.FRONTEND_DIST / "index.html"
         self.assertEqual(world.path, expected)
         self.assertEqual(admin.path, expected)
         self.assertEqual(legacy_world.path, expected)
@@ -720,7 +665,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(updated["conversion_status"], "done")
         self.assertEqual(updated["showcase_sprite_status"], "empty")
         self.assertIsNone(updated["showcase_sprite_url"])
-        stored_path = backend_main.UPLOADS_DIR / Path(updated["showcase_image_url"]).name
+        stored_path = config.UPLOADS_DIR / Path(updated["showcase_image_url"]).name
         self.assertEqual(stored_path.read_bytes(), b"\x89PNG\r\n\x1a\nshowcase-image")
 
     def test_showcase_sprite_generation_persists_the_ai_atlas(self):
@@ -756,11 +701,11 @@ class Peter3DBackendTests(unittest.TestCase):
 
         with (
             patch(
-                "backend_main.request_showcase_sprite",
+                "backend.ai_generation.request_showcase_sprite",
                 new=AsyncMock(return_value=sprite),
             ) as request,
             patch(
-                "backend_main.inspect_showcase_sprite_quality",
+                "backend.ai_review.inspect_showcase_sprite_quality",
                 new=AsyncMock(return_value=quality),
             ),
         ):
@@ -772,7 +717,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(updated["showcase_sprite_quality_status"], "passed")
         self.assertTrue(updated["showcase_sprite_quality"]["can_approve"])
         self.assertTrue(updated["showcase_sprite_url"].startswith("/uploads/team-1-sprite-"))
-        stored_path = backend_main.UPLOADS_DIR / Path(updated["showcase_sprite_url"]).name
+        stored_path = config.UPLOADS_DIR / Path(updated["showcase_sprite_url"]).name
         self.assertEqual(stored_path.read_bytes(), sprite)
 
         approved = asyncio.run(backend_main.approve_showcase_sprite(1))
@@ -810,7 +755,7 @@ class Peter3DBackendTests(unittest.TestCase):
         )
 
         with patch(
-            "backend_main.request_capture_quality_review",
+            "backend.ai_generation.request_capture_quality_review",
             new=AsyncMock(return_value=quality),
         ) as review:
             processed = asyncio.run(backend_main.process_showcase_capture(1, reference))
@@ -853,11 +798,11 @@ class Peter3DBackendTests(unittest.TestCase):
         }
         with (
             patch(
-                "backend_main.request_master_locked_garment_atlas",
+                "backend.ai_generation.request_master_locked_garment_atlas",
                 new=AsyncMock(return_value=atlas),
             ) as generate,
             patch(
-                "backend_main.inspect_garment_atlas_quality",
+                "backend.ai_review.inspect_garment_atlas_quality",
                 new=AsyncMock(return_value=atlas_quality),
             ) as inspect,
         ):
@@ -884,7 +829,7 @@ class Peter3DBackendTests(unittest.TestCase):
         )
         self.assertEqual(composed["team"]["showcase_sprite_status"], "review")
         self.assertEqual(composed["team"]["showcase_sprite_quality"]["deterministic"]["status"], "passed")
-        atlas_path = backend_main.UPLOADS_DIR / Path(composed["atlas_url"]).name
+        atlas_path = config.UPLOADS_DIR / Path(composed["atlas_url"]).name
         with Image.open(atlas_path) as atlas:
             self.assertEqual(atlas.size, (1800, 1800))
 
@@ -908,7 +853,7 @@ class Peter3DBackendTests(unittest.TestCase):
             headers=Headers({"content-type": "image/png"}),
         )
         with patch(
-            "backend_main.request_capture_quality_review",
+            "backend.ai_generation.request_capture_quality_review",
             new=AsyncMock(return_value={
                 "status": "passed",
                 "can_process": True,
@@ -927,7 +872,7 @@ class Peter3DBackendTests(unittest.TestCase):
 
         asyncio.run(backend_main.start_showcase_capture_compose(1))
         with patch(
-            "backend_main.request_master_locked_garment_atlas",
+            "backend.ai_generation.request_master_locked_garment_atlas",
             new=AsyncMock(side_effect=HTTPException(status_code=504, detail="AI 응답 지연")),
         ):
             retry = asyncio.run(backend_main.generate_showcase_capture_atlas(1))
@@ -948,8 +893,8 @@ class Peter3DBackendTests(unittest.TestCase):
         atlas_bytes = backend_main._image_to_png_bytes(atlas)
         atlas_name = "source-atlas.png"
         corrected_name = "corrected-reference.png"
-        (backend_main.UPLOADS_DIR / atlas_name).write_bytes(atlas_bytes)
-        (backend_main.UPLOADS_DIR / corrected_name).write_bytes(make_garment_capture())
+        (config.UPLOADS_DIR / atlas_name).write_bytes(atlas_bytes)
+        (config.UPLOADS_DIR / corrected_name).write_bytes(make_garment_capture())
 
         deterministic = backend_main.analyze_garment_atlas_pixels(atlas_bytes)
         deterministic["status"] = "failed"
@@ -1060,7 +1005,7 @@ class Peter3DBackendTests(unittest.TestCase):
         }
         with (
             patch(
-                "backend_main.request_master_locked_garment_frame",
+                "backend.ai_generation.request_master_locked_garment_frame",
                 new=AsyncMock(side_effect=[
                     HTTPException(status_code=504, detail="3컷 응답 지연"),
                     replacement_bytes,
@@ -1068,7 +1013,7 @@ class Peter3DBackendTests(unittest.TestCase):
                 ]),
             ) as regenerate,
             patch(
-                "backend_main.inspect_garment_atlas_quality",
+                "backend.ai_review.inspect_garment_atlas_quality",
                 new=AsyncMock(return_value=passed_qa),
             ),
         ):
@@ -1092,7 +1037,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(reviewed["next_action"], "complete")
         self.assertTrue(reviewed["team"]["showcase_sprite_quality"]["can_approve"])
 
-        patched_path = backend_main.UPLOADS_DIR / Path(patched["atlas_url"]).name
+        patched_path = config.UPLOADS_DIR / Path(patched["atlas_url"]).name
         with Image.open(io.BytesIO(atlas_bytes)) as original, Image.open(patched_path) as updated:
             for frame in range(1, 26):
                 box = backend_main.garment_atlas_frame_box(frame)
@@ -1113,7 +1058,7 @@ class Peter3DBackendTests(unittest.TestCase):
             headers=Headers({"content-type": "image/png"}),
         )
         with patch(
-            "backend_main.request_capture_quality_review",
+            "backend.ai_generation.request_capture_quality_review",
             new=AsyncMock(return_value={
                 "status": "passed",
                 "can_process": True,
@@ -1133,7 +1078,7 @@ class Peter3DBackendTests(unittest.TestCase):
         asyncio.run(backend_main.start_showcase_capture_compose(1))
         with (
             patch(
-                "backend_main.request_master_locked_garment_atlas",
+                "backend.ai_generation.request_master_locked_garment_atlas",
                 new=AsyncMock(side_effect=HTTPException(
                     status_code=502,
                     detail="AI 25컷 응답 형식이 올바르지 않습니다",
@@ -1167,7 +1112,7 @@ class Peter3DBackendTests(unittest.TestCase):
             "issues": [],
         }
         with patch(
-            "backend_main.request_capture_quality_review",
+            "backend.ai_generation.request_capture_quality_review",
             new=AsyncMock(return_value=quality),
         ):
             asyncio.run(backend_main.process_showcase_capture(1, first_reference))
@@ -1191,7 +1136,7 @@ class Peter3DBackendTests(unittest.TestCase):
             headers=Headers({"content-type": "image/png"}),
         )
         with patch(
-            "backend_main.request_capture_quality_review",
+            "backend.ai_generation.request_capture_quality_review",
             new=AsyncMock(return_value={
                 "status": "passed",
                 "can_process": True,
@@ -1215,7 +1160,7 @@ class Peter3DBackendTests(unittest.TestCase):
         )
         asyncio.run(backend_main.start_showcase_capture_compose(1))
         with patch(
-            "backend_main.request_master_locked_garment_atlas",
+            "backend.ai_generation.request_master_locked_garment_atlas",
             new=AsyncMock(return_value=atlas),
         ) as generate:
             first = asyncio.run(backend_main.generate_showcase_capture_atlas(1))
@@ -1411,7 +1356,7 @@ class Peter3DBackendTests(unittest.TestCase):
         failure = HTTPException(status_code=429, detail="이미지 생성 한도에 도달했습니다")
 
         with patch(
-            "backend_main.request_showcase_sprite",
+            "backend.ai_generation.request_showcase_sprite",
             new=AsyncMock(side_effect=failure),
         ):
             with self.assertRaises(HTTPException) as caught:
@@ -1425,22 +1370,12 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIsNotNone(updated["showcase_sprite_updated_at"])
 
     def test_frontend_route_explains_a_missing_build(self):
-        backend_main.FRONTEND_DIST = Path(self.tempdir.name) / "missing-dist"
+        config.FRONTEND_DIST = Path(self.tempdir.name) / "missing-dist"
         with self.assertRaises(HTTPException) as caught:
             asyncio.run(backend_main.world_page())
         self.assertEqual(caught.exception.status_code, 503)
         self.assertIn("npm run build", caught.exception.detail)
 
-    def test_serverless_runtime_rejects_conversion_before_writing_files(self):
-        original = backend_main.SERVERLESS_RUNTIME
-        backend_main.SERVERLESS_RUNTIME = True
-        try:
-            with self.assertRaises(HTTPException) as caught:
-                asyncio.run(backend_main.convert_team(1, None))
-        finally:
-            backend_main.SERVERLESS_RUNTIME = original
-        self.assertEqual(caught.exception.status_code, 503)
-        self.assertIn("Neon", caught.exception.detail)
 
     def test_health_reports_local_storage_backends(self):
         result = asyncio.run(backend_main.health())
@@ -1467,60 +1402,7 @@ class Peter3DBackendTests(unittest.TestCase):
         )
         self.assertTrue(backend_main.SHOWCASE_SAFE_MASTER_PATH.is_file())
 
-    def test_public_job_hides_internal_paths_and_provider_task_ids(self):
-        with backend_main.connect_db() as db:
-            timestamp = backend_main.now_iso()
-            db.execute(
-                """
-                INSERT INTO conversion_jobs (
-                    id, team_id, status, image_path, model_task_id, created_at, updated_at
-                ) VALUES (?, 1, 'modeling', ?, ?, ?, ?)
-                """,
-                ("safe-job", "/private/local/image.png", "provider-task", timestamp, timestamp),
-            )
-            row = db.execute("SELECT * FROM conversion_jobs WHERE id = ?", ("safe-job",)).fetchone()
 
-        result = backend_main.public_job(row)
-        self.assertNotIn("image_path", result)
-        self.assertNotIn("model_task_id", result)
-        self.assertEqual(result["id"], "safe-job")
-
-    def test_asset_generation_finishes_without_changing_a_team(self):
-        timestamp = backend_main.now_iso()
-        with backend_main.connect_db() as db:
-            db.execute(
-                """
-                INSERT INTO conversion_jobs (
-                    id, team_id, status, image_path, asset_only, asset_name,
-                    source_image_url, created_at, updated_at
-                ) VALUES ('shared-model', 1, 'animating', 'source.png', 1,
-                    '공용 베드로', '/uploads/source.png', ?, ?)
-                """,
-                (timestamp, timestamp),
-            )
-            job = dict(db.execute(
-                "SELECT * FROM conversion_jobs WHERE id = 'shared-model'"
-            ).fetchone())
-
-        asyncio.run(backend_main.activate_generated_model(
-            job,
-            "https://assets.example/shared.glb",
-            {"bytes": 1024, "triangles": 20000, "animations": 2},
-        ))
-
-        with backend_main.connect_db() as db:
-            team = db.execute("SELECT * FROM teams WHERE id = 1").fetchone()
-            asset = db.execute(
-                "SELECT * FROM model_assets WHERE id = 'shared-model'"
-            ).fetchone()
-            completed_job = db.execute(
-                "SELECT * FROM conversion_jobs WHERE id = 'shared-model'"
-            ).fetchone()
-        self.assertIsNone(team["model_url"])
-        self.assertEqual(team["conversion_status"], "empty")
-        self.assertEqual(asset["name"], "공용 베드로")
-        self.assertEqual(completed_job["status"], "done")
-        self.assertIsNone(backend_main.public_job(completed_job)["team_id"])
 
     def test_one_model_asset_can_be_applied_to_multiple_teams(self):
         timestamp = backend_main.now_iso()
@@ -1564,9 +1446,8 @@ class Peter3DBackendTests(unittest.TestCase):
             headers=Headers({"content-type": "model/gltf-binary"}),
         )
 
-        with patch.object(
-            backend_main,
-            "persist_uploaded_glb",
+        with patch(
+            "backend.routes.model_assets.persist_uploaded_glb",
             return_value="https://assets.example/uploaded.glb",
         ):
             asset = asyncio.run(backend_main.upload_model_asset(upload, "기존 베드로"))
@@ -1623,95 +1504,8 @@ class Peter3DBackendTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "필요: 2개"):
             backend_main.inspect_animated_glb(contents, minimum_animations=2)
 
-    def test_serverless_queue_does_not_start_beyond_worker_limit(self):
-        timestamp = backend_main.now_iso()
-        with backend_main.connect_db() as db:
-            for index in range(backend_main.WORKER_COUNT):
-                db.execute(
-                    """
-                    INSERT INTO conversion_jobs (
-                        id, team_id, status, image_path, created_at, updated_at
-                    ) VALUES (?, ?, 'modeling', ?, ?, ?)
-                    """,
-                    (f"active-{index}", index + 1, f"active-{index}.png", timestamp, timestamp),
-                )
-            db.execute(
-                """
-                INSERT INTO conversion_jobs (
-                    id, team_id, status, image_path, created_at, updated_at
-                ) VALUES ('queued-job', 21, 'queued', 'queued.png', ?, ?)
-                """,
-                (timestamp, timestamp),
-            )
 
-        with patch.object(backend_main, "TripoClient") as client:
-            asyncio.run(backend_main.advance_serverless_job("queued-job"))
 
-        client.assert_not_called()
-        with backend_main.connect_db() as db:
-            row = db.execute(
-                "SELECT status, lease_token FROM conversion_jobs WHERE id = 'queued-job'"
-            ).fetchone()
-        self.assertEqual(row["status"], "queued")
-        self.assertIsNone(row["lease_token"])
-
-    def test_serverless_queue_counts_a_leased_queued_job_as_active(self):
-        timestamp = backend_main.now_iso()
-        lease_until = "2999-01-01T00:00:00+00:00"
-        with backend_main.connect_db() as db:
-            db.execute(
-                """
-                INSERT INTO conversion_jobs (
-                    id, team_id, status, image_path, lease_token, lease_until,
-                    created_at, updated_at
-                ) VALUES ('leased-job', 1, 'queued', 'leased.png', 'lease', ?, ?, ?)
-                """,
-                (lease_until, timestamp, timestamp),
-            )
-            db.execute(
-                """
-                INSERT INTO conversion_jobs (
-                    id, team_id, status, image_path, created_at, updated_at
-                ) VALUES ('waiting-job', 2, 'queued', 'waiting.png', ?, ?)
-                """,
-                (timestamp, timestamp),
-            )
-
-        original_workers = backend_main.WORKER_COUNT
-        backend_main.WORKER_COUNT = 1
-        try:
-            with patch.object(backend_main, "TripoClient") as client:
-                asyncio.run(backend_main.advance_serverless_job("waiting-job"))
-            client.assert_not_called()
-        finally:
-            backend_main.WORKER_COUNT = original_workers
-
-    def test_multiview_slot_allows_only_one_starting_job(self):
-        timestamp = backend_main.now_iso()
-        with backend_main.connect_db() as db:
-            for team_id in (1, 2):
-                db.execute(
-                    """
-                    INSERT INTO conversion_jobs (
-                        id, team_id, status, image_path, created_at, updated_at
-                    ) VALUES (?, ?, 'rig_check', ?, ?, ?)
-                    """,
-                    (f"rig-{team_id}", team_id, f"rig-{team_id}.png", timestamp, timestamp),
-                )
-
-        self.assertTrue(backend_main.reserve_multiview_slot("rig-1"))
-        self.assertFalse(backend_main.reserve_multiview_slot("rig-2"))
-        with backend_main.connect_db() as db:
-            first = db.execute(
-                "SELECT status, fallback_used FROM conversion_jobs WHERE id = 'rig-1'"
-            ).fetchone()
-            second = db.execute(
-                "SELECT status, fallback_used FROM conversion_jobs WHERE id = 'rig-2'"
-            ).fetchone()
-        self.assertEqual(first["status"], "multiview_starting")
-        self.assertEqual(first["fallback_used"], 1)
-        self.assertEqual(second["status"], "rig_check")
-        self.assertEqual(second["fallback_used"], 0)
 
     def test_rejects_a_glb_without_walk_animation_channels(self):
         contents = make_glb({

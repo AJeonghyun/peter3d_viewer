@@ -179,14 +179,10 @@ Web Worker 이전, 운영자 인증과 여러 운영 기기 간 실시간 동기
 - 45초 미조작 시 키오스크 자동 초기화
 - 로컬 SQLite / 배포 Neon Postgres 기반 21개 조 데이터 영구 저장
 - 운영진용 조 정보·AI 캐릭터 등록·검수 화면
-- 조와 독립된 PNG/JPG 모델 생성 보관함과 최대 3개 동시 변환 워커
 - 기존에 보유한 애니메이션 GLB를 모델 보관함에 직접 등록
 - 완성된 GLB 하나를 선택한 여러 조에 재사용
-- Tripo 이미지→3D→무료 리깅 검사→Biped 리깅→걷기 GLB 파이프라인
-- 변환 실패 원인과 작업 상태 저장
 
-실제 GLB가 없는 조는 가벼운 데모 캐릭터로 표시되며, 변환이 완료되면 월드가
-서버 상태를 확인하여 실제 모델을 자동으로 불러옵니다.
+실제 GLB가 없는 조는 가벼운 데모 캐릭터로 표시됩니다.
 
 ## 기술 구성
 
@@ -214,7 +210,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# .env의 OPENAI_API_KEY와 TRIPO_API_KEY를 각 서비스의 비밀키로 교체
+# .env의 OPENAI_API_KEY를 실제 비밀키로 교체
 
 cd frontend
 npm ci
@@ -404,29 +400,6 @@ python3 scripts/build_safe_master_atlas.py
 활성 시트는 `showcase_sprite_url`과 버전 기록에 저장되며
 `fixed-peter-garment-transfer-v2` 계약(5×5, 360×360px 셀)을 사용합니다.
 
-## Tripo 변환 설정
-
-기본값은 비용과 현장 안정성을 고려해 다음과 같습니다.
-
-- 입력 이미지 자동 보정(`enable_image_autofix=true`)
-- 기본 프로필: H3.1 `v3.1-20260211` 40,000면 일반 메시
-- 비교 프로필: P1 `P1-20260311`(API 상한에 맞춰 최대 20,000면)
-- 관리자 화면에서 대표 그림 2~3건만 프로필을 바꿔 비교
-- 표준 텍스처, 원본 이미지 색상 정렬, PBR 제외, 압축 출력
-- 생성 메시 목표 40,000면 (`TRIPO_FACE_LIMIT`으로 변경 가능)
-- 무료 `check_riggable` 선행
-- Rig `v1.0-20240301` 사람형 Biped 리깅
-- Biped 전용 `standing_relax`와 `walk`를 GLB 하나에 적용
-- 제자리 대기·걷기 GLB 생성
-- 단일 이미지가 리깅 불가일 때만 멀티뷰 생성·모델링을 1회 시도
-- 동시 변환 3개 (`PETER3D_WORKERS=1..5`로 변경)
-- 완성 GLB 검수: 리깅·애니메이션 2개 필수, 최대 10MB·100,000 삼각형
-- 관리자 화면에 잔여·보류 크레딧과 작업별 실제 소모량 표시
-
-기본 H3 Smart 프로필은 약 85크레딧, P1은 약 95크레딧이 예상됩니다.
-멀티뷰 폴백이 실행되면 추가 크레딧이 사용되며, 실제 금액은 Tripo 작업
-응답의 `consumed_credit`를 저장해 관리자 화면에 표시합니다.
-
 ## 기존 3D 월드 성능 정책
 
 - iPad/터치 기기는 `balanced` 프로필을 자동 적용합니다.
@@ -438,12 +411,9 @@ python3 scripts/build_safe_master_atlas.py
 - iPad에서는 30Hz 고정 물리, 낮은 DPR, 그림자·후처리 비활성화로 발열을 줄입니다.
 - Draco 디코더는 빌드에 함께 복사되어 외부 CDN 없이 압축 GLB를 읽습니다.
 
-생성 목표는 조당 4~8MB, 40,000면 이하입니다. 서버의 10MB·100,000
+등록 GLB 목표는 조당 4~8MB, 40,000면 이하입니다. 서버의 10MB·100,000
 삼각형 제한은 비정상 결과의 배포를 막는 안전 상한이며, 이 상한에 가까운 모델
 21개를 동시에 쓰는 것을 권장한다는 의미는 아닙니다.
-
-21조 전체를 변환하기 전 대표 그림 2~3장으로 리깅 성공률과 실제 크레딧을
-반드시 확인하세요. 변환은 외부 API 비용을 사용합니다.
 
 ## 운영 흐름
 
@@ -452,13 +422,12 @@ python3 scripts/build_safe_master_atlas.py
 3. 조를 선택해 `2D 캐릭터 사진`에 등록
 4. 메인 전시에서 실루엣·파츠 경계·닉네임창이 맞는지 확인
 5. 21개 조를 모두 등록한 뒤 크롬 전체 화면으로 10분 이상 리허설
-6. 필요한 경우에만 기존 3D 보관함에서 GLB 생성·등록·배정
+6. 필요한 경우에만 기존 3D 보관함에서 GLB 등록·배정
 
 ## 데이터와 생성 파일
 
 - SQLite: `data/peter3d.db`
-- 2D 원본 업로드와 3D 변환 원본: `uploads/`
-- 완성 GLB: `static/models/asset-{작업 ID}/` (새 공용 생성 흐름)
+- 2D 원본 업로드: `uploads/`
 - 직접 등록 GLB: `static/models/model-assets/{모델 ID}/model.glb` (로컬 개발)
 - React 소스: `frontend/src/`
 - 생성된 프론트엔드 빌드: `frontend/dist/`
@@ -471,17 +440,16 @@ SQLite, 업로드, 완성 GLB와 생성된 빌드는 Git에서 제외됩니다. 
 
 배포 환경에서는 서버리스 함수의 임시 디스크에 의존하지 않습니다.
 
-- 조 정보·성품·달란트·성장 기록·변환 작업·모델 보관함·조 배정: Neon Postgres
-- 원본 PNG/JPG, AI 스프라이트 PNG와 완성 GLB: Vercel Blob
-- 임시 Tripo 업로드 파일: 함수 실행 중에만 `/tmp` 사용 후 즉시 삭제
+- 조 정보·성품·달란트·성장 기록·모델 보관함·조 배정: Neon Postgres
+- 원본 PNG/JPG, AI 스프라이트 PNG와 등록 GLB: Vercel Blob
 
 Vercel Function의 요청 본문 제한을 넘지 않도록 운영 화면은 3.8MB보다 큰 사진을
 긴 변 2048px 이하의 JPG로 자동 최적화한 뒤 전송합니다. 원본 그림을 별도로
 보관해야 한다면 촬영 기기에도 원본을 남겨두세요.
 
 Vercel 프로젝트에는 `DATABASE_URL`(또는 `POSTGRES_URL`),
-`BLOB_READ_WRITE_TOKEN`, `OPENAI_API_KEY`, `OPENAI_IMAGE_MODEL`,
-`TRIPO_API_KEY`, `TRIPO_PIPELINE_PROFILE`이 설정되어야 합니다. 비밀값은
+`BLOB_READ_WRITE_TOKEN`, `OPENAI_API_KEY`, `OPENAI_IMAGE_MODEL`이
+설정되어야 합니다. 비밀값은
 `.env`, `.env.local` 또는 Vercel 환경 변수에만 두고 저장소에 커밋하지 마세요.
 `/api/health`의 `persistent_storage`가 `true`이고 `openai_configured`가
 `true`이면 저장소와 AI 캐릭터 생성 연결이 준비된 상태입니다.
@@ -505,7 +473,6 @@ set +a
 - 21개 조를 등록한 상태로 크롬 전체 화면 10분 이상 자동 순환 확인
 - Google Fonts를 로컬 글꼴로 교체해 완전 오프라인화
 - 흰색 옷, 밝은 피부, 연한 무늬가 배경 투명화 뒤 유지되는지 확인
-- 실제 Tripo 변환 2~3건 통합 테스트
 - 실제 iPad에서 21개 애니메이션 GLB를 넣은 10분 발열·프레임률 측정
 - 운영진 수정 API에 PIN 또는 관리자 인증 적용
 - 발표용 조별 자동 순회 연출
