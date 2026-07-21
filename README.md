@@ -18,7 +18,8 @@ npm run dev
 | 용도 | 경로 |
 | --- | --- |
 | 운영자 편집기 | `/editor` |
-| 베드로 라인업 송출 | `/display/stand` |
+| 예수님과 베드로 정면 라인업 송출 | `/display/stand` |
+| 예수님과 베드로 뒷모습 라인업 송출 | `/display/back` |
 | 갈릴리 모닥불 송출 | `/display/campfire` |
 | AI 캐릭터·조 정보 관리 | `/admin` |
 | 기존 3D 월드 | `/world-3d` |
@@ -37,7 +38,8 @@ macOS `Control + Command + F`로 실행합니다.
 
 | 화면 | OBS Browser Source URL |
 | --- | --- |
-| 베드로 라인업 | `/display/stand?obs=1` |
+| 정면 라인업 | `/display/stand?obs=1` |
+| 뒷모습 라인업 | `/display/back?obs=1` |
 | 갈릴리 모닥불 | `/display/campfire?obs=1` |
 
 `?obs=1`은 다른 브라우저의 저장 설정과 관계없이 실제 알파 투명 배경을
@@ -95,18 +97,20 @@ python3 scripts/apply_garment_design.py \
 
 ## 페이지별 사용법
 
-### 베드로 라인업 · 갈릴리 모닥불
+### 정면·뒷모습 라인업 · 갈릴리 모닥불
 
-두 장면 모두 활성화된 최대 21개 조 캐릭터를 사용합니다. `베드로 라인업`은
-21명이 화면 하단에 나란히 서서 숨을 쉬고, 몇 초마다 무작위로 한 명이 손을
-흔들거나 폴짝 뜁니다. 슬라이드 위에 투명 배경으로 얹어도 내용을 가리지 않는
-만능 하단 띠 장면입니다. `갈릴리 모닥불`은 7명씩 예수님과 모닥불 둘레에 앉아
-말씀을 듣는 장면을 14초 간격으로 순환합니다.
+세 장면 모두 활성화된 최대 21개 조 캐릭터를 사용합니다. `/display/stand`는
+예수님과 21명의 베드로가 정면을 보고 서며 몇 초마다 무작위로 한 명이 손을
+흔듭니다. `/display/back`은 같은 크기와 배치로 예수님까지 모두 뒷모습을
+보여줍니다. 두 라인업은 모닥불 장면의 베드로와 같은 기본 표시 크기를 사용하고,
+캐릭터 아래 조 이름표는 표시하지 않습니다. `갈릴리 모닥불`은 7명씩 예수님과
+모닥불 둘레에 앉아 말씀을 듣는 장면을 14초 간격으로 순환합니다.
 
-각 장면의 캐릭터·예수님·모닥불 위치는 `/editor/stand`와 `/editor/campfire`
-에서 드래그로 옮기고, `작게/크게` 버튼으로 크기를, `좌우 반전(F)`으로 방향을
-조절합니다. 배치는 해당 브라우저의 localStorage에 자동 저장됩니다. 기본
-배치와 상수는 `frontend/src/pages/AllCharactersPage.tsx`에서 수정합니다.
+각 장면의 캐릭터·예수님·모닥불 위치는 `/editor/stand`, `/editor/back`,
+`/editor/campfire`에서 드래그로 옮기고, `작게/크게` 버튼으로 크기를,
+`좌우 반전(F)`으로 방향을 조절합니다. 배치는 해당 브라우저의 localStorage에
+자동 저장됩니다. 기본 배치와 상수는 `frontend/src/pages/AllCharactersPage.tsx`에서
+수정합니다.
 
 ## 이미지 저장, 백업과 복구
 
@@ -204,9 +208,11 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 `.env`는 Git에서 제외됩니다. 실제 키는 백엔드에서만 읽으며, `VITE_` 접두사가
 붙은 환경 변수나 프론트엔드 코드에 넣지 마세요.
 
-- 베드로 라인업 송출: `http://localhost:8000/display/stand`
+- 정면 라인업 송출: `http://localhost:8000/display/stand`
+- 뒷모습 라인업 송출: `http://localhost:8000/display/back`
 - 갈릴리 모닥불 송출: `http://localhost:8000/display/campfire`
-- 라인업 배치 편집: `http://localhost:8000/editor/stand`
+- 정면 라인업 배치 편집: `http://localhost:8000/editor/stand`
+- 뒷모습 라인업 배치 편집: `http://localhost:8000/editor/back`
 - 모닥불 배치 편집: `http://localhost:8000/editor/campfire`
 - 구 걷기·페이지 3 별칭(라인업으로 연결): `http://localhost:8000/display/walk`, `http://localhost:8000/page-3`
 - 기존 3D 월드: `http://localhost:8000/world-3d`
@@ -214,8 +220,8 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 - 21프레임 애니메이션 실험실: `http://localhost:8000/sprite-lab`
 - 서버 상태: `http://localhost:8000/api/health`
 
-행사 운영 컴퓨터에서는 `/display/stand`와 `/display/campfire`를 각각 크롬 전체
-화면으로 열고 프로젝터 또는 LED 화면에 출력합니다. 전시 화면에는 버튼이나
+행사 운영 컴퓨터에서는 `/display/stand`, `/display/back`, `/display/campfire`를
+각각 크롬 전체 화면으로 열고 프로젝터 또는 LED 화면에 출력합니다. 전시 화면에는 버튼이나
 스탯 패널 및 화면 전환 효과가 없으며, 선택한 종류만 유지한 채 7개 조씩
 끊김 없이 이어서 재생됩니다.
 모닥불 배치에서는 베드로 한 명을 선택한 뒤 `좌우 반전 (F)` 버튼이나

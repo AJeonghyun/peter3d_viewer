@@ -11,6 +11,7 @@ type PageName =
   | 'print-template'
   | 'editor'
   | 'stand'
+  | 'back'
   | 'campfire'
   | 'garment-test';
 
@@ -21,6 +22,9 @@ function resolvePage(pathname: string): PageName {
   if (pathname === '/editor/campfire' || pathname.startsWith('/editor/campfire/')) {
     return 'campfire';
   }
+  if (pathname === '/editor/back' || pathname.startsWith('/editor/back/')) {
+    return 'back';
+  }
   if (pathname === '/editor/stand' || pathname.startsWith('/editor/stand/')) {
     return 'stand';
   }
@@ -30,6 +34,11 @@ function resolvePage(pathname: string): PageName {
     || pathname.startsWith('/display/campfire/')
     || pathname === '/campfire'
   ) return 'campfire';
+  if (
+    pathname === '/display/back'
+    || pathname.startsWith('/display/back/')
+    || pathname === '/back'
+  ) return 'back';
   if (
     pathname === '/display/stand'
     || pathname.startsWith('/display/stand/')
@@ -59,6 +68,7 @@ const Page = ({
   'admin-seating': lazy(() => import('./pages/SeatingAdminPage')),
   editor: lazy(() => import('./pages/EditorPage')),
   stand: lazy(() => import('./pages/AllCharactersPage')),
+  back: lazy(() => import('./pages/AllCharactersPage')),
   campfire: lazy(() => import('./pages/AllCharactersPage')),
   'garment-test': lazy(() => import('./pages/GarmentTransferTestPage')),
   showcase: lazy(() => import('./pages/ShowcasePage')),

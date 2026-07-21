@@ -11,15 +11,15 @@ import type { AnimationName } from '../spriteLab/types';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
 import { STAGE_UNIT_X, STAGE_UNIT_Y, getEffectiveDisplayMode } from '../retreat/displayMode';
-import type { RetreatGroup } from '../retreat/types';
+import type { RetreatGroup, RetreatPage } from '../retreat/types';
 import '../styles/retreat-world.css';
 
 interface AllCharactersPageProps {
   preview?: boolean;
-  scene?: DisplayMode;
+  scene?: RetreatPage;
 }
 
-type DisplayMode = 'stand' | 'campfire';
+type DisplayMode = RetreatPage;
 
 interface CampfireTimelineScene {
   duration: number;
@@ -34,7 +34,8 @@ const REACTION_ACTIONS = ['wave'] as const satisfies readonly AnimationName[];
 const REACTION_HOLD_MS = 950;
 const REACTION_MIN_GAP_MS = 1_600;
 const REACTION_MAX_GAP_MS = 3_400;
-const STAND_LAYOUT_STORAGE_KEY = 'peter-page3-stand-layout-v1';
+const STAND_LAYOUT_STORAGE_KEY = 'peter-page3-stand-layout-v2';
+const BACK_LAYOUT_STORAGE_KEY = 'peter-page3-back-layout-v1';
 const CAMPFIRE_LAYOUT_STORAGE_KEY = 'peter-page3-campfire-layout-v1';
 const DISPLAY_MODE_STORAGE_KEY = 'peter-page3-display-mode-v1';
 
@@ -77,14 +78,24 @@ function clamp(value: number, min = 0, max = 1) {
 
 // Stand scene: the whole roster lined up along the bottom band, ideal for
 // laying a transparent OBS source over a slide without covering its content.
-function defaultStandLayout(): SceneLayout {
-  const layout: SceneLayout = {};
-  for (let groupNumber = 1; groupNumber <= TEAM_COUNT; groupNumber += 1) {
-    const ratio = TEAM_COUNT > 1 ? (groupNumber - 1) / (TEAM_COUNT - 1) : 0.5;
-    layout[`group-${groupNumber}`] = {
-      x: 6 + ratio * 88,
+function defaultLineupLayout(): SceneLayout {
+  const lineupSlots = TEAM_COUNT + 1;
+  const jesusSlot = 11;
+  const xForSlot = (slot: number) => 4 + (slot / (lineupSlots - 1)) * 92;
+  const layout: SceneLayout = {
+    jesus: {
+      x: xForSlot(jesusSlot),
       bottom: 2.5,
-      scale: 0.62,
+      scale: 1,
+      flipX: false,
+    },
+  };
+  for (let groupNumber = 1; groupNumber <= TEAM_COUNT; groupNumber += 1) {
+    const slot = groupNumber <= jesusSlot ? groupNumber - 1 : groupNumber;
+    layout[`group-${groupNumber}`] = {
+      x: xForSlot(slot),
+      bottom: 2.5,
+      scale: 1,
       flipX: false,
     };
   }
@@ -109,11 +120,12 @@ function defaultCampfireLayout(): SceneLayout {
 }
 
 function defaultLayoutFor(mode: DisplayMode): SceneLayout {
-  return mode === 'stand' ? defaultStandLayout() : defaultCampfireLayout();
+  return mode === 'campfire' ? defaultCampfireLayout() : defaultLineupLayout();
 }
 
 function layoutStorageKey(mode: DisplayMode): string {
-  return mode === 'stand' ? STAND_LAYOUT_STORAGE_KEY : CAMPFIRE_LAYOUT_STORAGE_KEY;
+  if (mode === 'campfire') return CAMPFIRE_LAYOUT_STORAGE_KEY;
+  return mode === 'back' ? BACK_LAYOUT_STORAGE_KEY : STAND_LAYOUT_STORAGE_KEY;
 }
 
 function readLayout(mode: DisplayMode): SceneLayout {
@@ -155,6 +167,11 @@ function readDisplayMode(): DisplayMode {
     || pathname.startsWith('/editor/campfire')
   ) return 'campfire';
   if (
+    pathname === '/display/back'
+    || pathname === '/back'
+    || pathname.startsWith('/editor/back')
+  ) return 'back';
+  if (
     pathname === '/display/stand'
     || pathname === '/stand'
     || pathname.startsWith('/editor/stand')
@@ -163,11 +180,10 @@ function readDisplayMode(): DisplayMode {
     || pathname === '/walk'
   ) return 'stand';
   const requested = new URLSearchParams(window.location.search).get('scene');
-  if (requested === 'stand' || requested === 'campfire') return requested;
+  if (requested === 'stand' || requested === 'back' || requested === 'campfire') return requested;
   if (requested === 'walk') return 'stand';
-  return window.localStorage.getItem(DISPLAY_MODE_STORAGE_KEY) === 'campfire'
-    ? 'campfire'
-    : 'stand';
+  const saved = window.localStorage.getItem(DISPLAY_MODE_STORAGE_KEY);
+  return saved === 'campfire' || saved === 'back' ? saved : 'stand';
 }
 
 function isLayoutRoute(): boolean {
@@ -175,6 +191,7 @@ function isLayoutRoute(): boolean {
   const pathname = window.location.pathname;
   return (
     pathname.startsWith('/editor/stand')
+    || pathname.startsWith('/editor/back')
     || pathname.startsWith('/editor/campfire')
     || new URLSearchParams(window.location.search).get('layout') === '1'
   );
@@ -237,6 +254,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const [layoutMode] = useState(() => !preview && isLayoutRoute());
   const [layoutGroupStart, setLayoutGroupStart] = useState(0);
   const [standLayout, setStandLayout] = useState(() => readLayout('stand'));
+  const [backLayout, setBackLayout] = useState(() => readLayout('back'));
   const [campfireLayout, setCampfireLayout] = useState(() => readLayout('campfire'));
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => scene ?? readDisplayMode());
   const [selectedLayoutKey, setSelectedLayoutKey] = useState('group-1');
@@ -255,8 +273,16 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     [settings.groups],
   );
 
-  const activeLayout = displayMode === 'stand' ? standLayout : campfireLayout;
-  const setActiveLayout = displayMode === 'stand' ? setStandLayout : setCampfireLayout;
+  const activeLayout = displayMode === 'campfire'
+    ? campfireLayout
+    : displayMode === 'back'
+      ? backLayout
+      : standLayout;
+  const setActiveLayout = displayMode === 'campfire'
+    ? setCampfireLayout
+    : displayMode === 'back'
+      ? setBackLayout
+      : setStandLayout;
 
   const campfireSlice = layoutMode
     ? { groupStart: layoutGroupStart, groupCount: 7 }
@@ -264,19 +290,27 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const campfireGroups = displayMode === 'campfire'
     ? groups.slice(campfireSlice.groupStart, campfireSlice.groupStart + campfireSlice.groupCount)
     : [];
-  const standGroups = displayMode === 'stand' ? groups : [];
+  const lineupGroups = displayMode === 'campfire' ? [] : groups;
 
   useEffect(() => {
     if (scene) setDisplayMode(scene);
   }, [scene]);
 
   useEffect(() => {
-    document.title = displayMode === 'campfire' ? '갈릴리 모닥불' : '베드로 라인업';
+    document.title = displayMode === 'campfire'
+      ? '갈릴리 모닥불'
+      : displayMode === 'back'
+        ? '예수님과 베드로 뒷모습 라인업'
+        : '예수님과 베드로 정면 라인업';
   }, [displayMode]);
 
   useEffect(() => {
     window.localStorage.setItem(STAND_LAYOUT_STORAGE_KEY, JSON.stringify(standLayout));
   }, [standLayout]);
+
+  useEffect(() => {
+    window.localStorage.setItem(BACK_LAYOUT_STORAGE_KEY, JSON.stringify(backLayout));
+  }, [backLayout]);
 
   useEffect(() => {
     window.localStorage.setItem(CAMPFIRE_LAYOUT_STORAGE_KEY, JSON.stringify(campfireLayout));
@@ -289,13 +323,12 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   // Keep the selection valid when switching scenes so the toolbar targets a
   // present element.
   useEffect(() => {
-    const key = displayMode === 'stand' ? 'group-1' : 'group-1';
-    setSelectedLayoutKey(key);
+    setSelectedLayoutKey('group-1');
   }, [displayMode]);
 
-  // Stand scene: every few seconds one lined-up Peter waves or hops.
+  // Front lineup: every few seconds one Peter waves.
   useEffect(() => {
-    if (displayMode !== 'stand' || !playing || standGroups.length === 0) {
+    if (displayMode !== 'stand' || !playing || lineupGroups.length === 0) {
       setReaction(null);
       return undefined;
     }
@@ -304,7 +337,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     const scheduleNext = () => {
       const gap = REACTION_MIN_GAP_MS + Math.random() * (REACTION_MAX_GAP_MS - REACTION_MIN_GAP_MS);
       nextTimer = window.setTimeout(() => {
-        const target = standGroups[Math.floor(Math.random() * standGroups.length)];
+        const target = lineupGroups[Math.floor(Math.random() * lineupGroups.length)];
         const action = REACTION_ACTIONS[Math.floor(Math.random() * REACTION_ACTIONS.length)];
         setReaction({ groupNumber: target.groupNumber, action });
         holdTimer = window.setTimeout(() => {
@@ -318,7 +351,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       window.clearTimeout(nextTimer);
       window.clearTimeout(holdTimer);
     };
-  }, [displayMode, playing, standGroups.length]);
+  }, [displayMode, playing, lineupGroups.length]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -442,8 +475,16 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     setSelectedLayoutKey('group-1');
   }
 
-  const jesusPosition = campfireLayout.jesus ?? defaultCampfireLayout().jesus;
+  const campfireJesusPosition = campfireLayout.jesus ?? defaultCampfireLayout().jesus;
   const firePosition = campfireLayout.fire ?? defaultCampfireLayout().fire;
+  const lineupLayout = displayMode === 'back' ? backLayout : standLayout;
+  const lineupJesusPosition = lineupLayout.jesus ?? defaultLineupLayout().jesus;
+  const displayPath = displayMode === 'campfire'
+    ? '/display/campfire'
+    : displayMode === 'back'
+      ? '/display/back'
+      : '/display/stand';
+  const lineupDirection = displayMode === 'back' ? '뒷모습' : '정면';
 
   return (
     <main
@@ -462,7 +503,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       onPointerCancel={handlePointerUp}
       aria-label={displayMode === 'campfire'
         ? '스물한 조 베드로가 나뉘어 예수님의 말씀을 듣는 모션그래픽'
-        : '스물한 조 베드로가 해변에 나란히 서 있는 모션그래픽'}
+        : `예수님과 스물한 조 베드로의 ${lineupDirection} 라인업 모션그래픽`}
     >
       <div className="retreat-parade__sky" aria-hidden="true">
         <span className="retreat-parade__sun" />
@@ -488,10 +529,10 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       {layoutMode ? (
         <aside
           className="retreat-parade__layout-panel"
-          aria-label={displayMode === 'campfire' ? '모닥불 배치 편집기' : '라인업 배치 편집기'}
+          aria-label={displayMode === 'campfire' ? '모닥불 배치 편집기' : `${lineupDirection} 라인업 배치 편집기`}
         >
           <div className="retreat-parade__layout-heading">
-            <strong>{displayMode === 'campfire' ? '모닥불 배치 편집' : '라인업 배치 편집'}</strong>
+            <strong>{displayMode === 'campfire' ? '모닥불 배치 편집' : `${lineupDirection} 라인업 배치 편집`}</strong>
             <span>대상을 드래그 · 방향키로 미세 이동</span>
           </div>
           {displayMode === 'campfire' ? (
@@ -552,23 +593,27 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             <button type="button" onClick={resetAllPositions}>전체 초기화</button>
           </div>
           <div className="retreat-parade__layout-footer">
-            <a href={displayMode === 'campfire' ? '/display/campfire' : '/display/stand'}>
+            <a href={displayPath}>
               편집 끝내기
             </a>
           </div>
           <p>
             배치는 이 브라우저에 자동 저장됩니다.
-            송출 URL: <code>{displayMode === 'campfire' ? '/display/campfire' : '/display/stand'}</code>
+            송출 URL: <code>{displayPath}</code>
           </p>
         </aside>
       ) : null}
 
-      {displayMode === 'stand' ? (
-        <section className="retreat-parade__lineup" aria-label="해변에 나란히 선 조 캐릭터">
-          {standGroups.map((group) => {
+      {displayMode !== 'campfire' ? (
+        <section
+          className="retreat-parade__lineup"
+          aria-label={`해변에 나란히 선 예수님과 조 캐릭터 ${lineupDirection}`}
+        >
+          {lineupGroups.map((group) => {
             const layoutKey = `group-${group.groupNumber}`;
-            const position = standLayout[layoutKey] ?? defaultStandLayout()[layoutKey];
-            const isReacting = reaction?.groupNumber === group.groupNumber;
+            const position = lineupLayout[layoutKey] ?? defaultLineupLayout()[layoutKey];
+            const isReacting = displayMode === 'stand'
+              && reaction?.groupNumber === group.groupNumber;
             const animation: AnimationName = isReacting ? reaction!.action : 'idle';
             return (
               <article
@@ -592,13 +637,36 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                   animation={animation}
                   playing={playing}
                   flipX={position.flipX}
+                  view={displayMode === 'back' ? 'back' : 'front'}
                   respectReducedMotion={false}
                   className="retreat-parade__stander-character"
                 />
-                <span className="retreat-parade__nameplate">{nicknameFor(group)}</span>
               </article>
             );
           })}
+          <article
+            className="retreat-parade__stander retreat-parade__stander--jesus"
+            data-layout-selected={selectedLayoutKey === 'jesus' ? 'true' : 'false'}
+            role={layoutMode ? 'button' : undefined}
+            tabIndex={layoutMode ? 0 : undefined}
+            aria-label={layoutMode ? `예수님 ${lineupDirection} 위치 편집` : undefined}
+            onPointerDown={(event) => handlePointerDown('jesus', event)}
+            onKeyDown={(event) => handleEditableKeyDown('jesus', event)}
+            style={{
+              '--stander-x': `${lineupJesusPosition.x}${STAGE_UNIT_X}`,
+              '--stander-bottom': `${lineupJesusPosition.bottom}${STAGE_UNIT_Y}`,
+              '--stander-scale': lineupJesusPosition.scale,
+            } as CSSProperties}
+          >
+            <img
+              className="retreat-parade__standing-jesus"
+              src={displayMode === 'back'
+                ? '/assets/campfire/jesus-standing-back.png'
+                : '/assets/campfire/jesus-standing-front.png'}
+              alt={`예수님 ${lineupDirection}`}
+              draggable={false}
+            />
+          </article>
         </section>
       ) : null}
 
@@ -625,9 +693,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             onPointerDown={(event) => handlePointerDown('jesus', event)}
             onKeyDown={(event) => handleEditableKeyDown('jesus', event)}
             style={{
-              '--jesus-x': `${jesusPosition.x}${STAGE_UNIT_X}`,
-              '--jesus-bottom': `${jesusPosition.bottom}${STAGE_UNIT_Y}`,
-              '--jesus-scale': jesusPosition.scale,
+              '--jesus-x': `${campfireJesusPosition.x}${STAGE_UNIT_X}`,
+              '--jesus-bottom': `${campfireJesusPosition.bottom}${STAGE_UNIT_Y}`,
+              '--jesus-scale': campfireJesusPosition.scale,
             } as CSSProperties}
           />
           {campfireGroups.map((group, index) => {
@@ -665,7 +733,6 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                   respectReducedMotion={false}
                   className="retreat-parade__listener-character"
                 />
-                <span className="retreat-parade__nameplate">{nicknameFor(group)}</span>
               </article>
             );
           })}

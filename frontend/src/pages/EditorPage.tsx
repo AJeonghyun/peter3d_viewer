@@ -21,7 +21,8 @@ import type {
 import '../styles/retreat-editor.css';
 
 const PAGE_META: Array<{ id: RetreatPage; label: string; path: string; editPath: string }> = [
-  { id: 'stand', label: '베드로 라인업', path: '/display/stand', editPath: '/editor/stand' },
+  { id: 'stand', label: '정면 라인업', path: '/display/stand', editPath: '/editor/stand' },
+  { id: 'back', label: '뒷모습 라인업', path: '/display/back', editPath: '/editor/back' },
   { id: 'campfire', label: '갈릴리 모닥불', path: '/display/campfire', editPath: '/editor/campfire' },
 ];
 

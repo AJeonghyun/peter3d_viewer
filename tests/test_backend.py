@@ -628,10 +628,13 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertTrue(
             {
                 "/stand",
+                "/back",
                 "/campfire",
                 "/display/stand",
+                "/display/back",
                 "/display/campfire",
                 "/editor/stand",
+                "/editor/back",
                 "/editor/campfire",
                 "/walk",
                 "/display/walk",

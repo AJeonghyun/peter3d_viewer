@@ -7,6 +7,7 @@ import { loadSpriteAsset } from './persistence';
 import type { RetreatGroup } from './types';
 
 const FIXED_MASTER_URL = '/assets/peter-sober/peter-sober-master.png';
+const BACK_VIEW_URL = '/assets/peter/frames/idle-back.png';
 const CAMPFIRE_MASTER_CONTRACT = {
   id: 'fixed-peter-master-edit-v5',
   version: 5,
@@ -28,6 +29,7 @@ interface RetreatCharacterProps {
   fixedFrame?: number;
   playing?: boolean;
   flipX?: boolean;
+  view?: 'front' | 'back';
   respectReducedMotion?: boolean;
   className?: string;
 }
@@ -38,6 +40,7 @@ function RetreatCharacterComponent({
   fixedFrame,
   playing = true,
   flipX = false,
+  view = 'front',
   respectReducedMotion = true,
   className = '',
 }: RetreatCharacterProps) {
@@ -109,7 +112,13 @@ function RetreatCharacterComponent({
       data-group-id={group.id}
       data-animation={animation}
     >
-      {group.spriteAtlasUrl || fixedFrame !== undefined ? (
+      {view === 'back' ? (
+        <img
+          src={BACK_VIEW_URL}
+          alt={`${group.groupName} 캐릭터 뒷모습`}
+          style={{ transform: `scaleX(${flipX ? -1 : 1})` }}
+        />
+      ) : group.spriteAtlasUrl || fixedFrame !== undefined ? (
         <AtlasSpriteAnimator
           spriteUrl={atlasUrl}
           animation={animation}

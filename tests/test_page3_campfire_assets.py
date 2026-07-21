@@ -11,6 +11,24 @@ SEATED_FRAME_INDEXES = {19, 21, 23}
 
 
 class Page3CampfireAssetTests(unittest.TestCase):
+    def test_standing_jesus_front_and_back_assets_are_transparent_and_complete(self):
+        asset_dir = FRONTEND / "public" / "assets" / "campfire"
+        for filename in ("jesus-standing-front.png", "jesus-standing-back.png"):
+            with self.subTest(filename=filename), Image.open(asset_dir / filename) as source:
+                image = source.convert("RGBA")
+                bounds = image.getchannel("A").getbbox()
+                self.assertIsNotNone(bounds)
+                assert bounds is not None
+                self.assertGreater(bounds[2] - bounds[0], 400)
+                self.assertGreater(bounds[3] - bounds[1], 1_000)
+                for point in (
+                    (0, 0),
+                    (image.width - 1, 0),
+                    (0, image.height - 1),
+                    (image.width - 1, image.height - 1),
+                ):
+                    self.assertEqual(image.getpixel(point)[3], 0)
+
     def test_campfire_sheet_has_eight_transparent_nonempty_frames(self):
         path = FRONTEND / "public" / "assets" / "campfire" / "campfire-sheet.png"
         with Image.open(path) as sheet:
@@ -56,32 +74,31 @@ class Page3CampfireAssetTests(unittest.TestCase):
                 self.assertGreater(bounds[2] - bounds[0], 120)
                 self.assertGreater(bounds[3] - bounds[1], 120)
 
-    def test_page_three_replaces_boats_with_user_selected_scene_loops(self):
+    def test_display_has_front_back_and_campfire_scenes_without_nameplates(self):
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
         styles = (FRONTEND / "src" / "styles" / "retreat-world.css").read_text()
         self.assertNotIn("type: 'boat'", source)
         self.assertNotIn("retreat-parade__boat", source)
         self.assertEqual(
-            source.count("{ type: 'campfire', duration: CAMPFIRE_DURATION, groupStart:"),
+            source.count("{ duration: CAMPFIRE_DURATION, groupStart:"),
             3,
         )
         self.assertIn("peter-page3-display-mode-v1", source)
-        self.assertIn("WALK_SCENES", source)
         self.assertIn("CAMPFIRE_SCENES", source)
-        self.assertNotIn("PARADE_SCENES", source)
-        self.assertIn("걷기만 보여주기", source)
-        self.assertIn("모닥불만 보여주기", source)
         self.assertIn("get('scene')", source)
         self.assertIn("CAMPFIRE_SEATS", source)
         self.assertIn("campfire-sheet.png", source)
-        self.assertNotIn("말씀을 듣는 밤", source)
+        self.assertIn("jesus-standing-front.png", source)
+        self.assertIn("jesus-standing-back.png", source)
+        self.assertIn("view={displayMode === 'back' ? 'back' : 'front'}", source)
+        self.assertNotIn("retreat-parade__nameplate", source)
+        self.assertNotIn("retreat-parade__nameplate", styles)
         self.assertNotIn("retreat-parade__scene-label", styles)
-        self.assertNotIn("type: 'wipe'", source)
-        self.assertNotIn("retreat-parade__wipe", source)
-        self.assertNotIn("retreat-wave-wipe", styles)
 
     def test_page_three_layout_editor_persists_each_group_and_prop(self):
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
+        self.assertIn("peter-page3-stand-layout-v2", source)
+        self.assertIn("peter-page3-back-layout-v1", source)
         self.assertIn("peter-page3-campfire-layout-v1", source)
         self.assertIn("data-layout-edit", source)
         self.assertIn("group-${group.groupNumber}", source)

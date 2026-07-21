@@ -38,8 +38,10 @@ async def legacy_world_page():
 
 
 @router.get("/stand")
+@router.get("/back")
 @router.get("/campfire")
 @router.get("/display/stand")
+@router.get("/display/back")
 @router.get("/display/campfire")
 @router.get("/walk")
 @router.get("/display/walk")
@@ -49,6 +51,7 @@ async def legacy_world_page():
 @router.get("/print-template")
 @router.get("/editor")
 @router.get("/editor/stand")
+@router.get("/editor/back")
 @router.get("/editor/campfire")
 @router.get("/admin/seating")
 @router.get("/seating-admin")
