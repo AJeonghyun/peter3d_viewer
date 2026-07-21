@@ -6,7 +6,7 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.py": {
-      "maxDuration": 180,
+      "maxDuration": 300,
       "includeFiles": "runtime-assets/peter-sober-master-safe.png",
       "excludeFiles": "{frontend/**,static/**,uploads/**,data/**,tests/**,.venv/**,.env*}"
     }

@@ -61,6 +61,19 @@ body {
   pointer-events: none;
 }
 
+html[data-background-mode="transparent"] .retreat-group-page,
+html[data-background-mode="transparent"] .retreat-group-stage {
+  background: transparent !important;
+}
+
+html[data-background-mode="transparent"] .retreat-group-stage__sun,
+html[data-background-mode="transparent"] .retreat-group-stage__sky,
+html[data-background-mode="transparent"] .retreat-group-stage__sea,
+html[data-background-mode="transparent"] .retreat-group-stage__waves,
+html[data-background-mode="transparent"] .retreat-group-stage__shore {
+  display: none;
+}
+
 .retreat-group-stage__sky {
   z-index: 0;
   top: 0;

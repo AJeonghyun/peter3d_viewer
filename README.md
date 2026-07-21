@@ -29,6 +29,24 @@ npm run dev
 됩니다. 브라우저 전체 화면은 편집기의 `전체 화면` 버튼이나 Windows `F11`,
 macOS `Control + Command + F`로 실행합니다.
 
+### OBS 투명 배경 송출
+
+`/editor`의 `OBS 투명 배경`에서 `모든 송출 페이지 배경 투명`을 켜면
+미리보기와 `송출 화면 열기`에 투명 배경이 적용됩니다. OBS Browser Source는
+편집기에서 페이지별 `OBS URL 복사` 버튼으로 복사하거나 다음 주소를 직접
+사용합니다.
+
+| 화면 | OBS Browser Source URL |
+| --- | --- |
+| 페이지 1 · 조 배치 | `/display/group-layout?obs=1` |
+| 페이지 2 · 안내·공지 | `/display/notice?obs=1` |
+| 페이지 3 · 전체 캐릭터 | `/display/all-characters?obs=1` |
+
+`?obs=1`은 다른 브라우저의 저장 설정과 관계없이 실제 알파 투명 배경을
+강제합니다. `?background=transparent`도 같은 방식으로 사용할 수 있으며,
+쿼리가 없는 일반 송출 URL은 기존 배경을 유지합니다. OBS에서는 브라우저 소스
+크기를 `1920 × 1080`, 사용자 지정 CSS를 비워 둔 상태로 사용하면 됩니다.
+
 ## 21개 조 데이터와 스프라이트
 
 편집기의 `21개 조 데이터`에서 1조부터 21조까지 다음 정보를 관리합니다.
@@ -211,14 +229,23 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 
 - 페이지 3 · 21개 조 전체 캐릭터: `http://localhost:8000/page-3`
 - 페이지 3 송출 별칭: `http://localhost:8000/display/all-characters`
+- 페이지 3 장면 선택·모닥불 배치: `http://localhost:8000/page-3?layout=1`
+- 페이지 3 걷기 고정: `http://localhost:8000/page-3?scene=walk`
+- 페이지 3 모닥불 고정: `http://localhost:8000/page-3?scene=campfire`
 - 기존 3D 월드: `http://localhost:8000/world-3d`
 - 운영진 관리: `http://localhost:8000/admin`
 - 21프레임 애니메이션 실험실: `http://localhost:8000/sprite-lab`
 - 서버 상태: `http://localhost:8000/api/health`
 
-행사 운영 컴퓨터에서 메인 전시 주소를 크롬 전체 화면으로 열고 프로젝터 또는
-LED 화면에 출력합니다. 전시 화면에는 버튼이나 스탯 패널이 없으며 자동으로
-계속 재생됩니다.
+행사 운영 컴퓨터에서 먼저 `?layout=1` 화면의 버튼으로 걷기 또는 모닥불을
+선택합니다. 선택값은 해당 브라우저에 저장됩니다. 장면이 바뀌지 않아야 하는
+송출 환경에서는 `?scene=walk` 또는 `?scene=campfire` 고정 주소를 크롬 전체
+화면으로 열고 프로젝터 또는 LED 화면에 출력합니다. 전시 화면에는 버튼이나
+스탯 패널 및 화면 전환 효과가 없으며, 선택한 종류만 유지한 채 7개 조씩
+끊김 없이 이어서 재생됩니다.
+모닥불 배치에서는 베드로 한 명을 선택한 뒤 `좌우 반전 (F)` 버튼이나
+키보드 `F` 키로 바라보는 방향을 바꿀 수 있으며 방향도 위치·크기와 함께
+브라우저에 자동 저장됩니다.
 
 ### 프론트엔드 개발 모드
 

@@ -37,6 +37,17 @@ body {
   min-height: 0;
 }
 
+html[data-background-mode="transparent"] .retreat-parade {
+  background: transparent !important;
+}
+
+html[data-background-mode="transparent"] .retreat-parade__sky,
+html[data-background-mode="transparent"] .retreat-parade__sea,
+html[data-background-mode="transparent"] .retreat-parade__shoreline,
+html[data-background-mode="transparent"] .retreat-parade__sand {
+  display: none;
+}
+
 .retreat-parade__sky,
 .retreat-parade__sea,
 .retreat-parade__shoreline,
@@ -55,6 +66,18 @@ body {
   background:
     radial-gradient(ellipse at 50% 78%, rgb(255 255 255 / 34%) 0 10%, transparent 46%),
     linear-gradient(180deg, #c9f6ff 0%, #9ce8f7 58%, #73d4e7 100%);
+  transition: background 800ms ease;
+}
+
+.retreat-parade[data-scene="campfire"] .retreat-parade__sky {
+  background:
+    radial-gradient(circle at 78% 18%, rgb(255 246 194 / 18%) 0 3%, transparent 8%),
+    radial-gradient(circle at 12% 16%, #fff 0 0.08%, transparent 0.13%),
+    radial-gradient(circle at 25% 9%, #ffecc4 0 0.07%, transparent 0.12%),
+    radial-gradient(circle at 43% 22%, #fff 0 0.09%, transparent 0.14%),
+    radial-gradient(circle at 58% 11%, #fff 0 0.07%, transparent 0.12%),
+    radial-gradient(circle at 88% 28%, #ffecc4 0 0.08%, transparent 0.13%),
+    linear-gradient(180deg, #071632 0%, #132b58 56%, #744966 100%);
 }
 
 .retreat-parade__sun {
@@ -68,6 +91,16 @@ body {
   border-radius: 50%;
   background: #fff5b5;
   box-shadow: 0 0 0 1.6cqw rgb(255 249 197 / 24%);
+  transition: all 800ms ease;
+}
+
+.retreat-parade[data-scene="campfire"] .retreat-parade__sun {
+  top: 7cqh;
+  right: 10cqw;
+  width: 6.2cqw;
+  border-width: 0.2cqw;
+  background: #fff3c4;
+  box-shadow: 0 0 0 1.1cqw rgb(255 240 179 / 8%);
 }
 
 .retreat-parade__cloud {
@@ -78,6 +111,12 @@ body {
   opacity: 0.72;
   background: rgb(255 255 255 / 78%);
   animation: retreat-cloud-drift 48s linear infinite;
+  transition: opacity 600ms ease;
+}
+
+.retreat-parade[data-scene="campfire"] .retreat-parade__cloud,
+.retreat-parade[data-scene="campfire"] .retreat-parade__birds {
+  opacity: 0.08;
 }
 
 .retreat-parade__cloud::before,
@@ -166,6 +205,13 @@ body {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 20%), transparent 13%),
     linear-gradient(180deg, #50cfe3 0%, #20b2cf 58%, #0d94b3 100%);
+  transition: background 800ms ease;
+}
+
+.retreat-parade[data-scene="campfire"] .retreat-parade__sea {
+  background:
+    linear-gradient(90deg, transparent 28%, rgb(255 153 87 / 12%) 48%, transparent 70%),
+    linear-gradient(180deg, #142f58 0%, #142c4b 50%, #0a2437 100%);
 }
 
 .retreat-parade__sea::after {
@@ -253,6 +299,17 @@ body {
     radial-gradient(ellipse at 89% 33%, rgb(255 255 255 / 92%) 0 13%, transparent 13.5%),
     linear-gradient(180deg, rgb(232 254 255 / 78%), rgb(255 255 255 / 52%));
   animation: retreat-shore-breathe 5.6s ease-in-out infinite alternate;
+  transition: background 800ms ease;
+}
+
+.retreat-parade[data-scene="campfire"] .retreat-parade__shoreline {
+  background:
+    radial-gradient(ellipse at 8% 34%, rgb(205 226 235 / 42%) 0 12%, transparent 12.5%),
+    radial-gradient(ellipse at 27% 45%, rgb(205 226 235 / 38%) 0 16%, transparent 16.5%),
+    radial-gradient(ellipse at 47% 31%, rgb(205 226 235 / 40%) 0 14%, transparent 14.5%),
+    radial-gradient(ellipse at 68% 45%, rgb(205 226 235 / 36%) 0 17%, transparent 17.5%),
+    radial-gradient(ellipse at 89% 33%, rgb(205 226 235 / 42%) 0 13%, transparent 13.5%),
+    linear-gradient(180deg, rgb(123 156 176 / 36%), rgb(70 89 104 / 28%));
 }
 
 .retreat-parade__sand {
@@ -271,6 +328,22 @@ body {
     ),
     linear-gradient(180deg, #ffedb7 0%, #f6d88f 100%);
   background-size: 16cqw 10cqh, 19cqw 13cqh, auto, auto;
+  transition: background 800ms ease;
+}
+
+.retreat-parade[data-scene="campfire"] .retreat-parade__sand {
+  background:
+    radial-gradient(ellipse at 50% 68%, rgb(242 132 60 / 30%) 0 8%, transparent 33%),
+    radial-gradient(circle at 13% 68%, rgb(213 176 128 / 16%) 0 0.22cqw, transparent 0.26cqw),
+    radial-gradient(circle at 84% 34%, rgb(30 26 32 / 24%) 0 0.18cqw, transparent 0.22cqw),
+    repeating-linear-gradient(
+      168deg,
+      transparent 0 6cqh,
+      rgb(31 25 28 / 14%) 6.15cqh 6.35cqh,
+      transparent 6.5cqh 12cqh
+    ),
+    linear-gradient(180deg, #6b5a55 0%, #342d33 100%);
+  background-size: auto, 16cqw 10cqh, 19cqw 13cqh, auto, auto;
 }
 
 .retreat-parade__shell {
@@ -439,162 +512,244 @@ body {
   animation: retreat-point-ripple 1s ease-out infinite;
 }
 
-.retreat-parade__boat {
-  --boat-x: -28cqw;
-  --boat-rock: 0deg;
+.retreat-parade__campfire-gathering {
   position: absolute;
-  z-index: 6;
-  left: 0;
-  bottom: 26cqh;
-  width: clamp(480px, 38cqw, 730px);
-  height: clamp(270px, 25cqh, 340px);
-  transform: translateX(calc(var(--boat-x) - 50%)) rotate(var(--boat-rock));
-  transform-origin: 50% 90%;
-  will-change: transform;
+  z-index: 5;
+  inset: 0;
+  pointer-events: none;
 }
 
-.retreat-parade__boat-wake {
-  position: absolute;
-  z-index: 0;
-  right: 66%;
-  bottom: 2.6cqh;
-  width: 30cqw;
-  height: 4.2cqh;
-  border-radius: 50%;
-  opacity: 0.78;
-  background:
-    repeating-radial-gradient(ellipse at right, rgb(255 255 255 / 82%) 0 4%, transparent 5% 11%);
-  filter: blur(0.7px);
-  animation: retreat-boat-wake 1.2s ease-in-out infinite alternate;
-}
-
-.retreat-parade__mast {
-  position: absolute;
-  z-index: 1;
-  left: 51%;
-  bottom: 18%;
-  width: clamp(7px, 0.42cqw, 10px);
-  height: 65%;
-  border-radius: 999px;
-  background: #84562e;
-}
-
-.retreat-parade__sail {
-  position: absolute;
-  bottom: 18%;
-  filter: drop-shadow(0.45cqw 0.6cqh 0 rgb(37 84 91 / 10%));
-}
-
-.retreat-parade__sail--main {
-  right: 72%;
-  width: 13cqw;
-  max-width: 250px;
-  height: 15cqh;
-  max-height: 180px;
-  border-radius: 68% 8% 8% 10%;
-  background:
-    linear-gradient(116deg, transparent 0 47%, rgb(233 111 82 / 22%) 48% 52%, transparent 53%),
-    #fff6d7;
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-}
-
-.retreat-parade__sail--small {
-  left: 170%;
-  width: 8cqw;
-  max-width: 150px;
-  height: 11cqh;
-  max-height: 125px;
-  border-radius: 8% 60% 10% 8%;
-  background: #f18e73;
-  clip-path: polygon(0 12%, 100% 100%, 0 100%);
-}
-
-.retreat-parade__passengers {
-  position: absolute;
-  z-index: 4;
-  left: 5%;
-  right: 4%;
-  bottom: 11%;
-  display: flex;
-  gap: 0.3cqw;
-  align-items: flex-end;
-  justify-content: space-around;
-  padding-inline: 1.4cqw;
-}
-
-.retreat-parade__passenger {
-  position: relative;
-  width: clamp(100px, 7.4cqw, 142px);
-  height: clamp(135px, 10cqw, 192px);
-}
-
-.retreat-parade__passenger-character {
-  width: 100%;
-  height: 100%;
-}
-
-.retreat-parade__passenger-character .sprite-animator,
-.retreat-parade__passenger-character .sprite-animator__motion,
-.retreat-parade__passenger-character .sprite-animator__motion > *,
-.retreat-parade__passenger-character img {
-  width: 100%;
-  height: 100%;
-}
-
-.retreat-parade__passenger-character img {
-  object-fit: contain;
-  object-position: center bottom;
-}
-
-.retreat-parade__passenger .retreat-parade__nameplate {
-  bottom: 0.5cqh;
-  min-width: 72px;
-  min-height: 23px;
-  font-size: clamp(11px, 0.7cqw, 14px);
-}
-
-.retreat-parade__hull {
+.retreat-parade__fire-glow {
+  --fire-x: 50cqw;
+  --fire-bottom: 18cqh;
+  --fire-scale: 1;
   position: absolute;
   z-index: 3;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 27%;
-  overflow: hidden;
-  border: max(2px, 0.16cqw) solid #754528;
-  border-top-width: max(5px, 0.35cqw);
-  border-radius: 4% 4% 52% 52% / 8% 8% 100% 100%;
-  background:
-    repeating-linear-gradient(90deg, transparent 0 8%, rgb(84 45 24 / 12%) 8.4% 8.9%),
-    linear-gradient(180deg, #d4924d, #9a5b30);
-}
-
-.retreat-parade__hull span {
-  position: absolute;
-  top: 32%;
-  left: 50%;
-  width: 2.6cqw;
-  min-width: 30px;
-  aspect-ratio: 1;
-  border: max(2px, 0.16cqw) solid #f3d48d;
+  left: var(--fire-x);
+  bottom: calc(var(--fire-bottom) - 12cqh);
+  width: 42cqw;
+  height: 42cqh;
   border-radius: 50%;
-  transform: translateX(-50%);
+  opacity: 0.75;
+  background: radial-gradient(ellipse, rgb(255 146 54 / 44%) 0, rgb(255 118 36 / 13%) 35%, transparent 70%);
+  filter: blur(12px);
+  transform: translateX(-50%) scale(var(--fire-scale));
+  animation: retreat-fire-glow 1.15s ease-in-out infinite alternate;
 }
 
-.retreat-parade__wipe {
+.retreat-parade__jesus {
+  --jesus-x: 50cqw;
+  --jesus-bottom: 31cqh;
+  --jesus-scale: 1;
   position: absolute;
-  z-index: 12;
-  inset: -18%;
-  background:
-    radial-gradient(ellipse at 3% 22%, #fff 0 12%, transparent 12.7%),
-    radial-gradient(ellipse at 18% 72%, #e6fbff 0 18%, transparent 18.7%),
-    radial-gradient(ellipse at 41% 34%, #fff 0 16%, transparent 16.7%),
-    radial-gradient(ellipse at 64% 76%, #d5f7fc 0 19%, transparent 19.7%),
-    radial-gradient(ellipse at 84% 28%, #fff 0 18%, transparent 18.7%),
-    #4cc9dd;
-  animation: retreat-wave-wipe 1.4s cubic-bezier(0.7, 0, 0.3, 1) both;
-  transform: translate3d(-112%, 0, 0) skewX(-8deg);
+  z-index: 5;
+  left: var(--jesus-x);
+  bottom: var(--jesus-bottom);
+  width: clamp(215px, 16cqw, 310px);
+  height: clamp(250px, 25cqh, 350px);
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 1cqh 1.2cqh rgb(7 12 23 / 34%));
+  transform: translateX(-50%) scale(var(--jesus-scale));
+  transform-origin: 50% 100%;
+  animation: retreat-jesus-breathe 3.2s ease-in-out infinite alternate;
+}
+
+.retreat-parade__listener {
+  --listener-x: 50cqw;
+  --listener-bottom: 0cqh;
+  --listener-scale: 1;
+  position: absolute;
+  left: 0;
+  bottom: var(--listener-bottom);
+  width: clamp(172px, 13.2cqw, 254px);
+  height: clamp(188px, 15cqw, 282px);
+  transform: translateX(calc(var(--listener-x) - 50%)) scale(var(--listener-scale));
+  transform-origin: 50% 100%;
+}
+
+.retreat-parade__listener[data-depth="rear"] {
+  z-index: 4;
+}
+
+.retreat-parade__listener[data-depth="middle"] {
+  z-index: 7;
+}
+
+.retreat-parade__listener[data-depth="front"] {
+  z-index: 10;
+}
+
+.retreat-parade__listener-character,
+.retreat-parade__listener-character.retreat-character,
+.retreat-parade__listener-character .atlas-sprite-animator,
+.retreat-parade__listener-character .atlas-sprite-animator__motion {
+  width: 100%;
+  height: 100%;
+}
+
+.retreat-parade__listener-character .atlas-sprite-animator__motion {
+  animation: retreat-listener-breathe 2.8s ease-in-out infinite alternate;
+}
+
+.retreat-parade__listener:nth-of-type(even) .atlas-sprite-animator__motion {
+  animation-delay: -1.4s;
+}
+
+.retreat-parade__listener .retreat-parade__nameplate {
+  bottom: -0.3cqh;
+  min-height: clamp(22px, 2.2cqh, 29px);
+  border-color: rgb(255 226 168 / 78%);
+  color: #fff8e7;
+  background: linear-gradient(180deg, rgb(80 54 57 / 92%), rgb(40 34 47 / 96%));
+  box-shadow: 0 0.5cqh 1.3cqh rgb(5 9 22 / 24%);
+}
+
+.retreat-parade__campfire {
+  --fire-x: 50cqw;
+  --fire-bottom: 18cqh;
+  --fire-scale: 1;
+  position: absolute;
+  z-index: 8;
+  left: var(--fire-x);
+  bottom: var(--fire-bottom);
+  width: clamp(190px, 16cqw, 305px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  filter:
+    drop-shadow(0 0 1.2cqw rgb(255 129 39 / 76%))
+    drop-shadow(0 1cqh 1.2cqh rgb(8 10 19 / 32%));
+  transform: translateX(-50%) scale(var(--fire-scale));
+  transform-origin: 50% 100%;
+}
+
+.retreat-parade__campfire img {
+  display: block;
+  width: 800%;
+  height: 100%;
+  max-width: none;
+  object-fit: fill;
+  animation: retreat-fire-frames 0.86s steps(7, end) infinite;
   will-change: transform;
+}
+
+.retreat-parade__layout-panel {
+  position: absolute;
+  z-index: 30;
+  top: clamp(12px, 1.5cqh, 24px);
+  left: clamp(12px, 1.2cqw, 24px);
+  width: min(680px, calc(100% - 24px));
+  padding: 14px 16px 12px;
+  border: 1px solid rgb(255 228 178 / 44%);
+  border-radius: 16px;
+  color: #fff9e9;
+  background: rgb(8 20 42 / 88%);
+  box-shadow: 0 16px 44px rgb(2 8 22 / 34%);
+  backdrop-filter: blur(14px);
+}
+
+.retreat-parade__layout-heading,
+.retreat-parade__layout-scenes,
+.retreat-parade__layout-groups,
+.retreat-parade__layout-actions,
+.retreat-parade__layout-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.retreat-parade__layout-heading {
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.retreat-parade__layout-heading strong {
+  font-size: 17px;
+}
+
+.retreat-parade__layout-heading span,
+.retreat-parade__layout-panel p {
+  color: rgb(255 247 223 / 70%);
+  font-size: 12px;
+}
+
+.retreat-parade__layout-scenes,
+.retreat-parade__layout-groups {
+  margin-bottom: 8px;
+}
+
+.retreat-parade__layout-scenes button {
+  flex: 1;
+}
+
+.retreat-parade__layout-actions {
+  flex-wrap: wrap;
+}
+
+.retreat-parade__layout-footer {
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.retreat-parade__layout-selected {
+  min-width: 92px;
+  color: #ffd992;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.retreat-parade__layout-panel button,
+.retreat-parade__layout-panel a {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgb(255 230 184 / 28%);
+  border-radius: 9px;
+  color: #fff8e9;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+  background: rgb(255 255 255 / 10%);
+  cursor: pointer;
+}
+
+.retreat-parade__layout-panel button:hover,
+.retreat-parade__layout-panel button:focus-visible,
+.retreat-parade__layout-panel a:hover,
+.retreat-parade__layout-panel a:focus-visible,
+.retreat-parade__layout-panel button.is-active {
+  border-color: #ffd285;
+  outline: none;
+  color: #231c24;
+  background: #ffd285;
+}
+
+.retreat-parade__layout-panel p {
+  margin: 9px 0 0;
+}
+
+.retreat-parade__layout-panel code {
+  color: #ffd992;
+}
+
+.retreat-parade[data-layout-edit="true"] .retreat-parade__jesus,
+.retreat-parade[data-layout-edit="true"] .retreat-parade__listener,
+.retreat-parade[data-layout-edit="true"] .retreat-parade__campfire {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+
+.retreat-parade[data-layout-edit="true"] .retreat-parade__jesus:active,
+.retreat-parade[data-layout-edit="true"] .retreat-parade__listener:active,
+.retreat-parade[data-layout-edit="true"] .retreat-parade__campfire:active {
+  cursor: grabbing;
+}
+
+.retreat-parade[data-layout-edit="true"] [data-layout-selected="true"] {
+  outline: max(2px, 0.14cqw) solid #ffd16f;
+  outline-offset: 5px;
+  border-radius: 16px;
 }
 
 .retreat-parade[data-paused="true"] *,
@@ -678,29 +833,24 @@ body {
   }
 }
 
-@keyframes retreat-boat-wake {
-  from {
-    transform: scaleX(0.92) translateX(0);
-  }
-
-  to {
-    transform: scaleX(1.08) translateX(-1.8cqw);
-  }
+@keyframes retreat-fire-frames {
+  from { transform: translateX(0); }
+  to { transform: translateX(-87.5%); }
 }
 
-@keyframes retreat-wave-wipe {
-  0% {
-    transform: translate3d(-112%, 0, 0) skewX(-8deg);
-  }
+@keyframes retreat-fire-glow {
+  from { opacity: 0.58; scale: 0.96; }
+  to { opacity: 0.82; scale: 1.04; }
+}
 
-  46%,
-  58% {
-    transform: translate3d(0, 0, 0) skewX(-8deg);
-  }
+@keyframes retreat-listener-breathe {
+  from { translate: 0 0; rotate: -0.15deg; }
+  to { translate: 0 -0.7%; rotate: 0.15deg; }
+}
 
-  100% {
-    transform: translate3d(112%, 0, 0) skewX(-8deg);
-  }
+@keyframes retreat-jesus-breathe {
+  from { transform: translateX(-50%) translateY(0) rotate(-0.12deg) scale(var(--jesus-scale)); }
+  to { transform: translateX(-50%) translateY(-0.55%) rotate(0.12deg) scale(var(--jesus-scale)); }
 }
 
 @media (max-width: 720px) {
@@ -710,15 +860,18 @@ body {
     height: 149px;
   }
 
-  .retreat-parade__boat {
-    bottom: 23cqh;
-    width: min(520px, 82cqw);
-    height: 240px;
+  .retreat-parade__listener {
+    width: 138px;
+    height: 160px;
   }
 
-  .retreat-parade__passenger {
-    width: 82px;
-    height: 112px;
+  .retreat-parade__jesus {
+    width: 176px;
+    height: 208px;
+  }
+
+  .retreat-parade__campfire {
+    width: 158px;
   }
 
   .retreat-parade__nameplate {

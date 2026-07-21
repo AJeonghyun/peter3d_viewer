@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { apiRequest } from '../lib/api';
+import { ApiError, apiRequest } from '../lib/api';
 import { prepareCharacterUploadImage } from '../lib/prepareUploadImage';
 import { AtlasSpriteAnimator } from '../retreat/AtlasSpriteAnimator';
 import type {
@@ -11,6 +11,7 @@ import type {
   ShowcaseRestoreResponse,
   ShowcaseVersionListResponse,
   SpriteQualityFrame,
+  SpriteQualityReport,
   Team,
 } from '../types/api';
 import type { AnimationName } from '../spriteLab/types';
@@ -27,6 +28,7 @@ const EMPTY_DRAFT: TeamDraft = { name: '', color: '#67b8c7', symbol: '', identit
 const TEMPLATE_URL = '/assets/showcase/peter-print-template.png';
 const FIXED_MASTER_URL = '/api/showcase/fixed-master';
 const GENERATION_EXPECTED_SECONDS = 210;
+const GENERATION_RETRY_SECONDS = 10;
 const GENERATION_STAGES = [
   {
     status: 'generating',
@@ -68,6 +70,19 @@ function formatGenerationTime(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return minutes > 0 ? `${minutes}분 ${remainder}초` : `${remainder}초`;
+}
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+}
+
+function isRetryableRequestError(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.status === 408 || error.status === 429 || error.status >= 500;
+  }
+  return error instanceof TypeError;
 }
 
 function generationProgress(status: ShowcaseCaptureStatus, elapsedSeconds: number) {
@@ -174,6 +189,18 @@ function isFixedMaster(team: Team | null) {
     || contract?.frame_count === 25;
 }
 
+function problemFrameNumbers(report: SpriteQualityReport | null | undefined) {
+  if (!report) return [];
+  const frames = new Set<number>();
+  report.deterministic.frames.forEach((frame) => {
+    if (frame.status !== 'passed' || frame.issues.length > 0) frames.add(frame.frame);
+  });
+  report.ai.frames.forEach((frame) => {
+    if (frame.severity === 'warning' || frame.severity === 'failed') frames.add(frame.frame);
+  });
+  return [...frames].filter((frame) => frame >= 1 && frame <= 25).sort((a, b) => a - b);
+}
+
 function SpriteMotionPreview({
   label,
   animation,
@@ -209,11 +236,17 @@ function SpriteFrameInspection({
   spriteUrl,
   aiIssue,
   fixedMaster,
+  selectable,
+  selected,
+  onSelectionChange,
 }: {
   frame: SpriteQualityFrame;
   spriteUrl: string;
   aiIssue?: string;
   fixedMaster: boolean;
+  selectable: boolean;
+  selected: boolean;
+  onSelectionChange: (frame: number, selected: boolean) => void;
 }) {
   const frameIndex = Math.max(0, frame.frame - 1);
   const columns = fixedMaster ? 5 : 4;
@@ -226,7 +259,11 @@ function SpriteFrameInspection({
     ? Math.min(...Object.values(frame.margins))
     : null;
   return (
-    <article className="sprite-frame-inspection" data-status={status}>
+    <article
+      className="sprite-frame-inspection"
+      data-status={status}
+      data-selected={selected ? 'true' : 'false'}
+    >
       <div
         className="sprite-frame-inspection__image"
         style={{
@@ -243,6 +280,16 @@ function SpriteFrameInspection({
         <strong>{frame.frame}컷 · {status === 'passed' ? '안전' : status === 'failed' ? '재생성 필요' : '확인 필요'}</strong>
         <span>{minimumMargin === null ? '여백 측정 실패' : `최소 여백 ${minimumMargin}px`}</span>
         {issue && <small>{issue}</small>}
+        {selectable && (
+          <label className="sprite-frame-inspection__select">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(event) => onSelectionChange(frame.frame, event.currentTarget.checked)}
+            />
+            이 컷만 교체
+          </label>
+        )}
       </div>
     </article>
   );
@@ -284,8 +331,10 @@ export default function AdminPage() {
   const [restoringVersionId, setRestoringVersionId] = useState<string | number | null>(null);
   const [generationJob, setGenerationJob] = useState<{ teamId: number; startedAt: number } | null>(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
+  const [selectedPatchFrames, setSelectedPatchFrames] = useState<number[]>([]);
   const characterInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const composeWorkflowTeamRef = useRef<number | null>(null);
 
   const selected = useMemo(
     () => teams.find((team) => team.id === selectedId) ?? null,
@@ -301,6 +350,11 @@ export default function AdminPage() {
     ? selected?.showcase_sprite_status ?? 'generating'
     : 'generating';
   const generation = generationProgress(generationStatus, generationElapsedSeconds);
+  const qaProblemFrames = useMemo(
+    () => problemFrameNumbers(selected?.showcase_sprite_quality),
+    [selected?.showcase_sprite_quality],
+  );
+  const qaProblemFrameKey = qaProblemFrames.join(',');
 
   function showToast(message: string) {
     setToast(message);
@@ -372,6 +426,14 @@ export default function AdminPage() {
   }, [selectedId]);
 
   useEffect(() => {
+    setSelectedPatchFrames(
+      qaProblemFrameKey
+        ? qaProblemFrameKey.split(',').map(Number)
+        : [],
+    );
+  }, [selectedId, selected?.showcase_sprite_version_id, qaProblemFrameKey]);
+
+  useEffect(() => {
     if (!generationJob) {
       setGenerationElapsedSeconds(0);
       return undefined;
@@ -411,6 +473,17 @@ export default function AdminPage() {
       window.clearInterval(timer);
     };
   }, [generationJob]);
+
+  useEffect(() => {
+    if (composeWorkflowTeamRef.current !== null) return;
+    const activeTeam = teams.find((team) => isGenerationStage(team.showcase_sprite_status));
+    if (!activeTeam) return;
+    if (selectedId !== activeTeam.id) {
+      setSelectedId(activeTeam.id);
+      setTeamDraft(draftFromTeam(activeTeam));
+    }
+    void runComposeWorkflow(activeTeam.id, false);
+  }, [teams, selectedId]);
 
   function chooseTeam(team: Team) {
     setSelectedId(team.id);
@@ -475,34 +548,178 @@ export default function AdminPage() {
     }
   }
 
-  async function composeShowcaseSprite() {
-    if (!selected) return;
+  async function getComposeStatusUntilAvailable(teamId: number) {
+    let retrySeconds = 3;
+    for (;;) {
+      try {
+        return await apiRequest<ShowcaseComposeResponse>(
+          `/teams/${teamId}/capture/compose/status`,
+          { cache: 'no-store' },
+        );
+      } catch (error) {
+        if (!isRetryableRequestError(error)) throw error;
+        const message = error instanceof Error ? error.message : '서버 연결을 다시 확인하는 중입니다';
+        setTeams((current) => current.map((team) => (
+          team.id === teamId
+            ? {
+                ...team,
+                showcase_sprite_status: isGenerationStage(team.showcase_sprite_status)
+                  ? team.showcase_sprite_status
+                  : 'generating',
+                showcase_sprite_error: `${message} · 자동으로 다시 연결합니다.`,
+              }
+            : team
+        )));
+        await wait(retrySeconds * 1000);
+        retrySeconds = Math.min(30, retrySeconds + 3);
+      }
+    }
+  }
+
+  async function startComposeUntilAvailable(teamId: number) {
+    for (;;) {
+      try {
+        return await apiRequest<ShowcaseComposeResponse>(
+          `/teams/${teamId}/capture/compose/start`,
+          { method: 'POST' },
+        );
+      } catch (error) {
+        if (!isRetryableRequestError(error)) throw error;
+        const message = error instanceof Error ? error.message : '생성 작업 시작을 확인하는 중입니다';
+        setTeams((current) => current.map((team) => (
+          team.id === teamId
+            ? {
+                ...team,
+                showcase_sprite_status: 'generating',
+                showcase_sprite_error: `${message} · 자동으로 다시 연결합니다.`,
+              }
+            : team
+        )));
+        await wait(GENERATION_RETRY_SECONDS * 1000);
+      }
+    }
+  }
+
+  async function startFramePatchUntilAvailable(teamId: number, frames: number[]) {
+    for (;;) {
+      try {
+        return await apiRequest<ShowcaseComposeResponse>(
+          `/teams/${teamId}/capture/compose/patch/start`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frames }),
+          },
+        );
+      } catch (error) {
+        if (!isRetryableRequestError(error)) throw error;
+        const message = error instanceof Error ? error.message : '문제 컷 교체 작업 시작을 확인하는 중입니다';
+        setTeams((current) => current.map((team) => (
+          team.id === teamId
+            ? {
+                ...team,
+                showcase_sprite_status: 'generating',
+                showcase_sprite_error: `${message} · 자동으로 다시 연결합니다.`,
+              }
+            : team
+        )));
+        await wait(GENERATION_RETRY_SECONDS * 1000);
+      }
+    }
+  }
+
+  async function runComposeWorkflow(teamId: number, restart: boolean, patchFrames: number[] = []) {
+    if (composeWorkflowTeamRef.current !== null) return;
+    composeWorkflowTeamRef.current = teamId;
     setComposingSprite(true);
-    setGenerationJob({ teamId: selected.id, startedAt: Date.now() });
+    setGenerationJob({ teamId, startedAt: Date.now() });
     setTeams((current) => current.map((team) => (
-      team.id === selected.id
+      team.id === teamId
         ? { ...team, showcase_sprite_status: 'generating', showcase_sprite_error: null }
         : team
     )));
     try {
-      const response = await apiRequest<ShowcaseComposeResponse>(`/teams/${selected.id}/capture/compose`, {
-        method: 'POST',
-      });
-      updateTeam(response.team);
-      void refreshVersions(response.team.id);
-      showToast(`${response.team.name}의 마스터 고정 25컷을 만들었습니다. 실제 동작을 확인해주세요.`);
+      let patchWorkflow = patchFrames.length > 0;
+      let response = patchFrames.length
+        ? await startFramePatchUntilAvailable(teamId, patchFrames)
+        : restart
+          ? await startComposeUntilAvailable(teamId)
+          : await getComposeStatusUntilAvailable(teamId);
+
+      for (;;) {
+        patchWorkflow = patchWorkflow || Boolean(response.frame_patch);
+        updateTeam(response.team);
+        if (response.next_action === 'complete') {
+          void refreshVersions(response.team.id);
+          showToast(patchWorkflow
+            ? `${response.team.name}의 선택한 문제 컷을 교체하고 전체 QA를 마쳤습니다.`
+            : `${response.team.name}의 마스터 고정 25컷을 만들었습니다. 실제 동작을 확인해주세요.`);
+          break;
+        }
+        if (response.next_action === 'failed') {
+          throw new Error(response.team.showcase_sprite_error || '25컷 생성 작업이 중단되었습니다');
+        }
+        if (response.next_action === 'wait' || response.next_action === 'retry') {
+          await wait((response.retry_after_seconds ?? GENERATION_RETRY_SECONDS) * 1000);
+          response = await getComposeStatusUntilAvailable(teamId);
+          continue;
+        }
+
+        const action = response.next_action === 'review'
+          ? 'review'
+          : response.next_action === 'patch' ? 'patch' : 'generate';
+        try {
+          response = await apiRequest<ShowcaseComposeResponse>(
+            `/teams/${teamId}/capture/compose/${action}`,
+            { method: 'POST' },
+          );
+        } catch (error) {
+          if (!isRetryableRequestError(error)) throw error;
+          const message = error instanceof Error ? error.message : '생성 서버 응답이 지연되고 있습니다';
+          setTeams((current) => current.map((team) => (
+            team.id === teamId
+              ? {
+                  ...team,
+                  showcase_sprite_error: `${message} · 저장된 단계부터 자동으로 다시 이어갑니다.`,
+                }
+              : team
+          )));
+          await wait(GENERATION_RETRY_SECONDS * 1000);
+          response = await getComposeStatusUntilAvailable(teamId);
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : '25컷 아틀라스를 만들지 못했습니다';
       setTeams((current) => current.map((team) => (
-        team.id === selected.id
+        team.id === teamId
           ? { ...team, showcase_sprite_status: 'failed', showcase_sprite_error: message }
           : team
       )));
       showToast(message);
     } finally {
+      composeWorkflowTeamRef.current = null;
       setComposingSprite(false);
       setGenerationJob(null);
     }
+  }
+
+  async function composeShowcaseSprite() {
+    if (!selected) return;
+    await runComposeWorkflow(selected.id, true);
+  }
+
+  async function regenerateSelectedFrames() {
+    if (!selected || selectedPatchFrames.length === 0) return;
+    const frames = [...selectedPatchFrames].sort((a, b) => a - b);
+    await runComposeWorkflow(selected.id, false, frames);
+  }
+
+  function togglePatchFrame(frame: number, checked: boolean) {
+    setSelectedPatchFrames((current) => (
+      checked
+        ? [...new Set([...current, frame])].sort((a, b) => a - b)
+        : current.filter((candidate) => candidate !== frame)
+    ));
   }
 
   async function approveShowcaseSprite(force = false) {
@@ -604,7 +821,7 @@ export default function AdminPage() {
                 </div>
                 <input ref={characterInputRef} type="file" accept="image/png,image/jpeg" required />
                 <div className="character-upload-actions">
-                  <button className="primary" disabled={!selected || uploadingCapture}>
+                  <button className="primary" disabled={!selected || uploadingCapture || composingSprite}>
                     {uploadingCapture ? '사진 처리 중…' : '사진 품질검사·자동 보정'}
                   </button>
                   <span className="capture-tip">{spriteStatusLabel(captureStatus(selected))}</span>
@@ -703,7 +920,7 @@ export default function AdminPage() {
                     ? 'QA 반영해 25컷 다시 생성'
                     : 'AI로 마스터 고정 25컷 생성'}
               </button>
-              <span>보통 2~4분 걸립니다. 재생성하면 현재 QA의 프레임별 문제도 자동으로 반영합니다.</span>
+              <span>몇 분이 걸려도 완료될 때까지 단계별 저장·자동 재시도합니다. 현재 QA의 프레임별 문제도 반영합니다.</span>
             </div>
             {generationActive && (
               <div className="sprite-generation-live" role="status" aria-live="polite">
@@ -744,7 +961,7 @@ export default function AdminPage() {
                     );
                   })}
                 </ol>
-                <p>예상 시간은 이미지 복잡도와 AI 서버 상태에 따라 달라질 수 있습니다. 이 화면을 그대로 두면 완료 즉시 검수 화면으로 전환됩니다.</p>
+                <p>예상 시간은 이미지 복잡도와 AI 서버 상태에 따라 달라질 수 있습니다. 504나 일시적인 연결 오류가 나도 저장된 단계부터 자동 재시도하며, 새로고침 후 다시 접속해도 이어서 진행합니다.</p>
               </div>
             )}
           </section>
@@ -831,9 +1048,33 @@ export default function AdminPage() {
                         aiIssue={selected.showcase_sprite_quality?.ai.frames.find(
                           (candidate) => candidate.frame === frame.frame,
                         )?.issue}
+                        selectable={qaProblemFrames.includes(frame.frame)}
+                        selected={selectedPatchFrames.includes(frame.frame)}
+                        onSelectionChange={togglePatchFrame}
                       />
                     ))}
                   </div>
+                  {qaProblemFrames.length > 0 && (
+                    <div className="sprite-frame-patch-actions">
+                      <div>
+                        <strong>문제 컷 {qaProblemFrames.length}개 감지</strong>
+                        <span>
+                          선택한 컷만 새로 만들고 기존 아틀라스의 같은 위치에 교체합니다.
+                          선택하지 않은 컷은 픽셀 그대로 유지됩니다.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={composingSprite || selectedPatchFrames.length === 0}
+                        onClick={() => { void regenerateSelectedFrames(); }}
+                      >
+                        {composingSprite
+                          ? '문제 컷 교체 중…'
+                          : `선택한 ${selectedPatchFrames.length}컷만 재생성`}
+                      </button>
+                    </div>
+                  )}
                 </section>
               )}
 
@@ -875,7 +1116,7 @@ export default function AdminPage() {
                       문제 확인함 · 강제 적용
                     </button>
                   )}
-                <span>문제가 있으면 프레임별 QA를 반영해 마스터 고정 25컷을 다시 생성하세요.</span>
+                <span>문제 컷만 교체할 수 있으며, 필요하면 위의 전체 25컷 재생성도 사용할 수 있습니다.</span>
               </div>
             </section>
           )}

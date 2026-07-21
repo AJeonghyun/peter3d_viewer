@@ -103,6 +103,23 @@ body:has(.retreat-editor) {
   gap: 6px;
 }
 
+.editor-obs-section {
+  border-color: #b7d9d7;
+  background: linear-gradient(145deg, #f7fffe, #f2faf9);
+}
+
+.editor-section__help {
+  margin: -2px 0 0;
+  color: #62777f;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.editor-obs-links {
+  display: grid;
+  gap: 6px;
+}
+
 .editor-page-tabs button,
 .editor-section button,
 .workspace-toolbar button {

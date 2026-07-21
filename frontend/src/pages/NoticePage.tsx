@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
+import { getEffectiveDisplayMode } from '../retreat/displayMode';
 import type { RetreatGroup, NoticeCharacterRotationSettings } from '../retreat/types';
 import '../styles/retreat-notice.css';
 
@@ -81,6 +82,7 @@ function nextNoticeTarget(
 
 export default function NoticePage({ preview = false }: NoticePageProps) {
   const { settings } = useRetreat();
+  const backgroundDisplayMode = getEffectiveDisplayMode(settings.transparentBackground);
   const { notice } = settings;
   const [tick, setTick] = useState(0);
   const motionRef = useRef<Record<string, NoticeActorMotion>>({});
@@ -195,6 +197,8 @@ export default function NoticePage({ preview = false }: NoticePageProps) {
       className="retreat-notice-page"
       data-display-page="notice"
       data-preview={preview ? 'true' : 'false'}
+      data-obs={backgroundDisplayMode.obsMode ? 'true' : 'false'}
+      data-background-mode={backgroundDisplayMode.backgroundMode}
       data-scene={notice.scene}
       data-enter-mode={notice.rotation.enterMode}
       data-exit-mode={notice.rotation.exitMode}

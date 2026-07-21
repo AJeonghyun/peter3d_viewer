@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#173f55">
+  <title>베드로 키우기 2D 월드 콘셉트</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #102d3d;
+      --paper: #f6f1e6;
+      --lake: #4fa3bd;
+      --amber: #efae56;
+      --line: rgba(255, 255, 255, 0.18);
+      --panel: rgba(12, 39, 53, 0.87);
+      --character-size: clamp(80px, 8.4vw, 132px);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #173f55;
+      font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .prototype {
+      position: relative;
+      width: 100vw;
+      min-height: 100dvh;
+      overflow: hidden;
+      isolation: isolate;
+      background: #173f55;
+    }
+
+    .map-art {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .map-tone {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(8, 34, 50, 0.1), transparent 25%),
+        linear-gradient(90deg, rgba(8, 34, 50, 0.14), transparent 22%, transparent 76%, rgba(8, 34, 50, 0.14));
+    }
+
+    .topbar {
+      position: absolute;
+      z-index: 20;
+      top: max(14px, env(safe-area-inset-top));
+      left: 16px;
+      right: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      height: 64px;
+      padding: 9px 10px 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      color: var(--paper);
+      background: rgba(11, 42, 56, 0.78);
+      box-shadow: 0 14px 36px rgba(9, 34, 48, 0.22);
+      backdrop-filter: blur(14px) saturate(125%);
+      -webkit-backdrop-filter: blur(14px) saturate(125%);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 11px;
+    }
+
+    .brand-mark {
+      display: grid;
+      flex: none;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border-radius: 12px;
+      color: #17384a;
+      background: var(--amber);
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.26);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .brand strong,
+    .brand small {
+      display: block;
+      white-space: nowrap;
+    }
+
+    .brand strong {
+      overflow: hidden;
+      font-size: 18px;
+      letter-spacing: -0.04em;
+      text-overflow: ellipsis;
+    }
+
+    .brand small {
+      margin-top: 2px;
+      color: rgba(246, 241, 230, 0.66);
+      font-size: 10px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .world-count {
+      display: grid;
+      min-width: 84px;
+      gap: 1px;
+      padding: 6px 12px;
+      border-right: 1px solid var(--line);
+      text-align: right;
+    }
+
+    .world-count strong {
+      color: #ffe0a5;
+      font-size: 13px;
+    }
+
+    .world-count span {
+      color: rgba(246, 241, 230, 0.58);
+      font-size: 9px;
+    }
+
+    .find-button {
+      min-height: 42px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 12px;
+      color: #17384a;
+      background: #f3bc66;
+      box-shadow: 0 7px 20px rgba(89, 48, 19, 0.2);
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform 160ms ease, filter 160ms ease;
+    }
+
+    .find-button:hover {
+      filter: brightness(1.05);
+    }
+
+    .find-button:active {
+      transform: translateY(1px) scale(0.98);
+    }
+
+    .lane {
+      position: absolute;
+      z-index: 5;
+      left: 3%;
+      right: 3%;
+      height: var(--character-size);
+      transform: translateY(-100%);
+      pointer-events: none;
+    }
+
+    .lane-top {
+      top: 38.4%;
+    }
+
+    .lane-middle {
+      top: 61.3%;
+    }
+
+    .lane-bottom {
+      top: 91.2%;
+    }
+
+    .lane-title {
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 7px);
+      padding: 5px 9px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.9);
+      background: rgba(10, 48, 62, 0.64);
+      box-shadow: 0 7px 18px rgba(8, 35, 48, 0.15);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .walker {
+      position: absolute;
+      bottom: -2px;
+      left: var(--x);
+      width: calc(var(--character-size) * 0.68);
+      height: var(--character-size);
+      pointer-events: auto;
+      will-change: transform;
+      animation: patrol var(--duration) cubic-bezier(0.42, 0, 0.58, 1) var(--delay) infinite;
+    }
+
+    .walker-button {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      cursor: pointer;
+      animation: face var(--duration) step-end var(--delay) infinite;
+    }
+
+    .walker-button:focus-visible {
+      border-radius: 12px;
+      outline: 3px solid #ffe0a5;
+      outline-offset: 3px;
+    }
+
+    .peter-sprite {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: calc(var(--character-size) * 0.68);
+      height: var(--character-size);
+      object-fit: contain;
+      transform: translateX(-50%);
+      transform-origin: center bottom;
+      filter: drop-shadow(0 7px 5px rgba(20, 35, 35, 0.28));
+      animation: step-bob 520ms ease-in-out infinite alternate;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .team-tag {
+      position: absolute;
+      z-index: 2;
+      left: 50%;
+      bottom: calc(100% - 13px);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 36px;
+      justify-content: center;
+      padding: 4px 7px;
+      border: 1px solid rgba(255, 255, 255, 0.68);
+      border-radius: 8px;
+      color: #163649;
+      background: rgba(255, 250, 235, 0.92);
+      box-shadow: 0 5px 12px rgba(9, 34, 48, 0.2);
+      font-size: 9px;
+      font-weight: 900;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    .team-tag::before {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--team-color);
+      content: "";
+    }
+
+    .walker.selected {
+      z-index: 10;
+      animation-play-state: paused;
+      transform: translateX(var(--travel));
+    }
+
+    .walker.selected .walker-button {
+      animation-play-state: paused;
+    }
+
+    .walker.selected .peter-sprite {
+      filter:
+        drop-shadow(0 0 0.5px #fff)
+        drop-shadow(0 9px 8px rgba(19, 47, 57, 0.34));
+      animation: selected-bob 1.2s ease-in-out infinite alternate;
+    }
+
+    .walker.selected .team-tag {
+      color: #163649;
+      background: #ffe0a5;
+      box-shadow: 0 0 0 3px rgba(255, 224, 165, 0.25), 0 8px 18px rgba(9, 34, 48, 0.24);
+    }
+
+    .info-panel {
+      position: absolute;
+      z-index: 30;
+      top: 94px;
+      right: 18px;
+      width: min(330px, calc(100vw - 36px));
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      color: var(--paper);
+      background: var(--panel);
+      box-shadow: 0 20px 54px rgba(7, 27, 39, 0.34);
+      backdrop-filter: blur(18px) saturate(128%);
+      -webkit-backdrop-filter: blur(18px) saturate(128%);
+      transform: translateX(calc(100% + 32px));
+      opacity: 0;
+      transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms ease;
+      pointer-events: none;
+    }
+
+    .info-panel.open {
+      transform: translateX(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-kicker {
+      margin: 0 0 5px;
+      color: #f3bc66;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.05em;
+    }
+
+    .panel-head p {
+      margin: 5px 0 0;
+      color: rgba(246, 241, 230, 0.63);
+      font-size: 11px;
+    }
+
+    .close-button {
+      display: grid;
+      flex: none;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--paper);
+      background: rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+    }
+
+    .level-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 16px 0 12px;
+      padding: 11px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .level-row span {
+      color: rgba(246, 241, 230, 0.64);
+      font-size: 10px;
+    }
+
+    .level-row strong {
+      color: #ffe0a5;
+      font-size: 13px;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 78px 1fr;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .radar {
+      position: relative;
+      width: 78px;
+      aspect-ratio: 1;
+    }
+
+    .radar::before,
+    .radar::after,
+    .radar-fill {
+      position: absolute;
+      inset: 8px;
+      clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+      content: "";
+    }
+
+    .radar::before {
+      border: 1px solid rgba(255, 255, 255, 0.34);
+      background:
+        linear-gradient(45deg, transparent 49.4%, rgba(255, 255, 255, 0.16) 50%, transparent 50.6%),
+        linear-gradient(-45deg, transparent 49.4%, rgba(255, 255, 255, 0.16) 50%, transparent 50.6%);
+    }
+
+    .radar::after {
+      inset: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .radar-fill {
+      inset: 15px 11px 12px 18px;
+      background: rgba(243, 188, 102, 0.6);
+      filter: drop-shadow(0 0 5px rgba(243, 188, 102, 0.24));
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stat {
+      padding: 8px 9px;
+      border-left: 2px solid rgba(243, 188, 102, 0.72);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .stat span,
+    .stat strong {
+      display: block;
+    }
+
+    .stat span {
+      color: rgba(246, 241, 230, 0.56);
+      font-size: 9px;
+    }
+
+    .stat strong {
+      margin-top: 2px;
+      font-size: 13px;
+    }
+
+    .panel-note {
+      margin: 14px 0 0;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      color: rgba(246, 241, 230, 0.68);
+      font-size: 10px;
+      line-height: 1.55;
+    }
+
+    .hint {
+      position: absolute;
+      z-index: 15;
+      left: 18px;
+      bottom: max(15px, env(safe-area-inset-bottom));
+      max-width: min(360px, calc(100vw - 36px));
+      padding: 10px 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: rgba(255, 255, 255, 0.9);
+      background: rgba(8, 39, 53, 0.72);
+      box-shadow: 0 12px 28px rgba(9, 34, 48, 0.17);
+      font-size: 10px;
+      font-weight: 700;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: opacity 220ms ease;
+    }
+
+    .hint.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    @keyframes patrol {
+      0%,
+      45% {
+        transform: translateX(0);
+      }
+      50%,
+      95% {
+        transform: translateX(var(--travel));
+      }
+      100% {
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes face {
+      0%,
+      47% {
+        transform: scaleX(1);
+      }
+      50%,
+      97% {
+        transform: scaleX(-1);
+      }
+      100% {
+        transform: scaleX(1);
+      }
+    }
+
+    @keyframes step-bob {
+      from {
+        transform: translateX(-50%) translateY(0) rotate(-0.8deg);
+      }
+      to {
+        transform: translateX(-50%) translateY(-3px) rotate(0.8deg);
+      }
+    }
+
+    @keyframes selected-bob {
+      from {
+        transform: translateX(-50%) translateY(0) scale(1.04);
+      }
+      to {
+        transform: translateX(-50%) translateY(-4px) scale(1.04);
+      }
+    }
+
+    @media (max-width: 760px) {
+      :root {
+        --character-size: clamp(67px, 12.5vw, 96px);
+      }
+
+      .topbar {
+        left: 10px;
+        right: 10px;
+        height: 58px;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+      }
+
+      .brand strong {
+        font-size: 15px;
+      }
+
+      .brand small,
+      .world-count {
+        display: none;
+      }
+
+      .find-button {
+        min-height: 38px;
+        padding: 0 12px;
+        font-size: 11px;
+      }
+
+      .info-panel {
+        top: auto;
+        right: 10px;
+        bottom: 10px;
+        left: 10px;
+        width: auto;
+        transform: translateY(calc(100% + 24px));
+      }
+
+      .info-panel.open {
+        transform: translateY(0);
+      }
+
+      .lane-title {
+        display: none;
+      }
+
+      .team-tag {
+        padding: 3px 5px;
+        font-size: 8px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .walker,
+      .walker-button,
+      .peter-sprite {
+        animation: none;
+      }
+
+      .info-panel {
+        transition: none;
+      }
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+      .topbar,
+      .info-panel,
+      .hint,
+      .lane-title {
+        background: #123b50;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="prototype" aria-label="베드로 키우기 2D 월드 콘셉트">
+    <img class="map-art" src="./assets/galilee-three-lane-map.png" alt="갈릴리 호수 위에 세 줄의 길이 놓인 2D 게임 맵">
+    <div class="map-tone" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">153</span>
+        <div>
+          <strong>베드로 키우기</strong>
+          <small>갈릴리에서 함께 걷는 25개 조</small>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="world-count">
+          <strong>25 / 25</strong>
+          <span>베드로 접속 중</span>
+        </div>
+        <button class="find-button" id="findTeamButton" type="button">우리 조 찾기</button>
+      </div>
+    </header>
+
+    <section class="lane lane-top" data-lane="top" aria-label="부르심의 길">
+      <span class="lane-title">부르심의 길</span>
+    </section>
+    <section class="lane lane-middle" data-lane="middle" aria-label="함께 걷는 길">
+      <span class="lane-title">함께 걷는 길</span>
+    </section>
+    <section class="lane lane-bottom" data-lane="bottom" aria-label="사명의 길">
+      <span class="lane-title">사명의 길</span>
+    </section>
+
+    <aside class="info-panel" id="infoPanel" aria-live="polite" aria-hidden="true">
+      <div class="panel-head">
+        <div>
+          <p class="panel-kicker" id="panelLane">함께 걷는 길</p>
+          <h2 id="panelTeam">4조 베드로</h2>
+          <p id="panelTitle">물 위를 향해 한 걸음</p>
+        </div>
+        <button class="close-button" id="closePanel" type="button" aria-label="조 정보 닫기">×</button>
+      </div>
+      <div class="level-row">
+        <span>현재 성장</span>
+        <strong id="panelLevel">Lv. 12 · 달란트 840</strong>
+      </div>
+      <div class="stat-grid">
+        <div class="radar" aria-hidden="true"><span class="radar-fill"></span></div>
+        <div class="stats">
+          <div class="stat"><span>용기</span><strong id="statCourage">72</strong></div>
+          <div class="stat"><span>현명</span><strong id="statWisdom">64</strong></div>
+          <div class="stat"><span>진실</span><strong id="statTruth">81</strong></div>
+          <div class="stat"><span>열정</span><strong id="statPassion">76</strong></div>
+        </div>
+      </div>
+      <p class="panel-note" id="panelNote">오늘 협동 게임에서 진실이 8 올랐어요. 다음 목표는 열정 80입니다.</p>
+    </aside>
+
+    <div class="hint" id="hint">베드로를 터치하면 조의 성장 정보가 열립니다.</div>
+  </main>
+
+  <script>
+    const laneNames = {
+      top: "부르심의 길",
+      middle: "함께 걷는 길",
+      bottom: "사명의 길"
+    };
+
+    const teams = Array.from({ length: 25 }, (_, index) => {
+      const team = index + 1;
+      const lane = team <= 9 ? "top" : team <= 17 ? "middle" : "bottom";
+      const laneIndex = lane === "top" ? index : lane === "middle" ? index - 9 : index - 17;
+      const laneCount = lane === "top" ? 9 : 8;
+      const x = 4 + laneIndex * (82 / Math.max(1, laneCount - 1));
+      const palettes = ["#e66d58", "#4d9ca5", "#e5aa4e", "#6c8a61", "#9b70a7"];
+      return {
+        team,
+        lane,
+        x,
+        color: palettes[index % palettes.length],
+        travel: index % 2 === 0 ? "4.8vw" : "-4.8vw",
+        duration: 8.8 + (index % 5) * 1.05,
+        delay: -((index * 1.47) % 9),
+        level: 8 + (team % 9),
+        talents: 410 + team * 37,
+        courage: 48 + (team * 6) % 42,
+        wisdom: 45 + (team * 8) % 44,
+        truth: 52 + (team * 7) % 39,
+        passion: 50 + (team * 9) % 40
+      };
+    });
+
+    const infoPanel = document.querySelector("#infoPanel");
+    const hint = document.querySelector("#hint");
+    let selectedWalker = null;
+
+    function teamTitle(team) {
+      const titles = [
+        "깊은 곳에 그물을 내리는 사람",
+        "친구의 손을 먼저 잡는 사람",
+        "두려움보다 믿음을 선택한 사람",
+        "물 위를 향해 한 걸음",
+        "작은 불씨를 지키는 사람"
+      ];
+      return titles[(team - 1) % titles.length];
+    }
+
+    function makeWalker(team) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "walker";
+      wrapper.style.setProperty("--x", `${team.x}%`);
+      wrapper.style.setProperty("--travel", team.travel);
+      wrapper.style.setProperty("--duration", `${team.duration}s`);
+      wrapper.style.setProperty("--delay", `${team.delay}s`);
+      wrapper.style.setProperty("--team-color", team.color);
+
+      const button = document.createElement("button");
+      button.className = "walker-button";
+      button.type = "button";
+      button.setAttribute("aria-label", `${team.team}조 베드로 정보 보기`);
+      button.innerHTML = `
+        <span class="team-tag">${team.team}조</span>
+        <img class="peter-sprite" src="./assets/peter-walk.png" alt="">
+      `;
+      button.addEventListener("click", () => selectTeam(team, wrapper));
+      wrapper.append(button);
+      return wrapper;
+    }
+
+    function selectTeam(team, walker) {
+      if (selectedWalker) selectedWalker.classList.remove("selected");
+      selectedWalker = walker;
+      walker.classList.add("selected");
+      document.querySelector("#panelLane").textContent = laneNames[team.lane];
+      document.querySelector("#panelTeam").textContent = `${team.team}조 베드로`;
+      document.querySelector("#panelTitle").textContent = teamTitle(team.team);
+      document.querySelector("#panelLevel").textContent = `Lv. ${team.level} · 달란트 ${team.talents}`;
+      document.querySelector("#statCourage").textContent = team.courage;
+      document.querySelector("#statWisdom").textContent = team.wisdom;
+      document.querySelector("#statTruth").textContent = team.truth;
+      document.querySelector("#statPassion").textContent = team.passion;
+      document.querySelector("#panelNote").textContent =
+        `오늘 프로그램 기록이 반영됐어요. ${team.team}조의 다음 성장 목표를 함께 확인해 보세요.`;
+      infoPanel.classList.add("open");
+      infoPanel.setAttribute("aria-hidden", "false");
+      hint.classList.add("hidden");
+    }
+
+    function closePanel() {
+      infoPanel.classList.remove("open");
+      infoPanel.setAttribute("aria-hidden", "true");
+      if (selectedWalker) {
+        selectedWalker.classList.remove("selected");
+        selectedWalker = null;
+      }
+    }
+
+    teams.forEach((team) => {
+      document.querySelector(`[data-lane="${team.lane}"]`).append(makeWalker(team));
+    });
+
+    document.querySelector("#closePanel").addEventListener("click", closePanel);
+    document.querySelector("#findTeamButton").addEventListener("click", () => {
+      const team = teams[3];
+      const walker = document.querySelectorAll(".walker")[3];
+      selectTeam(team, walker);
+      walker.querySelector("button").focus({ preventScroll: true });
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closePanel();
+    });
+  </script>
+</body>
+</html>

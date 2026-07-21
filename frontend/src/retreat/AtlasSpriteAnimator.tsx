@@ -6,6 +6,7 @@ import type { ShowcaseSpriteContract } from '../types/api';
 interface AtlasSpriteAnimatorProps {
   spriteUrl: string;
   animation: AnimationName;
+  fixedFrame?: number;
   playing?: boolean;
   flipX?: boolean;
   label: string;
@@ -51,6 +52,7 @@ function frameDurationMs(animation: AnimationName) {
 function AtlasSpriteAnimatorComponent({
   spriteUrl,
   animation,
+  fixedFrame,
   playing = true,
   flipX = false,
   label,
@@ -63,7 +65,9 @@ function AtlasSpriteAnimatorComponent({
   const [failed, setFailed] = useState(false);
   const [frameOffset, setFrameOffset] = useState(0);
   const fixedMaster = layout === 'fixed-5x5' || isFixedMasterContract(contract);
-  const sequence = FIXED_MASTER_SEQUENCES[animation] ?? FIXED_MASTER_SEQUENCES.idle;
+  const sequence = fixedMaster && fixedFrame !== undefined
+    ? [Math.max(0, Math.min(24, Math.round(fixedFrame)))]
+    : FIXED_MASTER_SEQUENCES[animation] ?? FIXED_MASTER_SEQUENCES.idle;
   const frame = sequence[frameOffset % sequence.length] ?? 0;
   const columns = fixedMaster ? 5 : 4;
   const rows = fixedMaster ? 5 : 3;
@@ -96,7 +100,7 @@ function AtlasSpriteAnimatorComponent({
 
   useEffect(() => {
     setFrameOffset(0);
-  }, [animation, spriteUrl]);
+  }, [animation, fixedFrame, spriteUrl]);
 
   useEffect(() => {
     if (!fixedMaster || !playing || sequence.length <= 1) return undefined;
@@ -120,6 +124,7 @@ function AtlasSpriteAnimatorComponent({
     <div
       className={`atlas-sprite-animator ${className}`.trim()}
       data-animation={animation}
+      data-fixed-frame={fixedFrame}
       data-layout={fixedMaster ? 'fixed-5x5' : 'legacy-4x3'}
       data-playing={playing ? 'true' : 'false'}
       data-ready={preparedUrl ? 'true' : 'false'}

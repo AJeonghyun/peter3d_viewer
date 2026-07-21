@@ -73,6 +73,7 @@ export const DEFAULT_RETREAT_SETTINGS: RetreatSettings = {
   version: 1,
   currentPage: 'group-layout',
   animationPlaying: true,
+  transparentBackground: false,
   groups: createDefaultGroups(),
   seatingPlans: createDefaultSeatingPlans(),
   groupLayout: {

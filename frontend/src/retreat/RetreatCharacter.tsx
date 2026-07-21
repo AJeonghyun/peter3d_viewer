@@ -6,9 +6,26 @@ import { AtlasSpriteAnimator } from './AtlasSpriteAnimator';
 import { loadSpriteAsset } from './persistence';
 import type { RetreatGroup } from './types';
 
+const FIXED_MASTER_URL = '/assets/peter-sober/peter-sober-master.png';
+const CAMPFIRE_MASTER_CONTRACT = {
+  id: 'fixed-peter-master-edit-v5',
+  version: 5,
+  layout: '5x5',
+  rows: 5,
+  columns: 5,
+  frame_count: 25,
+} as const;
+
+function supportsCampfirePoses(contract: RetreatGroup['spriteAtlasContract']) {
+  const version = Number(contract?.version);
+  return version >= CAMPFIRE_MASTER_CONTRACT.version
+    || contract?.id === CAMPFIRE_MASTER_CONTRACT.id;
+}
+
 interface RetreatCharacterProps {
   group: RetreatGroup;
   animation?: AnimationName;
+  fixedFrame?: number;
   playing?: boolean;
   flipX?: boolean;
   respectReducedMotion?: boolean;
@@ -18,6 +35,7 @@ interface RetreatCharacterProps {
 function RetreatCharacterComponent({
   group,
   animation = group.defaultAnimation,
+  fixedFrame,
   playing = true,
   flipX = false,
   respectReducedMotion = true,
@@ -77,6 +95,12 @@ function RetreatCharacterComponent({
   const singleImage = (uploadedUrl || group.spriteSheetUrl) && group.spriteFrameCount <= 1
     ? uploadedUrl || group.spriteSheetUrl
     : '';
+  const useGroupAtlas = Boolean(group.spriteAtlasUrl)
+    && (fixedFrame === undefined || supportsCampfirePoses(group.spriteAtlasContract));
+  const atlasUrl = useGroupAtlas
+    ? group.spriteAtlasUrl || FIXED_MASTER_URL
+    : FIXED_MASTER_URL;
+  const atlasContract = useGroupAtlas ? group.spriteAtlasContract : CAMPFIRE_MASTER_CONTRACT;
 
   return (
     <div
@@ -85,13 +109,14 @@ function RetreatCharacterComponent({
       data-group-id={group.id}
       data-animation={animation}
     >
-      {group.spriteAtlasUrl ? (
+      {group.spriteAtlasUrl || fixedFrame !== undefined ? (
         <AtlasSpriteAnimator
-          spriteUrl={group.spriteAtlasUrl}
+          spriteUrl={atlasUrl}
           animation={animation}
+          fixedFrame={fixedFrame}
           playing={playing}
           flipX={flipX}
-          contract={group.spriteAtlasContract}
+          contract={atlasContract}
           label={`${group.groupName} 캐릭터`}
         />
       ) : singleImage ? (

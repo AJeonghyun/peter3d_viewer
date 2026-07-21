@@ -16,6 +16,7 @@ import {
   saveRetreatSettings,
 } from './persistence';
 import type { RetreatGroup, RetreatSettings } from './types';
+import { getEffectiveDisplayMode } from './displayMode';
 
 interface RetreatContextValue {
   settings: RetreatSettings;
@@ -79,6 +80,18 @@ export function RetreatProvider({ children }: PropsWithChildren) {
     const timeout = window.setTimeout(() => saveRetreatSettings(settings), 180);
     return () => window.clearTimeout(timeout);
   }, [settings]);
+
+  useEffect(() => {
+    const mode = getEffectiveDisplayMode(settings.transparentBackground);
+    const root = document.documentElement;
+    root.dataset.obs = mode.obsMode ? 'true' : 'false';
+    root.dataset.backgroundMode = mode.backgroundMode;
+
+    return () => {
+      delete root.dataset.obs;
+      delete root.dataset.backgroundMode;
+    };
+  }, [settings.transparentBackground]);
 
   useEffect(() => {
     const channel = new BroadcastChannel('peter-retreat-display');

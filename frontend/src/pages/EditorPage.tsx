@@ -11,6 +11,7 @@ import {
   exportStageImage,
 } from '../retreat/exportImage';
 import { saveSpriteAsset } from '../retreat/persistence';
+import { buildObsDisplayUrl } from '../retreat/displayMode';
 import type {
   CaptureMode,
   ExportFormat,
@@ -143,7 +144,21 @@ export default function EditorPage() {
   }
 
   function openDisplay() {
-    window.open(pageMeta.path, '_blank', 'noopener,noreferrer');
+    const path = settings.transparentBackground
+      ? buildObsDisplayUrl(pageMeta.path)
+      : pageMeta.path;
+    window.open(path, '_blank', 'noopener,noreferrer');
+  }
+
+  async function copyObsUrl(path: string, label: string) {
+    const url = buildObsDisplayUrl(path);
+    try {
+      await navigator.clipboard.writeText(url);
+      setMessage(`${label} OBS URL을 복사했습니다`);
+    } catch {
+      window.prompt('아래 OBS URL을 복사해 주세요.', url);
+      setMessage(`${label} OBS URL을 준비했습니다`);
+    }
   }
 
   async function enterFullscreen() {
@@ -181,6 +196,32 @@ export default function EditorPage() {
             />
             캐릭터 애니메이션 재생
           </label>
+        </section>
+
+        <section className="editor-section editor-obs-section">
+          <h2>OBS 투명 배경</h2>
+          <label className="editor-switch">
+            <input
+              type="checkbox"
+              checked={settings.transparentBackground}
+              onChange={(event) => patchSettings({ transparentBackground: event.target.checked })}
+            />
+            모든 송출 페이지 배경 투명
+          </label>
+          <p className="editor-section__help">
+            켜면 미리보기와 송출 화면 열기에 투명 배경을 적용합니다. OBS에서는 아래 URL을 브라우저 소스로 사용하세요.
+          </p>
+          <div className="editor-obs-links">
+            {PAGE_META.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => void copyObsUrl(item.path, item.label)}
+              >
+                {item.label} OBS URL 복사
+              </button>
+            ))}
+          </div>
         </section>
 
         {settings.currentPage === 'group-layout' && (

@@ -310,6 +310,61 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("student-left footwear", prompt)
         self.assertIn("student-right footwear", prompt)
         self.assertIn("same bottom-center anchor", prompt)
+        self.assertIn("no chroma-green fringe", prompt)
+        self.assertIn("background color must never appear", prompt)
+
+    def test_chroma_cleanup_removes_green_spill_without_recoloring_the_interior(self):
+        cell = Image.new("RGBA", (32, 32), (0, 255, 0, 255))
+        pixels = cell.load()
+
+        # A deliberately green-contaminated one-pixel contour around a brown actor.
+        for y in range(7, 25):
+            for x in range(7, 25):
+                pixels[x, y] = (48, 154, 18, 255)
+        for y in range(8, 24):
+            for x in range(8, 24):
+                pixels[x, y] = (102, 58, 28, 255)
+
+        # An interior green garment patch must not be globally desaturated.
+        for y in range(13, 19):
+            for x in range(12, 20):
+                pixels[x, y] = (22, 178, 42, 255)
+        pixels[10, 10] = (*backend_main.GARMENT_AI_BACKGROUND, 255)
+
+        cleaned = backend_main.remove_connected_cell_background(cell)
+        cleaned_pixels = cleaned.load()
+
+        self.assertEqual(cleaned_pixels[0, 0], (0, 0, 0, 0))
+        self.assertEqual(cleaned_pixels[15, 15][:3], (22, 178, 42))
+        self.assertNotEqual(cleaned_pixels[10, 10][:3], backend_main.GARMENT_AI_BACKGROUND)
+
+        visible_edge_pixels = []
+        for y in range(cleaned.height):
+            for x in range(cleaned.width):
+                red, green, blue, alpha = cleaned_pixels[x, y]
+                if 0 < alpha < 255:
+                    visible_edge_pixels.append((red, green, blue, alpha))
+
+        self.assertTrue(visible_edge_pixels)
+        self.assertFalse(any(
+            green > max(red, blue) + backend_main.CHROMA_SPILL_TOLERANCE
+            for red, green, blue, _ in visible_edge_pixels
+        ))
+
+    def test_atlas_qa_rejects_a_remaining_green_fringe(self):
+        atlas = backend_main.normalize_master_locked_atlas(
+            backend_main.master_reference_for_ai(),
+        )
+        first_cell = atlas.crop((0, 0, 360, 360))
+        bbox = first_cell.getchannel("A").getbbox()
+        self.assertIsNotNone(bbox)
+        atlas.putpixel((bbox[0], round((bbox[1] + bbox[3]) / 2)), (0, 255, 0, 255))
+
+        report = backend_main.analyze_garment_atlas_pixels(atlas)
+
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("chroma_spill", report["frames"][0]["issues"])
+        self.assertGreater(report["frames"][0]["chroma_spill_pixels"], 0)
 
     def test_master_locked_request_sends_master_first_and_omits_gpt_image_2_fidelity(self):
         generated = backend_main.master_reference_for_ai()
@@ -806,7 +861,9 @@ class Peter3DBackendTests(unittest.TestCase):
                 new=AsyncMock(return_value=atlas_quality),
             ) as inspect,
         ):
-            composed = asyncio.run(backend_main.compose_showcase_capture(1))
+            started = asyncio.run(backend_main.start_showcase_capture_compose(1))
+            generated = asyncio.run(backend_main.generate_showcase_capture_atlas(1))
+            composed = asyncio.run(backend_main.review_showcase_capture_atlas(1))
 
         generate.assert_awaited_once()
         inspect.assert_awaited_once()
@@ -814,7 +871,12 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(generate.await_args.kwargs["filename"], "team-1-corrected-peter.png")
         self.assertTrue(callable(generate.await_args.kwargs["on_progress"]))
 
+        self.assertEqual(started["next_action"], "generate")
+        self.assertEqual(generated["status"], "generated")
+        self.assertEqual(generated["next_action"], "review")
+        self.assertEqual(generated["atlas_url"], composed["atlas_url"])
         self.assertEqual(composed["status"], "review")
+        self.assertEqual(composed["next_action"], "complete")
         self.assertEqual(composed["contract"], backend_main.GARMENT_TRANSFER_CONTRACT)
         self.assertEqual(
             composed["team"]["showcase_sprite_contract"]["id"],
@@ -838,6 +900,331 @@ class Peter3DBackendTests(unittest.TestCase):
         restored = asyncio.run(backend_main.restore_sprite_version(1, composed["version"]["id"]))
         self.assertEqual(restored["status"], "ready")
         self.assertEqual(restored["team"]["showcase_sprite_active_url"], composed["atlas_url"])
+
+    def test_compose_generation_timeout_is_queued_for_automatic_retry(self):
+        reference = backend_main.UploadFile(
+            filename="capture.png",
+            file=io.BytesIO(make_garment_capture()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+        with patch(
+            "backend_main.request_capture_quality_review",
+            new=AsyncMock(return_value={
+                "status": "passed",
+                "can_process": True,
+                "summary": "통과",
+                "page_corners": {
+                    "top_left": [0.0, 0.0],
+                    "top_right": [1.0, 0.0],
+                    "bottom_right": [1.0, 1.0],
+                    "bottom_left": [0.0, 1.0],
+                },
+                "checks": {},
+                "issues": [],
+            }),
+        ):
+            asyncio.run(backend_main.process_showcase_capture(1, reference))
+
+        asyncio.run(backend_main.start_showcase_capture_compose(1))
+        with patch(
+            "backend_main.request_master_locked_garment_atlas",
+            new=AsyncMock(side_effect=HTTPException(status_code=504, detail="AI 응답 지연")),
+        ):
+            retry = asyncio.run(backend_main.generate_showcase_capture_atlas(1))
+
+        self.assertEqual(retry["next_action"], "retry")
+        self.assertEqual(retry["status"], "queued")
+        self.assertEqual(
+            retry["retry_after_seconds"],
+            backend_main.COMPOSE_RETRY_AFTER_SECONDS,
+        )
+        self.assertEqual(retry["team"]["showcase_sprite_status"], "generating")
+        self.assertIn("자동 재시도", retry["team"]["showcase_sprite_error"])
+
+    def test_problem_frame_patch_preserves_other_cells_and_creates_a_new_version(self):
+        atlas = backend_main.normalize_master_locked_atlas(
+            backend_main.master_reference_for_ai(),
+        )
+        atlas_bytes = backend_main._image_to_png_bytes(atlas)
+        atlas_name = "source-atlas.png"
+        corrected_name = "corrected-reference.png"
+        (backend_main.UPLOADS_DIR / atlas_name).write_bytes(atlas_bytes)
+        (backend_main.UPLOADS_DIR / corrected_name).write_bytes(make_garment_capture())
+
+        deterministic = backend_main.analyze_garment_atlas_pixels(atlas_bytes)
+        deterministic["status"] = "failed"
+        deterministic["can_approve"] = False
+        deterministic["summary"] = "2 frames failed alpha bbox QA."
+        for frame_index, issue in ((2, "unsafe_margin"), (6, "master_anchor_mismatch")):
+            deterministic["frames"][frame_index]["status"] = "failed"
+            deterministic["frames"][frame_index]["issues"] = [issue]
+        deterministic["issues"] = [
+            "3컷: unsafe_margin",
+            "7컷: master_anchor_mismatch",
+        ]
+        failed_qa = {
+            "status": "failed",
+            "can_approve": False,
+            "summary": "3·7컷 재생성 필요",
+            "deterministic": deterministic,
+            "ai": {
+                "status": "passed",
+                "summary": "나머지 컷 통과",
+                "issues": [],
+                "frames": [],
+                "model": backend_main.OPENAI_SPRITE_QA_MODEL,
+            },
+        }
+        timestamp = backend_main.now_iso()
+        with backend_main.connect_db() as db:
+            db.execute(
+                """
+                INSERT INTO sprite_versions (
+                    id, team_id, contract, status, source_url, corrected_url,
+                    atlas_url, parts_json, qa_json, model, created_at, updated_at
+                ) VALUES (?, 1, ?, 'review', ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "source-version",
+                    backend_main.GARMENT_TRANSFER_CONTRACT,
+                    f"/uploads/{corrected_name}",
+                    f"/uploads/{corrected_name}",
+                    f"/uploads/{atlas_name}",
+                    "{}",
+                    json.dumps(failed_qa),
+                    backend_main.OPENAI_IMAGE_MODEL,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_capture_corrected_url = ?,
+                    showcase_sprite_url = ?,
+                    showcase_sprite_active_url = ?,
+                    showcase_sprite_status = 'review',
+                    showcase_sprite_contract = ?,
+                    showcase_sprite_version_id = ?,
+                    showcase_sprite_active_version_id = ?,
+                    showcase_sprite_quality_status = 'failed',
+                    showcase_sprite_quality_json = ?,
+                    showcase_sprite_updated_at = ?,
+                    updated_at = ?
+                WHERE id = 1
+                """,
+                (
+                    f"/uploads/{corrected_name}",
+                    f"/uploads/{atlas_name}",
+                    f"/uploads/{atlas_name}",
+                    backend_main.GARMENT_TRANSFER_CONTRACT,
+                    "source-version",
+                    "source-version",
+                    json.dumps(failed_qa),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+
+        payload = backend_main.SpriteFramePatchPayload(frames=[7, 3])
+        started = asyncio.run(backend_main.start_showcase_frame_patch(1, payload))
+        resumed = asyncio.run(backend_main.start_showcase_frame_patch(1, payload))
+        self.assertEqual(started["version"]["id"], resumed["version"]["id"])
+        self.assertNotEqual(started["version"]["id"], "source-version")
+        self.assertEqual(started["next_action"], "patch")
+        self.assertEqual(started["frame_patch"]["remaining_frames"], [3, 7])
+
+        replacement = Image.new(
+            "RGBA",
+            (backend_main.GARMENT_ATLAS_CELL_SIZE, backend_main.GARMENT_ATLAS_CELL_SIZE),
+            (0, 0, 0, 0),
+        )
+        ImageDraw.Draw(replacement).rectangle((120, 80, 240, 330), fill=(220, 35, 60, 255))
+        replacement_bytes = backend_main._image_to_png_bytes(replacement)
+        passed_qa = {
+            **failed_qa,
+            "status": "passed",
+            "can_approve": True,
+            "summary": "교체 후 전체 QA 통과",
+            "deterministic": {
+                **deterministic,
+                "status": "passed",
+                "can_approve": True,
+                "summary": "25-frame alpha bbox QA passed.",
+                "issues": [],
+                "frames": [
+                    {**frame, "status": "passed", "issues": []}
+                    for frame in deterministic["frames"]
+                ],
+            },
+        }
+        with (
+            patch(
+                "backend_main.request_master_locked_garment_frame",
+                new=AsyncMock(side_effect=[
+                    HTTPException(status_code=504, detail="3컷 응답 지연"),
+                    replacement_bytes,
+                    replacement_bytes,
+                ]),
+            ) as regenerate,
+            patch(
+                "backend_main.inspect_garment_atlas_quality",
+                new=AsyncMock(return_value=passed_qa),
+            ),
+        ):
+            retry = asyncio.run(backend_main.regenerate_showcase_frame_patch(1))
+            first_patch = asyncio.run(backend_main.regenerate_showcase_frame_patch(1))
+            patched = asyncio.run(backend_main.regenerate_showcase_frame_patch(1))
+            reviewed = asyncio.run(backend_main.review_showcase_capture_atlas(1))
+
+        self.assertEqual(retry["next_action"], "retry")
+        self.assertEqual(retry["frame_patch"]["remaining_frames"], [3, 7])
+        self.assertEqual(regenerate.await_count, 3)
+        self.assertEqual(regenerate.await_args_list[1].args[2], 3)
+        self.assertIn("unsafe_margin", regenerate.await_args_list[1].kwargs["correction"])
+        self.assertEqual(regenerate.await_args_list[2].args[2], 7)
+        self.assertIn("master_anchor_mismatch", regenerate.await_args_list[2].kwargs["correction"])
+        self.assertEqual(first_patch["next_action"], "patch")
+        self.assertEqual(first_patch["frame_patch"]["completed_frames"], [3])
+        self.assertEqual(first_patch["frame_patch"]["remaining_frames"], [7])
+        self.assertEqual(patched["next_action"], "review")
+        self.assertEqual(patched["frame_patch"]["completed_frames"], [3, 7])
+        self.assertEqual(reviewed["next_action"], "complete")
+        self.assertTrue(reviewed["team"]["showcase_sprite_quality"]["can_approve"])
+
+        patched_path = backend_main.UPLOADS_DIR / Path(patched["atlas_url"]).name
+        with Image.open(io.BytesIO(atlas_bytes)) as original, Image.open(patched_path) as updated:
+            for frame in range(1, 26):
+                box = backend_main.garment_atlas_frame_box(frame)
+                if frame in {3, 7}:
+                    self.assertNotEqual(original.crop(box).tobytes(), updated.crop(box).tobytes())
+                else:
+                    self.assertEqual(original.crop(box).tobytes(), updated.crop(box).tobytes())
+
+        versions = asyncio.run(backend_main.list_sprite_versions(1))
+        self.assertEqual(len(versions["versions"]), 2)
+        self.assertEqual(versions["active_version_id"], "source-version")
+        self.assertEqual(versions["candidate_version_id"], patched["version"]["id"])
+
+    def test_compose_deterministic_failure_stops_retrying(self):
+        reference = backend_main.UploadFile(
+            filename="capture.png",
+            file=io.BytesIO(make_garment_capture()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+        with patch(
+            "backend_main.request_capture_quality_review",
+            new=AsyncMock(return_value={
+                "status": "passed",
+                "can_process": True,
+                "summary": "통과",
+                "page_corners": {
+                    "top_left": [0.0, 0.0],
+                    "top_right": [1.0, 0.0],
+                    "bottom_right": [1.0, 1.0],
+                    "bottom_left": [0.0, 1.0],
+                },
+                "checks": {},
+                "issues": [],
+            }),
+        ):
+            asyncio.run(backend_main.process_showcase_capture(1, reference))
+
+        asyncio.run(backend_main.start_showcase_capture_compose(1))
+        with (
+            patch(
+                "backend_main.request_master_locked_garment_atlas",
+                new=AsyncMock(side_effect=HTTPException(
+                    status_code=502,
+                    detail="AI 25컷 응답 형식이 올바르지 않습니다",
+                )),
+            ),
+            self.assertRaises(HTTPException),
+        ):
+            asyncio.run(backend_main.generate_showcase_capture_atlas(1))
+
+        status = asyncio.run(backend_main.get_showcase_compose_status(1))
+        self.assertEqual(status["next_action"], "failed")
+        self.assertEqual(status["team"]["showcase_sprite_status"], "failed")
+
+    def test_new_capture_is_blocked_while_compose_is_active(self):
+        first_reference = backend_main.UploadFile(
+            filename="capture.png",
+            file=io.BytesIO(make_garment_capture()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+        quality = {
+            "status": "passed",
+            "can_process": True,
+            "summary": "통과",
+            "page_corners": {
+                "top_left": [0.0, 0.0],
+                "top_right": [1.0, 0.0],
+                "bottom_right": [1.0, 1.0],
+                "bottom_left": [0.0, 1.0],
+            },
+            "checks": {},
+            "issues": [],
+        }
+        with patch(
+            "backend_main.request_capture_quality_review",
+            new=AsyncMock(return_value=quality),
+        ):
+            asyncio.run(backend_main.process_showcase_capture(1, first_reference))
+        asyncio.run(backend_main.start_showcase_capture_compose(1))
+
+        second_reference = backend_main.UploadFile(
+            filename="capture-2.png",
+            file=io.BytesIO(make_garment_capture()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(backend_main.process_showcase_capture(1, second_reference))
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIn("생성이 진행 중", str(caught.exception.detail))
+
+    def test_generated_compose_step_is_idempotent(self):
+        reference = backend_main.UploadFile(
+            filename="capture.png",
+            file=io.BytesIO(make_garment_capture()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+        with patch(
+            "backend_main.request_capture_quality_review",
+            new=AsyncMock(return_value={
+                "status": "passed",
+                "can_process": True,
+                "summary": "통과",
+                "page_corners": {
+                    "top_left": [0.0, 0.0],
+                    "top_right": [1.0, 0.0],
+                    "bottom_right": [1.0, 1.0],
+                    "bottom_left": [0.0, 1.0],
+                },
+                "checks": {},
+                "issues": [],
+            }),
+        ):
+            asyncio.run(backend_main.process_showcase_capture(1, reference))
+
+        atlas = backend_main._image_to_png_bytes(
+            backend_main.normalize_master_locked_atlas(
+                backend_main.master_reference_for_ai(),
+            ),
+        )
+        asyncio.run(backend_main.start_showcase_capture_compose(1))
+        with patch(
+            "backend_main.request_master_locked_garment_atlas",
+            new=AsyncMock(return_value=atlas),
+        ) as generate:
+            first = asyncio.run(backend_main.generate_showcase_capture_atlas(1))
+            resumed = asyncio.run(backend_main.generate_showcase_capture_atlas(1))
+
+        generate.assert_awaited_once()
+        self.assertEqual(first["next_action"], "review")
+        self.assertEqual(resumed["next_action"], "review")
+        self.assertEqual(first["atlas_url"], resumed["atlas_url"])
 
     def test_master_locked_normalization_matches_shared_actor_scale_and_baseline(self):
         with Image.open(backend_main.SHOWCASE_MASTER_PATH) as source:
@@ -869,11 +1256,16 @@ class Peter3DBackendTests(unittest.TestCase):
         previous = backend_main.public_sprite_contract(
             backend_main.PREVIOUS_GARMENT_TRANSFER_CONTRACT,
         )
+        pre_campfire = backend_main.public_sprite_contract(
+            backend_main.PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT,
+        )
         current = backend_main.public_sprite_contract(backend_main.GARMENT_TRANSFER_CONTRACT)
 
         self.assertEqual(previous["version"], 3)
         self.assertEqual(previous["display_scale"], backend_main.GARMENT_DISPLAY_SCALE)
-        self.assertEqual(current["version"], 4)
+        self.assertEqual(pre_campfire["version"], 4)
+        self.assertEqual(pre_campfire["display_scale"], 1.0)
+        self.assertEqual(current["version"], 5)
         self.assertEqual(current["display_scale"], 1.0)
 
     def test_master_atlas_quality_rejects_a_character_shrunk_inside_its_cell(self):

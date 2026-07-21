@@ -5,6 +5,7 @@ import {
 } from '../lib/seatingPresets';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
+import { getEffectiveDisplayMode } from '../retreat/displayMode';
 import type { RetreatGroup } from '../retreat/types';
 import type { AnimationName } from '../spriteLab/types';
 import '../styles/retreat-group.css';
@@ -50,6 +51,7 @@ function isDefaultGroupName(group: RetreatGroup) {
 
 export default function GroupLayoutPage({ preview = false }: GroupLayoutPageProps) {
   const { settings, updateSettings } = useRetreat();
+  const backgroundDisplayMode = getEffectiveDisplayMode(settings.transparentBackground);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [presetMessage, setPresetMessage] = useState('');
   const activePlan = useMemo(
@@ -144,6 +146,8 @@ export default function GroupLayoutPage({ preview = false }: GroupLayoutPageProp
       className="retreat-group-page"
       data-display-page="group-layout"
       data-preview={preview ? 'true' : 'false'}
+      data-obs={backgroundDisplayMode.obsMode ? 'true' : 'false'}
+      data-background-mode={backgroundDisplayMode.backgroundMode}
       aria-label="21개 조 편성표"
     >
       <section

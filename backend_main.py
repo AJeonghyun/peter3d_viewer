@@ -10,6 +10,7 @@ import io
 import json
 import os
 import struct
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -63,6 +64,12 @@ OPENAI_IMAGE_INPUT_FIDELITY = os.getenv("OPENAI_IMAGE_INPUT_FIDELITY", "high")
 OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/edits"
 OPENAI_SPRITE_QA_MODEL = os.getenv("OPENAI_SPRITE_QA_MODEL", "gpt-5.4-mini")
 OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses"
+GARMENT_IMAGE_TIMEOUT_SECONDS = 240.0
+OPENAI_QA_TIMEOUT_SECONDS = 75.0
+COMPOSE_GENERATION_LEASE_SECONDS = 330
+COMPOSE_REVIEW_LEASE_SECONDS = 120
+COMPOSE_RETRY_AFTER_SECONDS = 10
+COMPOSE_ACTIVE_TEAM_STATUSES = {"generating", "composing", "reviewing", "saving"}
 TEAM_COUNT = 21
 SHOWCASE_SPRITE_COLUMNS = 4
 SHOWCASE_SPRITE_ROWS = 3
@@ -71,7 +78,8 @@ SHOWCASE_SPRITE_HEIGHT = 1152
 SHOWCASE_SPRITE_SIZE = f"{SHOWCASE_SPRITE_WIDTH}x{SHOWCASE_SPRITE_HEIGHT}"
 LEGACY_GARMENT_TRANSFER_CONTRACT = "fixed-peter-garment-transfer-v2"
 PREVIOUS_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v3"
-GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v4"
+PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v4"
+GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v5"
 GARMENT_ATLAS_COLUMNS = 5
 GARMENT_ATLAS_ROWS = 5
 GARMENT_ATLAS_CELL_SIZE = 360
@@ -79,7 +87,11 @@ GARMENT_ATLAS_SIZE = GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_CELL_SIZE
 GARMENT_AI_CELL_SIZE = 384
 GARMENT_AI_ATLAS_SIZE = GARMENT_ATLAS_COLUMNS * GARMENT_AI_CELL_SIZE
 GARMENT_AI_IMAGE_SIZE = f"{GARMENT_AI_ATLAS_SIZE}x{GARMENT_AI_ATLAS_SIZE}"
+GARMENT_AI_FRAME_SIZE = 1024
+GARMENT_AI_FRAME_IMAGE_SIZE = f"{GARMENT_AI_FRAME_SIZE}x{GARMENT_AI_FRAME_SIZE}"
 GARMENT_AI_BACKGROUND = (0, 255, 0)
+CHROMA_EDGE_FEATHER_RADIUS = 0.55
+CHROMA_SPILL_TOLERANCE = 8
 GARMENT_DISPLAY_SCALE = 1.38
 GARMENT_TEMPLATE_SIZE = (1240, 1754)
 GARMENT_PART_CROPS = {
@@ -113,6 +125,10 @@ The fixed master is an immutable template for every team. Copy its exact 5x5
 frame order, poses, direction, face, hair, beard, skin, hands, body proportions,
 outline style, character size, bottom-center anchors, and safe padding. Do not
 redesign, redraw, simplify, enlarge, shrink, rotate, reorder, or replace Peter.
+Frames 20, 22, and 24 (one-based) are intentional seated listening poses:
+three-quarter rear/profile listening, three-quarter hands-on-knees, and
+side-facing hands-on-knees. Peter's face must remain visible in all three. Preserve
+their seated direction and body language exactly; they are used around a fire.
 
 Transfer from the student design only:
 - upper garment colors, patterns, writing, marks, and handmade texture
@@ -140,11 +156,40 @@ OUTPUT CONTRACT:
 - full hair, head, beard, raised hands, clothes, legs, feet, and shoe soles visible
 - at least 20 pixels of empty background around every visible body part
 - a perfectly flat, uniform pure chroma-green RGB(0,255,0) background
+- no chroma-green fringe, rim, outline, glow, reflection, or color spill around
+  any part of Peter; use a clean anti-aliased silhouette whose edge colors come
+  only from Peter, and the background color must never appear on the character
 - no transparency, gradients, scenery, shadows, grid lines, borders, labels,
   captions, watermarks, extra people, extra limbs, or duplicated features
 
 This is a master-locked garment edit, not free image generation. If the student
 design is ambiguous, preserve the fixed master rather than guessing.
+""".strip()
+
+GARMENT_FRAME_EDIT_PROMPT = """
+You receive exactly three reference images in this order:
+1. FIXED FRAME: one immutable canonical Peter animation frame
+2. STUDENT DESIGN: one corrected full-body photo decorated by students
+3. CURRENT FRAME: the generated frame being replaced
+
+Create exactly ONE corrected production-ready Peter frame. The FIXED FRAME is
+immutable for pose, direction, face, hair, beard, skin, hands, body proportions,
+outline style, character scale, and full-body silhouette. Transfer only the
+student's upper garment, lower garment, belt decoration, and corresponding
+left/right footwear designs. Use the CURRENT FRAME only to preserve garment
+continuity; do not preserve its reported defect.
+
+OUTPUT CONTRACT:
+- exactly one complete Peter centered in a 1024 by 1024 square
+- same pose, direction, scale, and bottom-center anchor as FIXED FRAME
+- full hair, head, beard, raised hands, clothes, legs, feet, and soles visible
+- generous empty padding around every visible body part
+- perfectly flat, uniform pure chroma-green RGB(0,255,0) background
+- no transparency, shadows, scenery, borders, labels, extra people, extra
+  limbs, duplicated features, cropping, or chroma-green fringe
+
+This is a master-locked single-frame repair. Change no frame other than the one
+provided, and never redesign Peter.
 """.strip()
 
 SHOWCASE_SPRITE_PROMPT = """
@@ -420,9 +465,13 @@ def public_sprite_contract(value: Any) -> Any:
     if value in {
         LEGACY_GARMENT_TRANSFER_CONTRACT,
         PREVIOUS_GARMENT_TRANSFER_CONTRACT,
+        PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT,
         GARMENT_TRANSFER_CONTRACT,
     }:
         if value == GARMENT_TRANSFER_CONTRACT:
+            version = 5
+            display_scale = 1.0
+        elif value == PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT:
             version = 4
             display_scale = 1.0
         elif value == PREVIOUS_GARMENT_TRANSFER_CONTRACT:
@@ -600,6 +649,10 @@ class ActiveSeatingPresetPayload(BaseModel):
 
 class SpriteApprovalPayload(BaseModel):
     force: bool = False
+
+
+class SpriteFramePatchPayload(BaseModel):
+    frames: List[int] = Field(min_length=1, max_length=GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS)
 
 
 def profile_config(profile: str) -> dict:
@@ -1931,7 +1984,9 @@ async def request_showcase_sprite_ai_review(sprite: bytes, deterministic: dict) 
         "max_output_tokens": 1200,
     }
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(75.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(OPENAI_QA_TIMEOUT_SECONDS, connect=10.0),
+        ) as client:
             response = await client.post(
                 OPENAI_RESPONSES_API_URL,
                 headers={
@@ -2155,8 +2210,29 @@ def master_reference_for_ai() -> bytes:
     return _image_to_png_bytes(reference.convert("RGB"))
 
 
+def decontaminate_chroma_contour(image: Image.Image) -> Image.Image:
+    """Clear hidden key RGB and remove green from the visible silhouette contour."""
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    inner_alpha = rgba.getchannel("A").filter(ImageFilter.MinFilter(5))
+    inner_alpha_pixels = inner_alpha.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha == 0:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+            if alpha < 255 or inner_alpha_pixels[x, y] < 250:
+                non_green = max(red, blue)
+                if green > non_green + CHROMA_SPILL_TOLERANCE:
+                    green = non_green + CHROMA_SPILL_TOLERANCE
+            pixels[x, y] = (red, green, blue, alpha)
+
+    return rgba
+
+
 def remove_connected_cell_background(cell: Image.Image, *, threshold: int = 56) -> Image.Image:
-    """Remove only edge-connected background so a matching garment color remains intact."""
+    """Remove connected key color and decontaminate only the anti-aliased contour."""
     rgba = cell.convert("RGBA")
     rgb = rgba.convert("RGB")
     marker = (1, 2, 3)
@@ -2169,13 +2245,52 @@ def remove_connected_cell_background(cell: Image.Image, *, threshold: int = 56) 
     alpha = Image.new("L", rgba.size, 255)
     alpha_pixels = alpha.load()
     source_alpha_pixels = source_alpha.load()
+    rgb_pixels = rgb.load()
     work_pixels = work.load()
     for y in range(height):
         for x in range(width):
-            alpha_pixels[x, y] = 0 if work_pixels[x, y] == marker else source_alpha_pixels[x, y]
+            red, green, blue = rgb_pixels[x, y]
+            is_reserved_key_color = red <= 24 and green >= 235 and blue <= 24
+            alpha_pixels[x, y] = (
+                0
+                if work_pixels[x, y] == marker or is_reserved_key_color
+                else source_alpha_pixels[x, y]
+            )
     alpha = alpha.filter(ImageFilter.MedianFilter(3))
-    rgba.putalpha(alpha)
-    return rgba
+    alpha_pixels = alpha.load()
+    for y in range(height):
+        for x in range(width):
+            red, green, blue = rgb_pixels[x, y]
+            if red <= 24 and green >= 235 and blue <= 24:
+                alpha_pixels[x, y] = 0
+
+    # Contract by one pixel, feather inward, and never grow into the removed
+    # background. This removes the opaque chroma rim left by model antialiasing.
+    contracted = alpha.filter(ImageFilter.MinFilter(3))
+    feathered = contracted.filter(ImageFilter.GaussianBlur(CHROMA_EDGE_FEATHER_RADIUS))
+    feathered_pixels = feathered.load()
+    for y in range(height):
+        for x in range(width):
+            feathered_pixels[x, y] = min(alpha_pixels[x, y], feathered_pixels[x, y])
+
+    # Restrict despill to the feathered contour. Interior green garment pixels
+    # stay untouched, while green blended into hair/skin/clothes is neutralized.
+    inner = feathered.filter(ImageFilter.MinFilter(5))
+    inner_pixels = inner.load()
+    rgba_pixels = rgba.load()
+    for y in range(height):
+        for x in range(width):
+            final_alpha = feathered_pixels[x, y]
+            if final_alpha == 0:
+                rgba_pixels[x, y] = (0, 0, 0, 0)
+                continue
+            red, green, blue, _ = rgba_pixels[x, y]
+            if inner_pixels[x, y] < 250:
+                non_green = max(red, blue)
+                if green > non_green + CHROMA_SPILL_TOLERANCE:
+                    green = non_green + CHROMA_SPILL_TOLERANCE
+            rgba_pixels[x, y] = (red, green, blue, final_alpha)
+    return decontaminate_chroma_contour(rgba)
 
 
 def master_display_target_bbox(master_bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
@@ -2261,6 +2376,7 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
             ),
             Image.Resampling.LANCZOS,
         )
+        resized = decontaminate_chroma_contour(resized)
         target_center_x = (target_bbox[0] + target_bbox[2]) / 2
         target_x = round(target_center_x - resized.width / 2)
         target_x = max(
@@ -2275,7 +2391,200 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
                 row * GARMENT_ATLAS_CELL_SIZE + target_y,
             ),
         )
-    return output
+    return decontaminate_chroma_contour(output)
+
+
+def garment_atlas_frame_box(frame: int, *, cell_size: int = GARMENT_ATLAS_CELL_SIZE) -> tuple[int, int, int, int]:
+    if frame < 1 or frame > GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS:
+        raise ValueError("프레임 번호는 1부터 25까지여야 합니다")
+    index = frame - 1
+    column = index % GARMENT_ATLAS_COLUMNS
+    row = index // GARMENT_ATLAS_COLUMNS
+    return (
+        column * cell_size,
+        row * cell_size,
+        (column + 1) * cell_size,
+        (row + 1) * cell_size,
+    )
+
+
+def frame_reference_for_ai(source: Union[bytes, Image.Image], frame: int) -> bytes:
+    image = (
+        Image.open(io.BytesIO(source)).convert("RGBA")
+        if isinstance(source, bytes)
+        else source.convert("RGBA")
+    )
+    image.load()
+    if image.size != (GARMENT_ATLAS_SIZE, GARMENT_ATLAS_SIZE):
+        raise ValueError(f"프레임 참조 아틀라스는 {GARMENT_ATLAS_SIZE}x{GARMENT_ATLAS_SIZE}여야 합니다")
+    cell = image.crop(garment_atlas_frame_box(frame))
+    cell = cell.resize(
+        (GARMENT_AI_FRAME_SIZE, GARMENT_AI_FRAME_SIZE),
+        Image.Resampling.LANCZOS,
+    )
+    reference = Image.new(
+        "RGBA",
+        (GARMENT_AI_FRAME_SIZE, GARMENT_AI_FRAME_SIZE),
+        (*GARMENT_AI_BACKGROUND, 255),
+    )
+    reference.alpha_composite(cell)
+    return _image_to_png_bytes(reference.convert("RGB"))
+
+
+def master_frame_reference_for_ai(frame: int) -> bytes:
+    if not SHOWCASE_MASTER_PATH.is_file():
+        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
+    with Image.open(SHOWCASE_MASTER_PATH) as master:
+        return frame_reference_for_ai(master, frame)
+
+
+def normalize_master_locked_frame(generated: Union[bytes, Image.Image], frame: int) -> Image.Image:
+    try:
+        candidate = (
+            Image.open(io.BytesIO(generated)).convert("RGBA")
+            if isinstance(generated, bytes)
+            else generated.convert("RGBA")
+        )
+        candidate.load()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError("AI 문제 컷 이미지를 읽을 수 없습니다") from exc
+    if candidate.width != candidate.height:
+        raise ValueError("AI 문제 컷 결과는 정사각형이어야 합니다")
+    if candidate.size != (GARMENT_AI_FRAME_SIZE, GARMENT_AI_FRAME_SIZE):
+        candidate = candidate.resize(
+            (GARMENT_AI_FRAME_SIZE, GARMENT_AI_FRAME_SIZE),
+            Image.Resampling.LANCZOS,
+        )
+    cleaned = remove_connected_cell_background(candidate)
+    generated_bbox = cleaned.getchannel("A").getbbox()
+    if generated_bbox is None:
+        raise ValueError("AI 문제 컷 결과에 캐릭터가 없습니다")
+    if not SHOWCASE_MASTER_PATH.is_file():
+        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
+    with Image.open(SHOWCASE_MASTER_PATH) as source:
+        master_cell = source.convert("RGBA").crop(garment_atlas_frame_box(frame))
+        master_cell.load()
+    master_bbox = master_cell.getchannel("A").getbbox()
+    if master_bbox is None:
+        raise ValueError(f"고정 Peter 마스터의 {frame}컷을 찾지 못했습니다")
+
+    character = cleaned.crop(generated_bbox)
+    target_bbox = master_display_target_bbox(master_bbox)
+    target_width = target_bbox[2] - target_bbox[0]
+    target_height = target_bbox[3] - target_bbox[1]
+    scale = min(
+        target_height / max(1, character.height),
+        (GARMENT_ATLAS_CELL_SIZE - SHOWCASE_FRAME_SAFE_MARGIN * 2) / max(1, character.width),
+    )
+    resized = character.resize(
+        (
+            max(1, round(character.width * scale)),
+            max(1, round(character.height * scale)),
+        ),
+        Image.Resampling.LANCZOS,
+    )
+    resized = decontaminate_chroma_contour(resized)
+    target_center_x = (target_bbox[0] + target_bbox[2]) / 2
+    target_x = round(target_center_x - resized.width / 2)
+    target_x = max(
+        SHOWCASE_FRAME_SAFE_MARGIN,
+        min(target_x, GARMENT_ATLAS_CELL_SIZE - SHOWCASE_FRAME_SAFE_MARGIN - resized.width),
+    )
+    target_y = target_bbox[3] - resized.height
+    output = Image.new(
+        "RGBA",
+        (GARMENT_ATLAS_CELL_SIZE, GARMENT_ATLAS_CELL_SIZE),
+        (0, 0, 0, 0),
+    )
+    output.alpha_composite(resized, (target_x, target_y))
+    return decontaminate_chroma_contour(output)
+
+
+def replace_garment_atlas_frame(
+    atlas: Union[bytes, Image.Image],
+    replacement: Union[bytes, Image.Image],
+    frame: int,
+) -> Image.Image:
+    base = (
+        Image.open(io.BytesIO(atlas)).convert("RGBA")
+        if isinstance(atlas, bytes)
+        else atlas.convert("RGBA")
+    )
+    base.load()
+    if base.size != (GARMENT_ATLAS_SIZE, GARMENT_ATLAS_SIZE):
+        raise ValueError(f"기존 25컷은 {GARMENT_ATLAS_SIZE}x{GARMENT_ATLAS_SIZE}여야 합니다")
+    cell = (
+        Image.open(io.BytesIO(replacement)).convert("RGBA")
+        if isinstance(replacement, bytes)
+        else replacement.convert("RGBA")
+    )
+    cell.load()
+    if cell.size != (GARMENT_ATLAS_CELL_SIZE, GARMENT_ATLAS_CELL_SIZE):
+        raise ValueError(
+            f"교체 컷은 {GARMENT_ATLAS_CELL_SIZE}x{GARMENT_ATLAS_CELL_SIZE}여야 합니다"
+        )
+    box = garment_atlas_frame_box(frame)
+    base.paste((0, 0, 0, 0), box)
+    base.alpha_composite(cell, (box[0], box[1]))
+    return base
+
+
+def garment_frame_retry_instruction(value: Any, frame: int) -> str:
+    qa = _loads_json(value) if isinstance(value, str) else value
+    if not isinstance(qa, dict):
+        return ""
+    notes: list[str] = []
+    deterministic = qa.get("deterministic")
+    if isinstance(deterministic, dict):
+        for candidate in deterministic.get("frames") or []:
+            if (
+                isinstance(candidate, dict)
+                and candidate.get("frame") == frame
+                and candidate.get("issues")
+            ):
+                notes.extend(str(issue) for issue in candidate["issues"])
+    ai = qa.get("ai")
+    if isinstance(ai, dict):
+        for candidate in ai.get("frames") or []:
+            if (
+                isinstance(candidate, dict)
+                and candidate.get("frame") == frame
+                and candidate.get("issue")
+            ):
+                notes.append(str(candidate["issue"]))
+    return " · ".join(dict.fromkeys(notes))[:900]
+
+
+def garment_problem_frames(value: Any) -> list[int]:
+    qa = _loads_json(value) if isinstance(value, str) else value
+    if not isinstance(qa, dict):
+        return []
+    frames: set[int] = set()
+    deterministic = qa.get("deterministic")
+    if isinstance(deterministic, dict):
+        for candidate in deterministic.get("frames") or []:
+            if not isinstance(candidate, dict):
+                continue
+            frame = candidate.get("frame")
+            if (
+                isinstance(frame, int)
+                and 1 <= frame <= GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS
+                and (candidate.get("status") == "failed" or candidate.get("issues"))
+            ):
+                frames.add(frame)
+    ai = qa.get("ai")
+    if isinstance(ai, dict):
+        for candidate in ai.get("frames") or []:
+            if not isinstance(candidate, dict):
+                continue
+            frame = candidate.get("frame")
+            if (
+                isinstance(frame, int)
+                and 1 <= frame <= GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS
+                and candidate.get("severity") in {"warning", "failed"}
+            ):
+                frames.add(frame)
+    return sorted(frames)
 
 
 def garment_retry_instruction(value: Any) -> str:
@@ -2334,7 +2643,7 @@ async def request_master_locked_garment_atlas(
         data["input_fidelity"] = OPENAI_IMAGE_INPUT_FIDELITY
     try:
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(170.0, connect=10.0),
+            timeout=httpx.Timeout(GARMENT_IMAGE_TIMEOUT_SECONDS, connect=10.0),
         ) as client:
             response = await client.post(
                 OPENAI_IMAGE_API_URL,
@@ -2353,9 +2662,20 @@ async def request_master_locked_garment_atlas(
             detail="OpenAI 이미지 생성 서버에 연결하지 못했습니다.",
         ) from exc
     if response.status_code >= 400:
+        detail = openai_error_detail(response)
+        if response.status_code == 429 and any(
+            marker in detail.lower()
+            for marker in ("insufficient_quota", "billing", "hard limit", "quota exceeded")
+        ):
+            raise HTTPException(status_code=402, detail=detail)
+        if response.status_code >= 500:
+            raise HTTPException(
+                status_code=503,
+                detail=f"OpenAI 이미지 생성 서버의 일시 오류입니다: {detail}",
+            )
         raise HTTPException(
-            status_code=response.status_code if response.status_code < 500 else 502,
-            detail=openai_error_detail(response),
+            status_code=response.status_code,
+            detail=detail,
         )
     try:
         if on_progress:
@@ -2376,6 +2696,103 @@ async def request_master_locked_garment_atlas(
     if len(atlas_bytes) > MAX_SPRITE_BYTES:
         raise HTTPException(status_code=502, detail="AI 25컷 파일이 너무 큽니다")
     return atlas_bytes
+
+
+async def request_master_locked_garment_frame(
+    student_reference: bytes,
+    current_atlas: bytes,
+    frame: int,
+    *,
+    filename: str = "student-peter.png",
+    correction: str = "",
+    on_progress: Optional[Callable[[str], None]] = None,
+) -> bytes:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key.startswith("sk-"):
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY가 설정되지 않았습니다")
+    try:
+        fixed_frame = master_frame_reference_for_ai(frame)
+        current_frame = frame_reference_for_ai(current_atlas, frame)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    prompt = GARMENT_FRAME_EDIT_PROMPT + f"\n\nTARGET FRAME NUMBER: {frame} of 25."
+    if correction:
+        prompt += (
+            "\nREPORTED QA DEFECTS TO FIX IN THIS FRAME:\n"
+            + correction
+        )
+    files = [
+        ("image[]", (f"fixed-peter-frame-{frame}.png", fixed_frame, "image/png")),
+        ("image[]", (filename, student_reference, "image/png")),
+        ("image[]", (f"current-frame-{frame}.png", current_frame, "image/png")),
+    ]
+    data = {
+        "model": OPENAI_IMAGE_MODEL,
+        "prompt": prompt,
+        "size": GARMENT_AI_FRAME_IMAGE_SIZE,
+        "quality": OPENAI_IMAGE_QUALITY,
+        "output_format": "png",
+        "background": "opaque",
+        "n": "1",
+    }
+    if OPENAI_IMAGE_MODEL == "gpt-image-1":
+        data["input_fidelity"] = OPENAI_IMAGE_INPUT_FIDELITY
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(GARMENT_IMAGE_TIMEOUT_SECONDS, connect=10.0),
+        ) as client:
+            response = await client.post(
+                OPENAI_IMAGE_API_URL,
+                headers={"Authorization": f"Bearer {api_key}"},
+                data=data,
+                files=files,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=f"AI {frame}컷 재생성 시간이 초과되었습니다. 다시 시도합니다.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenAI 이미지 생성 서버에 연결하지 못했습니다.",
+        ) from exc
+    if response.status_code >= 400:
+        detail = openai_error_detail(response)
+        if response.status_code == 429 and any(
+            marker in detail.lower()
+            for marker in ("insufficient_quota", "billing", "hard limit", "quota exceeded")
+        ):
+            raise HTTPException(status_code=402, detail=detail)
+        if response.status_code >= 500:
+            raise HTTPException(
+                status_code=503,
+                detail=f"OpenAI 이미지 생성 서버의 일시 오류입니다: {detail}",
+            )
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    try:
+        if on_progress:
+            on_progress("composing")
+        encoded = response.json()["data"][0]["b64_json"]
+        generated = base64.b64decode(encoded, validate=True)
+        replacement = normalize_master_locked_frame(generated, frame)
+        replacement_bytes = _image_to_png_bytes(replacement)
+    except (
+        KeyError,
+        IndexError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        base64.binascii.Error,
+    ) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI {frame}컷 응답을 처리하지 못했습니다: {exc}",
+        ) from exc
+    if len(replacement_bytes) > MAX_SPRITE_BYTES:
+        raise HTTPException(status_code=502, detail=f"AI {frame}컷 파일이 너무 큽니다")
+    return replacement_bytes
 
 
 async def persist_showcase_asset(
@@ -2545,7 +2962,9 @@ async def request_capture_quality_review(reference: bytes, content_type: str) ->
         "max_output_tokens": 1000,
     }
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(75.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(OPENAI_QA_TIMEOUT_SECONDS, connect=10.0),
+        ) as client:
             response = await client.post(
                 OPENAI_RESPONSES_API_URL,
                 headers={
@@ -2722,6 +3141,30 @@ def compose_garment_atlas(parts: dict[str, Image.Image]) -> Image.Image:
     return atlas
 
 
+def count_chroma_spill_pixels(image: Image.Image) -> int:
+    """Count green-dominant pixels on the silhouette without flagging green interiors."""
+    count = 0
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    inner_alpha = rgba.getchannel("A").filter(ImageFilter.MinFilter(5))
+    inner_alpha_pixels = inner_alpha.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = pixels[x, y]
+            if (
+                alpha > 0
+                and (
+                    (red <= 24 and green >= 235 and blue <= 24)
+                    or (
+                        inner_alpha_pixels[x, y] < 250
+                        and green > max(red, blue) + CHROMA_SPILL_TOLERANCE
+                    )
+                )
+            ):
+                count += 1
+    return count
+
+
 def analyze_garment_atlas_pixels(atlas: Any) -> dict:
     image = Image.open(io.BytesIO(atlas)).convert("RGBA") if isinstance(atlas, bytes) else atlas.convert("RGBA")
     if image.size != (GARMENT_ATLAS_SIZE, GARMENT_ATLAS_SIZE):
@@ -2752,6 +3195,7 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
         margins = None
         size_ratio = None
         anchor_delta = None
+        chroma_spill_pixels = count_chroma_spill_pixels(cell)
         if bbox is None:
             failed += 1
             issues.append("empty_frame")
@@ -2799,6 +3243,8 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
                     issues.append("character_too_large")
                 if abs(anchor_delta["center_x"]) > 8 or abs(anchor_delta["baseline"]) > 8:
                     issues.append("master_anchor_mismatch")
+            if chroma_spill_pixels:
+                issues.append("chroma_spill")
             if issues:
                 failed += 1
                 atlas_issues.append(f"{index + 1}컷: {', '.join(issues)}")
@@ -2810,6 +3256,7 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
             "margins": margins,
             "size_ratio": size_ratio,
             "anchor_delta": anchor_delta,
+            "chroma_spill_pixels": chroma_spill_pixels,
             "regions_checked": ["head", "hands", "feet", "shoes"],
             "issues": issues,
             "status": "failed" if issues else "passed",
@@ -2917,7 +3364,9 @@ async def request_garment_atlas_ai_review(
         "max_output_tokens": 1200,
     }
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(75.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(OPENAI_QA_TIMEOUT_SECONDS, connect=10.0),
+        ) as client:
             response = await client.post(
                 OPENAI_RESPONSES_API_URL,
                 headers={
@@ -2979,6 +3428,170 @@ def get_sprite_version_or_404(db: Any, team_id: int, version_id: str):
     return row
 
 
+def ensure_compose_not_active(team: dict) -> None:
+    if team.get("showcase_sprite_status") in COMPOSE_ACTIVE_TEAM_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail="25컷 생성이 진행 중입니다. 완료된 뒤 새 사진을 등록해주세요.",
+        )
+
+
+def _seconds_since(timestamp: Any) -> float:
+    if not timestamp:
+        return float("inf")
+    try:
+        parsed = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - parsed).total_seconds())
+    except (TypeError, ValueError):
+        return float("inf")
+
+
+def _frame_patch_metadata(version: dict) -> Optional[dict]:
+    parts = version.get("parts")
+    if not isinstance(parts, dict):
+        parts = _loads_json(version.get("parts_json"))
+    if not isinstance(parts, dict):
+        return None
+    patch = parts.get("frame_patch")
+    return patch if isinstance(patch, dict) else None
+
+
+def _compose_next_action(version: dict) -> str:
+    status = str(version.get("status") or "")
+    age = _seconds_since(version.get("updated_at"))
+    patch = _frame_patch_metadata(version)
+    if status == "queued":
+        return "patch" if patch else "generate"
+    if status in {"generating", "composing"}:
+        if age < COMPOSE_GENERATION_LEASE_SECONDS:
+            return "wait"
+        return "patch" if patch else "generate"
+    if status == "generated":
+        return "review"
+    if status in {"reviewing", "saving"}:
+        return "wait" if age < COMPOSE_REVIEW_LEASE_SECONDS else "review"
+    if status in {"review", "ready", "approved"}:
+        return "complete"
+    if status == "failed":
+        return "failed"
+    return "generate"
+
+
+def _compose_response(
+    db: Any,
+    team_id: int,
+    version_id: str,
+    *,
+    next_action: Optional[str] = None,
+    retry_after_seconds: Optional[int] = None,
+) -> dict:
+    team = public_team(get_team_or_404(db, team_id))
+    version = public_sprite_version(get_sprite_version_or_404(db, team_id, version_id))
+    action = next_action or _compose_next_action(version)
+    payload = {
+        "team": team,
+        "version": version,
+        "status": version.get("status") or team.get("showcase_sprite_status"),
+        "next_action": action,
+        "contract": GARMENT_TRANSFER_CONTRACT,
+    }
+    if retry_after_seconds is not None:
+        payload["retry_after_seconds"] = retry_after_seconds
+    if version.get("atlas_url"):
+        payload["atlas_url"] = version["atlas_url"]
+    if version.get("qa"):
+        payload["qa"] = version["qa"]
+    patch = _frame_patch_metadata(version)
+    if patch:
+        frames = [
+            frame for frame in patch.get("frames", [])
+            if isinstance(frame, int)
+        ]
+        completed = [
+            frame for frame in patch.get("completed_frames", [])
+            if isinstance(frame, int)
+        ]
+        payload["frame_patch"] = {
+            "frames": frames,
+            "completed_frames": completed,
+            "remaining_frames": [frame for frame in frames if frame not in completed],
+            "source_version_id": patch.get("source_version_id"),
+        }
+    return payload
+
+
+def _retryable_compose_error(exc: HTTPException) -> bool:
+    if exc.status_code in {408, 429, 504}:
+        return True
+    if exc.status_code == 502:
+        return "연결하지 못했습니다" in str(exc.detail)
+    if exc.status_code == 503:
+        detail = str(exc.detail)
+        return "설정되지 않았습니다" not in detail and "연결이 필요합니다" not in detail
+    return False
+
+
+def _record_compose_retry(
+    team_id: int,
+    version_id: str,
+    *,
+    version_status: str,
+    team_status: str,
+    detail: str,
+) -> dict:
+    timestamp = now_iso()
+    message = f"{detail[:220]} · 완료될 때까지 자동 재시도합니다."
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = ?, error = ?, updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (version_status, message, timestamp, version_id, team_id),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = ?, showcase_sprite_error = ?,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (team_status, message, timestamp, timestamp, team_id, version_id),
+        )
+        return _compose_response(
+            db,
+            team_id,
+            version_id,
+            next_action="retry",
+            retry_after_seconds=COMPOSE_RETRY_AFTER_SECONDS,
+        )
+
+
+def _record_compose_failure(team_id: int, version_id: str, detail: str) -> None:
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = 'failed', showcase_sprite_error = ?,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (detail[:300], timestamp, timestamp, team_id, version_id),
+        )
+        db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'failed', error = ?, updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (detail[:300], timestamp, version_id, team_id),
+        )
+
+
 @app.post("/api/teams/{team_id}/image")
 async def upload_team_image(team_id: int, image: UploadFile = File(...)):
     if SERVERLESS_RUNTIME and not blob_configured():
@@ -2988,6 +3601,7 @@ async def upload_team_image(team_id: int, image: UploadFile = File(...)):
         )
     with connect_db() as db:
         previous_team = row_dict(get_team_or_404(db, team_id))
+    ensure_compose_not_active(previous_team)
     contents, content_type, extension = await validated_image_upload(image)
 
     image_id = uuid.uuid4().hex[:12]
@@ -3105,7 +3719,8 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
     if SERVERLESS_RUNTIME and not blob_configured():
         raise HTTPException(status_code=503, detail="Vercel Blob 연결이 필요합니다")
     with connect_db() as db:
-        get_team_or_404(db, team_id)
+        team = row_dict(get_team_or_404(db, team_id))
+    ensure_compose_not_active(team)
     contents, content_type, extension = await validated_image_upload(reference)
     quality = await request_capture_quality_review(contents, content_type)
     if not quality.get("can_process", False):
@@ -3297,8 +3912,7 @@ async def retry_showcase_capture_part(
         }
 
 
-@app.post("/api/teams/{team_id}/capture/compose")
-async def compose_showcase_capture(team_id: int):
+def _current_compose_version(team_id: int) -> tuple[dict, dict]:
     with connect_db() as db:
         team = row_dict(get_team_or_404(db, team_id))
         version_id = team.get("showcase_sprite_version_id")
@@ -3307,56 +3921,657 @@ async def compose_showcase_capture(team_id: int):
         version = row_dict(get_sprite_version_or_404(db, team_id, version_id))
     if not version.get("corrected_url"):
         raise HTTPException(status_code=409, detail="보정된 학생 디자인 이미지가 없습니다")
-    corrected_bytes = await read_public_asset_bytes(version["corrected_url"])
-    correction = garment_retry_instruction(version.get("qa_json"))
-    update_showcase_sprite_status(team_id, "generating", error=None)
+    return team, version
+
+
+@app.get("/api/teams/{team_id}/capture/compose/status")
+async def get_showcase_compose_status(team_id: int):
+    _, version = _current_compose_version(team_id)
+    with connect_db() as db:
+        return _compose_response(db, team_id, version["id"])
+
+
+@app.post("/api/teams/{team_id}/capture/compose")
+@app.post("/api/teams/{team_id}/capture/compose/start")
+async def start_showcase_capture_compose(team_id: int):
+    team, version = _current_compose_version(team_id)
+    active_statuses = {"queued", "generating", "composing", "generated", "reviewing", "saving"}
+    if (
+        version.get("status") in active_statuses
+        and team.get("showcase_sprite_status") in {"generating", "composing", "reviewing", "saving"}
+    ):
+        with connect_db() as db:
+            return _compose_response(db, team_id, version["id"])
+
+    timestamp = now_iso()
+    parts_payload = _loads_json(version.get("parts_json"))
+    if isinstance(parts_payload, dict):
+        parts_payload.pop("frame_patch", None)
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'queued', error = NULL, parts_json = ?, updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (
+                json.dumps(parts_payload, ensure_ascii=False) if parts_payload else None,
+                timestamp,
+                version["id"],
+                team_id,
+            ),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = 'generating', showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (timestamp, timestamp, team_id, version["id"]),
+        )
+        return _compose_response(
+            db,
+            team_id,
+            version["id"],
+            next_action="generate",
+        )
+
+
+@app.post("/api/teams/{team_id}/capture/compose/patch/start")
+async def start_showcase_frame_patch(team_id: int, payload: SpriteFramePatchPayload):
+    team, source_version = _current_compose_version(team_id)
+    frames = sorted(set(payload.frames))
+    invalid_frames = [
+        frame for frame in frames
+        if frame < 1 or frame > GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_ROWS
+    ]
+    if invalid_frames:
+        raise HTTPException(status_code=422, detail="프레임 번호는 1부터 25까지여야 합니다")
+    existing_patch = _frame_patch_metadata(source_version)
+    if team.get("showcase_sprite_status") in COMPOSE_ACTIVE_TEAM_STATUSES and existing_patch:
+        existing_frames = sorted({
+            frame for frame in existing_patch.get("frames", [])
+            if isinstance(frame, int)
+        })
+        if existing_frames == frames:
+            with connect_db() as db:
+                return _compose_response(db, team_id, source_version["id"])
+        raise HTTPException(status_code=409, detail="다른 문제 컷 교체 작업이 이미 진행 중입니다")
+    ensure_compose_not_active(team)
+    if source_version.get("contract") != GARMENT_TRANSFER_CONTRACT:
+        raise HTTPException(status_code=409, detail="마스터 고정 25컷만 문제 컷을 교체할 수 있습니다")
+    if not source_version.get("atlas_url"):
+        raise HTTPException(status_code=409, detail="교체할 기존 25컷 아틀라스가 없습니다")
+    source_qa = source_version.get("qa_json") or team.get("showcase_sprite_quality_json")
+    problem_frames = set(garment_problem_frames(source_qa))
+    if not problem_frames:
+        raise HTTPException(status_code=409, detail="현재 QA에서 재생성이 필요한 컷이 없습니다")
+    non_problem_frames = [frame for frame in frames if frame not in problem_frames]
+    if non_problem_frames:
+        raise HTTPException(
+            status_code=422,
+            detail=f"현재 QA 문제 컷만 선택할 수 있습니다: {', '.join(map(str, sorted(problem_frames)))}",
+        )
+
+    timestamp = now_iso()
+    version_id = f"sprite-{team_id}-{uuid.uuid4().hex}"
+    parts_payload = _loads_json(source_version.get("parts_json"))
+    if not isinstance(parts_payload, dict):
+        parts_payload = {}
+    parts_payload.pop("frame_patch", None)
+    parts_payload["frame_patch"] = {
+        "source_version_id": source_version["id"],
+        "frames": frames,
+        "completed_frames": [],
+        "issues": {
+            str(frame): garment_frame_retry_instruction(source_qa, frame)
+            for frame in frames
+        },
+    }
+    with connect_db() as db:
+        db.execute(
+            """
+            INSERT INTO sprite_versions (
+                id, team_id, contract, status, error, source_url, corrected_url,
+                upper_url, lower_url, left_shoe_url, right_shoe_url, atlas_url,
+                quality_json, parts_json, qa_json, model, created_at, updated_at
+            ) VALUES (?, ?, ?, 'queued', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                version_id,
+                team_id,
+                GARMENT_TRANSFER_CONTRACT,
+                source_version.get("source_url"),
+                source_version.get("corrected_url"),
+                source_version.get("upper_url"),
+                source_version.get("lower_url"),
+                source_version.get("left_shoe_url"),
+                source_version.get("right_shoe_url"),
+                source_version["atlas_url"],
+                source_version.get("quality_json"),
+                json.dumps(parts_payload, ensure_ascii=False),
+                source_qa,
+                OPENAI_IMAGE_MODEL,
+                timestamp,
+                timestamp,
+            ),
+        )
+        updated = db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_version_id = ?,
+                showcase_sprite_url = ?,
+                showcase_sprite_status = 'generating',
+                showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (
+                version_id,
+                source_version["atlas_url"],
+                timestamp,
+                timestamp,
+                team_id,
+                source_version["id"],
+            ),
+        )
+        if updated.rowcount != 1:
+            db.execute(
+                "DELETE FROM sprite_versions WHERE id = ? AND team_id = ?",
+                (version_id, team_id),
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="다른 생성 작업이 먼저 시작되었습니다. 현재 상태를 다시 확인해주세요.",
+            )
+        return _compose_response(
+            db,
+            team_id,
+            version_id,
+            next_action="patch",
+        )
+
+
+@app.post("/api/teams/{team_id}/capture/compose/patch")
+async def regenerate_showcase_frame_patch(team_id: int):
+    request_started = time.monotonic()
+    _, version = _current_compose_version(team_id)
+    version_id = version["id"]
+    next_action = _compose_next_action(version)
+    if next_action in {"generate", "review", "complete", "failed"}:
+        with connect_db() as db:
+            return _compose_response(db, team_id, version_id)
+    if next_action == "wait":
+        with connect_db() as db:
+            return _compose_response(
+                db,
+                team_id,
+                version_id,
+                next_action="wait",
+                retry_after_seconds=3,
+            )
+
+    parts_payload = _loads_json(version.get("parts_json"))
+    patch = _frame_patch_metadata(version)
+    if not isinstance(parts_payload, dict) or not patch:
+        raise HTTPException(status_code=409, detail="문제 컷 교체 작업 정보가 없습니다")
+    frames = [frame for frame in patch.get("frames", []) if isinstance(frame, int)]
+    completed = [frame for frame in patch.get("completed_frames", []) if isinstance(frame, int)]
+    remaining = [frame for frame in frames if frame not in completed]
+    if not remaining:
+        with connect_db() as db:
+            db.execute(
+                """
+                UPDATE sprite_versions SET status = 'generated', updated_at = ?
+                WHERE id = ? AND team_id = ?
+                """,
+                (now_iso(), version_id, team_id),
+            )
+            return _compose_response(db, team_id, version_id, next_action="review")
+    frame = remaining[0]
+
+    def report_timing(stage: str) -> None:
+        print(
+            json.dumps({
+                "event": "garment_frame_patch_stage",
+                "team_id": team_id,
+                "version_id": version_id,
+                "frame": frame,
+                "stage": stage,
+                "elapsed_seconds": round(time.monotonic() - request_started, 2),
+            }),
+            flush=True,
+        )
+
+    timestamp = now_iso()
+    with connect_db() as db:
+        claimed = db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'generating', error = NULL, updated_at = ?
+            WHERE id = ? AND team_id = ? AND status = ? AND updated_at = ?
+            """,
+            (
+                timestamp,
+                version_id,
+                team_id,
+                version.get("status"),
+                version.get("updated_at"),
+            ),
+        )
+        if claimed.rowcount != 1:
+            return _compose_response(
+                db,
+                team_id,
+                version_id,
+                next_action="wait",
+                retry_after_seconds=3,
+            )
 
     def report_progress(status: str) -> None:
-        update_showcase_sprite_status(team_id, status, error=None)
+        progress_timestamp = now_iso()
+        with connect_db() as db:
+            db.execute(
+                """
+                UPDATE sprite_versions
+                SET status = ?, error = NULL, updated_at = ?
+                WHERE id = ? AND team_id = ?
+                """,
+                (status, progress_timestamp, version_id, team_id),
+            )
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_status = ?, showcase_sprite_error = NULL,
+                    showcase_sprite_updated_at = ?, updated_at = ?
+                WHERE id = ? AND showcase_sprite_version_id = ?
+                """,
+                (status, progress_timestamp, progress_timestamp, team_id, version_id),
+            )
+        report_timing(status)
 
     try:
+        atlas_bytes, corrected_bytes = await asyncio.gather(
+            read_public_asset_bytes(version["atlas_url"]),
+            read_public_asset_bytes(version["corrected_url"]),
+        )
+        replacement_bytes = await request_master_locked_garment_frame(
+            corrected_bytes,
+            atlas_bytes,
+            frame,
+            filename=f"team-{team_id}-corrected-peter.png",
+            correction=str((patch.get("issues") or {}).get(str(frame), "")),
+            on_progress=report_progress,
+        )
+        patched_atlas = replace_garment_atlas_frame(atlas_bytes, replacement_bytes, frame)
+        patched_bytes = _image_to_png_bytes(patched_atlas)
+        atlas_url = await persist_showcase_asset(
+            team_id,
+            f"sprite-v4-frame-{frame}",
+            patched_bytes,
+        )
+    except HTTPException as exc:
+        report_timing(f"failed_{exc.status_code}")
+        if _retryable_compose_error(exc):
+            return _record_compose_retry(
+                team_id,
+                version_id,
+                version_status="queued",
+                team_status="generating",
+                detail=str(exc.detail),
+            )
+        _record_compose_failure(team_id, version_id, str(exc.detail))
+        raise
+    except (httpx.HTTPError, OSError) as exc:
+        report_timing("failed_transient")
+        return _record_compose_retry(
+            team_id,
+            version_id,
+            version_status="queued",
+            team_status="generating",
+            detail=f"{frame}컷 교체 결과를 처리하지 못했습니다: {str(exc)[:160]}",
+        )
+    except Exception as exc:  # noqa: BLE001 - persist a terminal stage instead of stranding the lease
+        report_timing("failed_internal")
+        detail = f"{frame}컷 교체 결과를 처리하지 못했습니다: {str(exc)[:220]}"
+        _record_compose_failure(team_id, version_id, detail)
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+    completed = [*completed, frame]
+    patch["completed_frames"] = completed
+    parts_payload["frame_patch"] = patch
+    remaining = [candidate for candidate in frames if candidate not in completed]
+    version_status = "queued" if remaining else "generated"
+    team_status = "generating" if remaining else "reviewing"
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = ?, error = NULL, atlas_url = ?, parts_json = ?,
+                model = ?, updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (
+                version_status,
+                atlas_url,
+                json.dumps(parts_payload, ensure_ascii=False),
+                OPENAI_IMAGE_MODEL,
+                timestamp,
+                version_id,
+                team_id,
+            ),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_url = ?,
+                showcase_sprite_status = ?,
+                showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (
+                atlas_url,
+                team_status,
+                timestamp,
+                timestamp,
+                team_id,
+                version_id,
+            ),
+        )
+        report_timing("frame_replaced")
+        return _compose_response(
+            db,
+            team_id,
+            version_id,
+            next_action="patch" if remaining else "review",
+        )
+
+
+@app.post("/api/teams/{team_id}/capture/compose/generate")
+async def generate_showcase_capture_atlas(team_id: int):
+    request_started = time.monotonic()
+
+    def report_timing(stage: str) -> None:
+        print(
+            json.dumps({
+                "event": "garment_compose_stage",
+                "team_id": team_id,
+                "stage": stage,
+                "elapsed_seconds": round(time.monotonic() - request_started, 2),
+            }),
+            flush=True,
+        )
+
+    _, version = _current_compose_version(team_id)
+    version_id = version["id"]
+    next_action = _compose_next_action(version)
+    if next_action in {"patch", "review", "complete", "failed"}:
+        with connect_db() as db:
+            return _compose_response(db, team_id, version_id)
+    if next_action == "wait":
+        with connect_db() as db:
+            return _compose_response(
+                db,
+                team_id,
+                version_id,
+                next_action="wait",
+                retry_after_seconds=3,
+            )
+
+    timestamp = now_iso()
+    with connect_db() as db:
+        claimed = db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'generating', error = NULL, updated_at = ?
+            WHERE id = ? AND team_id = ? AND status = ? AND updated_at = ?
+            """,
+            (
+                timestamp,
+                version_id,
+                team_id,
+                version.get("status"),
+                version.get("updated_at"),
+            ),
+        )
+        if claimed.rowcount != 1:
+            return _compose_response(
+                db,
+                team_id,
+                version_id,
+                next_action="wait",
+                retry_after_seconds=3,
+            )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = 'generating', showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (timestamp, timestamp, team_id, version_id),
+        )
+
+    correction = garment_retry_instruction(version.get("qa_json"))
+
+    def report_progress(status: str) -> None:
+        progress_timestamp = now_iso()
+        with connect_db() as db:
+            db.execute(
+                """
+                UPDATE sprite_versions
+                SET status = ?, error = NULL, updated_at = ?
+                WHERE id = ? AND team_id = ?
+                """,
+                (status, progress_timestamp, version_id, team_id),
+            )
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_status = ?, showcase_sprite_error = NULL,
+                    showcase_sprite_updated_at = ?, updated_at = ?
+                WHERE id = ? AND showcase_sprite_version_id = ?
+                """,
+                (status, progress_timestamp, progress_timestamp, team_id, version_id),
+            )
+        report_timing(status)
+
+    try:
+        corrected_bytes = await read_public_asset_bytes(version["corrected_url"])
+        report_timing("generation_started")
         atlas_bytes = await request_master_locked_garment_atlas(
             corrected_bytes,
             filename=f"team-{team_id}-corrected-peter.png",
             correction=correction,
             on_progress=report_progress,
         )
-        report_progress("reviewing")
-        qa = await inspect_garment_atlas_quality(atlas_bytes, corrected_bytes)
-        report_progress("saving")
         atlas_url = await persist_showcase_asset(team_id, "sprite-v4-atlas", atlas_bytes)
     except HTTPException as exc:
-        timestamp = now_iso()
-        with connect_db() as db:
-            db.execute(
-                """
-                UPDATE teams
-                SET showcase_sprite_status = 'failed', showcase_sprite_error = ?,
-                    showcase_sprite_updated_at = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (str(exc.detail)[:300], timestamp, timestamp, team_id),
+        report_timing(f"failed_{exc.status_code}")
+        if _retryable_compose_error(exc):
+            return _record_compose_retry(
+                team_id,
+                version_id,
+                version_status="queued",
+                team_status="generating",
+                detail=str(exc.detail),
             )
-            db.execute(
-                """
-                UPDATE sprite_versions
-                SET status = 'failed', error = ?, updated_at = ?
-                WHERE id = ? AND team_id = ?
-                """,
-                (str(exc.detail)[:300], timestamp, version_id, team_id),
-            )
+        _record_compose_failure(team_id, version_id, str(exc.detail))
         raise
+    except (httpx.HTTPError, OSError) as exc:
+        report_timing("failed_transient")
+        return _record_compose_retry(
+            team_id,
+            version_id,
+            version_status="queued",
+            team_status="generating",
+            detail=f"25컷 생성 결과를 처리하지 못했습니다: {str(exc)[:160]}",
+        )
+    except Exception as exc:  # noqa: BLE001 - persist a terminal stage instead of stranding the lease
+        report_timing("failed_internal")
+        detail = f"25컷 생성 결과를 처리하지 못했습니다: {str(exc)[:220]}"
+        _record_compose_failure(team_id, version_id, detail)
+        raise HTTPException(status_code=502, detail=detail) from exc
+
     timestamp = now_iso()
     with connect_db() as db:
         db.execute(
             """
             UPDATE sprite_versions
-            SET status = 'review', error = NULL, atlas_url = ?, qa_json = ?,
+            SET status = 'generated', error = NULL, atlas_url = ?,
                 model = ?, updated_at = ?
             WHERE id = ? AND team_id = ?
             """,
             (
                 atlas_url,
+                OPENAI_IMAGE_MODEL,
+                timestamp,
+                version_id,
+                team_id,
+            ),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = 'reviewing',
+                showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (
+                timestamp,
+                timestamp,
+                team_id,
+                version_id,
+            ),
+        )
+        report_timing("generated")
+        return _compose_response(
+            db,
+            team_id,
+            version_id,
+            next_action="review",
+        )
+
+
+@app.post("/api/teams/{team_id}/capture/compose/review")
+async def review_showcase_capture_atlas(team_id: int):
+    request_started = time.monotonic()
+    _, version = _current_compose_version(team_id)
+    version_id = version["id"]
+    next_action = _compose_next_action(version)
+    if next_action in {"complete", "failed"}:
+        with connect_db() as db:
+            return _compose_response(db, team_id, version_id)
+    if next_action in {"generate", "patch", "wait"} and version.get("status") != "generated":
+        with connect_db() as db:
+            return _compose_response(
+                db,
+                team_id,
+                version_id,
+                next_action=next_action,
+                retry_after_seconds=3 if next_action == "wait" else None,
+            )
+    if not version.get("atlas_url"):
+        raise HTTPException(status_code=409, detail="저장된 25컷 결과가 없어 다시 생성해야 합니다")
+
+    timestamp = now_iso()
+    with connect_db() as db:
+        claimed = db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'reviewing', error = NULL, updated_at = ?
+            WHERE id = ? AND team_id = ? AND status = ? AND updated_at = ?
+            """,
+            (
+                timestamp,
+                version_id,
+                team_id,
+                version.get("status"),
+                version.get("updated_at"),
+            ),
+        )
+        if claimed.rowcount != 1:
+            return _compose_response(
+                db,
+                team_id,
+                version_id,
+                next_action="wait",
+                retry_after_seconds=3,
+            )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = 'reviewing', showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (timestamp, timestamp, team_id, version_id),
+        )
+
+    try:
+        atlas_bytes, corrected_bytes = await asyncio.gather(
+            read_public_asset_bytes(version["atlas_url"]),
+            read_public_asset_bytes(version["corrected_url"]),
+        )
+        qa = await inspect_garment_atlas_quality(atlas_bytes, corrected_bytes)
+    except HTTPException as exc:
+        if _retryable_compose_error(exc):
+            return _record_compose_retry(
+                team_id,
+                version_id,
+                version_status="generated",
+                team_status="reviewing",
+                detail=str(exc.detail),
+            )
+        _record_compose_failure(team_id, version_id, str(exc.detail))
+        raise
+    except (httpx.HTTPError, OSError) as exc:
+        return _record_compose_retry(
+            team_id,
+            version_id,
+            version_status="generated",
+            team_status="reviewing",
+            detail=f"25컷 QA 자료를 불러오지 못했습니다: {str(exc)[:160]}",
+        )
+    except Exception as exc:  # noqa: BLE001 - persist a terminal stage instead of stranding the lease
+        detail = f"25컷 QA를 완료하지 못했습니다: {str(exc)[:220]}"
+        _record_compose_failure(team_id, version_id, detail)
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'saving', error = NULL, updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (timestamp, version_id, team_id),
+        )
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = 'saving', showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (timestamp, timestamp, team_id, version_id),
+        )
+        db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'review', error = NULL, qa_json = ?,
+                model = ?, updated_at = ?
+            WHERE id = ? AND team_id = ?
+            """,
+            (
                 json.dumps(qa, ensure_ascii=False),
                 OPENAI_IMAGE_MODEL,
                 timestamp,
@@ -3378,10 +4593,10 @@ async def compose_showcase_capture(team_id: int):
                 showcase_sprite_version_id = ?,
                 showcase_sprite_updated_at = ?,
                 updated_at = ?
-            WHERE id = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
             """,
             (
-                atlas_url,
+                version["atlas_url"],
                 OPENAI_IMAGE_MODEL,
                 qa.get("status", "unchecked"),
                 json.dumps(qa, ensure_ascii=False),
@@ -3391,16 +4606,24 @@ async def compose_showcase_capture(team_id: int):
                 timestamp,
                 timestamp,
                 team_id,
+                version_id,
             ),
         )
-        return {
-            "team": public_team(get_team_or_404(db, team_id)),
-            "version": public_sprite_version(get_sprite_version_or_404(db, team_id, version_id)),
-            "qa": qa,
-            "atlas_url": atlas_url,
-            "status": "review",
-            "contract": GARMENT_TRANSFER_CONTRACT,
-        }
+        print(
+            json.dumps({
+                "event": "garment_compose_stage",
+                "team_id": team_id,
+                "stage": "completed",
+                "elapsed_seconds": round(time.monotonic() - request_started, 2),
+            }),
+            flush=True,
+        )
+        return _compose_response(
+            db,
+            team_id,
+            version_id,
+            next_action="complete",
+        )
 
 
 @app.get("/api/teams/{team_id}/sprite-versions")

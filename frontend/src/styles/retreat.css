@@ -48,6 +48,14 @@ select {
   container-type: size;
 }
 
+html[data-background-mode="transparent"],
+html[data-background-mode="transparent"] body,
+html[data-background-mode="transparent"] #root,
+html[data-background-mode="transparent"] .retreat-stage-shell,
+html[data-background-mode="transparent"] .retreat-display-page {
+  background: transparent !important;
+}
+
 .retreat-character {
   width: 100%;
   height: 100%;

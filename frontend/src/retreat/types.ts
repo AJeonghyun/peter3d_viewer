@@ -120,6 +120,7 @@ export interface RetreatSettings {
   version: 1;
   currentPage: RetreatPage;
   animationPlaying: boolean;
+  transparentBackground: boolean;
   groups: RetreatGroup[];
   seatingPlans: SeatingPlan[];
   groupLayout: GroupLayoutSettings;

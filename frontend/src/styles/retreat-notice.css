@@ -135,6 +135,17 @@ body {
   inset-inline: 0;
 }
 
+html[data-background-mode="transparent"] .retreat-notice-page {
+  background: transparent !important;
+}
+
+html[data-background-mode="transparent"] .retreat-notice-scene__sky,
+html[data-background-mode="transparent"] .retreat-notice-scene__hills,
+html[data-background-mode="transparent"] .retreat-notice-scene__lake,
+html[data-background-mode="transparent"] .retreat-notice-scene__shore {
+  display: none;
+}
+
 .retreat-notice-scene__sky {
   inset-block: 0;
   background:

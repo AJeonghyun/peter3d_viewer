@@ -175,9 +175,17 @@ export interface ShowcaseCaptureResponse {
 export interface ShowcaseComposeResponse {
   team: Team;
   version: ShowcaseSpriteVersion;
-  qa: SpriteQualityReport;
-  atlas_url: string;
+  qa?: SpriteQualityReport;
+  atlas_url?: string;
   status: string;
+  next_action: 'generate' | 'patch' | 'review' | 'wait' | 'retry' | 'complete' | 'failed';
+  retry_after_seconds?: number;
+  frame_patch?: {
+    frames: number[];
+    completed_frames: number[];
+    remaining_frames: number[];
+    source_version_id?: string | number | null;
+  };
   contract: string | ShowcaseSpriteContract;
 }
 
