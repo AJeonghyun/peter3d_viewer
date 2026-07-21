@@ -4,10 +4,10 @@ import { SpriteAnimator } from '../spriteLab/SpriteAnimator';
 import type { AnimationName, CharacterDefinition } from '../spriteLab/types';
 import { AtlasSpriteAnimator } from './AtlasSpriteAnimator';
 import { loadSpriteAsset } from './persistence';
+import { RETREAT_POSES, type RetreatPoseId } from './scenePoses';
 import type { RetreatGroup } from './types';
 
-const FIXED_MASTER_URL = '/assets/peter-sober/peter-sober-master.png';
-const BACK_VIEW_URL = '/assets/peter/frames/idle-back.png';
+const RETREAT_MASTER_URL = '/assets/retreat/peter-retreat-master.png';
 const CAMPFIRE_MASTER_CONTRACT = {
   id: 'fixed-peter-master-edit-v5',
   version: 5,
@@ -15,6 +15,14 @@ const CAMPFIRE_MASTER_CONTRACT = {
   rows: 5,
   columns: 5,
   frame_count: 25,
+} as const;
+const RETREAT_MASTER_CONTRACT = {
+  id: 'retreat-live-master-v1',
+  version: 1,
+  layout: '7x1',
+  rows: 1,
+  columns: 7,
+  frame_count: 7,
 } as const;
 
 function supportsCampfirePoses(contract: RetreatGroup['spriteAtlasContract']) {
@@ -30,6 +38,7 @@ interface RetreatCharacterProps {
   playing?: boolean;
   flipX?: boolean;
   view?: 'front' | 'back';
+  poseId?: RetreatPoseId;
   respectReducedMotion?: boolean;
   className?: string;
 }
@@ -41,6 +50,7 @@ function RetreatCharacterComponent({
   playing = true,
   flipX = false,
   view = 'front',
+  poseId,
   respectReducedMotion = true,
   className = '',
 }: RetreatCharacterProps) {
@@ -98,31 +108,45 @@ function RetreatCharacterComponent({
   const singleImage = (uploadedUrl || group.spriteSheetUrl) && group.spriteFrameCount <= 1
     ? uploadedUrl || group.spriteSheetUrl
     : '';
+  const resolvedPoseId = poseId ?? (view === 'back' ? 'back' : undefined);
+  const pose = resolvedPoseId ? RETREAT_POSES[resolvedPoseId] : null;
+  const needsRetreatMaster = resolvedPoseId === 'back';
+  const needsCampfireFrames = pose
+    ? pose.legacyFrames.some((frame) => frame >= 19)
+    : fixedFrame !== undefined && fixedFrame >= 19;
   const useGroupAtlas = Boolean(group.spriteAtlasUrl)
-    && (fixedFrame === undefined || supportsCampfirePoses(group.spriteAtlasContract));
+    && !needsRetreatMaster
+    && (!needsCampfireFrames || supportsCampfirePoses(group.spriteAtlasContract));
   const atlasUrl = useGroupAtlas
-    ? group.spriteAtlasUrl || FIXED_MASTER_URL
-    : FIXED_MASTER_URL;
-  const atlasContract = useGroupAtlas ? group.spriteAtlasContract : CAMPFIRE_MASTER_CONTRACT;
+    ? group.spriteAtlasUrl || RETREAT_MASTER_URL
+    : RETREAT_MASTER_URL;
+  const atlasContract = useGroupAtlas ? group.spriteAtlasContract : RETREAT_MASTER_CONTRACT;
+  const poseSequence = pose
+    ? useGroupAtlas ? pose.legacyFrames : pose.retreatFrames
+    : undefined;
+  const fallbackFixedFrame = fixedFrame === 19
+    ? 3
+    : fixedFrame === 21
+      ? 4
+      : fixedFrame === 23
+        ? 5
+        : fixedFrame;
+  const resolvedFixedFrame = useGroupAtlas ? fixedFrame : fallbackFixedFrame;
+  const resolvedAnimation = pose?.animation ?? animation;
 
   return (
     <div
       className={`retreat-character ${className}`.trim()}
       style={{ transform: `scale(${group.scale})` }}
       data-group-id={group.id}
-      data-animation={animation}
+      data-animation={resolvedAnimation}
     >
-      {view === 'back' ? (
-        <img
-          src={BACK_VIEW_URL}
-          alt={`${group.groupName} 캐릭터 뒷모습`}
-          style={{ transform: `scaleX(${flipX ? -1 : 1})` }}
-        />
-      ) : group.spriteAtlasUrl || fixedFrame !== undefined ? (
+      {pose || group.spriteAtlasUrl || fixedFrame !== undefined ? (
         <AtlasSpriteAnimator
           spriteUrl={atlasUrl}
-          animation={animation}
-          fixedFrame={fixedFrame}
+          animation={resolvedAnimation}
+          fixedFrame={resolvedFixedFrame}
+          frameSequence={poseSequence}
           playing={playing}
           flipX={flipX}
           contract={atlasContract}

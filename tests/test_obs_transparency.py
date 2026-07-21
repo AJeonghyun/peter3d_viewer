@@ -14,7 +14,7 @@ class ObsTransparencyTests(unittest.TestCase):
         self.assertIn("params.has('background')", source)
         self.assertIn("url.searchParams.set('obs', '1')", source)
 
-    def test_transparency_is_saved_as_an_editor_setting_but_defaults_off(self):
+    def test_legacy_transparency_setting_remains_available_for_other_scenes(self):
         types = (FRONTEND / "src" / "retreat" / "types.ts").read_text()
         defaults = (FRONTEND / "src" / "retreat" / "defaults.ts").read_text()
         editor = (FRONTEND / "src" / "pages" / "EditorPage.tsx").read_text()
@@ -31,6 +31,8 @@ class ObsTransparencyTests(unittest.TestCase):
         self.assertIn("background: transparent !important", world_css)
         self.assertIn("display: none", world_css)
         self.assertIn(".retreat-parade__sand", world_css)
+        self.assertIn(":root", world_css)
+        self.assertIn("background: transparent", world_css)
 
     def test_provider_applies_mode_to_the_document_root(self):
         provider = (FRONTEND / "src" / "retreat" / "RetreatProvider.tsx").read_text()
@@ -42,11 +44,11 @@ class ObsTransparencyTests(unittest.TestCase):
         self.assertIn('html[data-background-mode="transparent"] #root', base_css)
 
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
-        self.assertIn("data-obs={backgroundDisplayMode.obsMode", source)
-        self.assertIn(
-            "data-background-mode={backgroundDisplayMode.backgroundMode}",
-            source,
-        )
+        self.assertIn('data-obs="true"', source)
+        self.assertIn('data-background-mode="transparent"', source)
+        self.assertNotIn('className="retreat-parade__sky"', source)
+        self.assertNotIn('className="retreat-parade__sea"', source)
+        self.assertNotIn('className="retreat-parade__sand"', source)
 
 
 if __name__ == "__main__":

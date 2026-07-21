@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -11,9 +12,13 @@ SEATED_FRAME_INDEXES = {19, 21, 23}
 
 
 class Page3CampfireAssetTests(unittest.TestCase):
-    def test_standing_jesus_front_and_back_assets_are_transparent_and_complete(self):
+    def test_new_jesus_assets_are_transparent_and_complete(self):
         asset_dir = FRONTEND / "public" / "assets" / "campfire"
-        for filename in ("jesus-standing-front.png", "jesus-standing-back.png"):
+        for filename in (
+            "jesus-standing-front.png",
+            "jesus-standing-back.png",
+            "jesus-seated.png",
+        ):
             with self.subTest(filename=filename), Image.open(asset_dir / filename) as source:
                 image = source.convert("RGBA")
                 bounds = image.getchannel("A").getbbox()
@@ -28,6 +33,43 @@ class Page3CampfireAssetTests(unittest.TestCase):
                     (image.width - 1, image.height - 1),
                 ):
                     self.assertEqual(image.getpixel(point)[3], 0)
+
+    def test_retreat_live_master_contains_only_the_seven_scene_poses(self):
+        asset_dir = FRONTEND / "public" / "assets" / "retreat"
+        manifest = json.loads((asset_dir / "peter-retreat-master.json").read_text())
+        self.assertEqual(manifest["id"], "retreat-live-master-v1")
+        self.assertEqual(manifest["layout"], "7x1")
+        self.assertEqual(manifest["frame_count"], 7)
+        self.assertEqual(
+            [frame["id"] for frame in manifest["frames"]],
+            [
+                "idle-a",
+                "idle-b",
+                "wave",
+                "listen-front",
+                "listen-rear",
+                "listen-side",
+                "back",
+            ],
+        )
+        with Image.open(asset_dir / "peter-retreat-master.png") as source:
+            master = source.convert("RGBA")
+            self.assertEqual(master.size, (CELL_SIZE * 7, CELL_SIZE))
+            for index in range(7):
+                cell = master.crop((
+                    index * CELL_SIZE,
+                    0,
+                    (index + 1) * CELL_SIZE,
+                    CELL_SIZE,
+                ))
+                self.assertIsNotNone(cell.getchannel("A").getbbox())
+                self.assertEqual(cell.getpixel((0, 0))[3], 0)
+
+        for filename in ("peter-seated-front.png", "peter-standing-back.png"):
+            with self.subTest(filename=filename), Image.open(asset_dir / "poses" / filename) as pose:
+                rgba = pose.convert("RGBA")
+                self.assertIsNotNone(rgba.getchannel("A").getbbox())
+                self.assertEqual(rgba.getpixel((0, 0))[3], 0)
 
     def test_campfire_sheet_has_eight_transparent_nonempty_frames(self):
         path = FRONTEND / "public" / "assets" / "campfire" / "campfire-sheet.png"
@@ -80,25 +122,28 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertNotIn("type: 'boat'", source)
         self.assertNotIn("retreat-parade__boat", source)
         self.assertEqual(
-            source.count("{ duration: CAMPFIRE_DURATION, groupStart:"),
+            source.count("{ duration: GROUP_SCENE_DURATION, groupStart:"),
             3,
         )
         self.assertIn("peter-page3-display-mode-v1", source)
-        self.assertIn("CAMPFIRE_SCENES", source)
+        self.assertIn("GROUP_SCENES", source)
+        self.assertIn("GROUPS_PER_SCENE = 7", source)
+        self.assertIn("groupsForScene(groups, activeGroupScene)", source)
+        self.assertIn("data-group-range", source)
         self.assertIn("get('scene')", source)
         self.assertIn("CAMPFIRE_SEATS", source)
         self.assertIn("campfire-sheet.png", source)
         self.assertIn("jesus-standing-front.png", source)
         self.assertIn("jesus-standing-back.png", source)
-        self.assertIn("view={displayMode === 'back' ? 'back' : 'front'}", source)
+        self.assertIn("poseId={poseId}", source)
         self.assertNotIn("retreat-parade__nameplate", source)
         self.assertNotIn("retreat-parade__nameplate", styles)
         self.assertNotIn("retreat-parade__scene-label", styles)
 
     def test_page_three_layout_editor_persists_each_group_and_prop(self):
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
-        self.assertIn("peter-page3-stand-layout-v2", source)
-        self.assertIn("peter-page3-back-layout-v1", source)
+        self.assertIn("peter-page3-stand-layout-v3", source)
+        self.assertIn("peter-page3-back-layout-v2", source)
         self.assertIn("peter-page3-campfire-layout-v1", source)
         self.assertIn("data-layout-edit", source)
         self.assertIn("group-${group.groupNumber}", source)
@@ -108,14 +153,52 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("flipX: !current.flipX", source)
         self.assertIn("좌우 반전 (F)", source)
         self.assertIn("flipX={position.flipX}", source)
+        self.assertIn("setElementVisibility", source)
+        self.assertIn("setElementPose", source)
+        self.assertIn("장면 요소 목록", source)
+        self.assertIn("+ 추가", source)
+        self.assertIn("빼기", source)
+        self.assertIn("poseOptionsForPage", source)
+        self.assertIn("참조 슬라이드", source)
+        self.assertIn("PPT 슬라이드는 ⌘V로 붙여넣고", source)
+        self.assertIn("referenceBackgroundVisible", source)
+        self.assertIn("참조 숨기기", source)
+        self.assertIn("기본 캔버스는 투명함", source)
+        self.assertIn("saveReferenceBackground", source)
+        self.assertIn("deleteReferenceBackground", source)
         self.assertIn("window.localStorage.setItem", source)
+
+        poses = (FRONTEND / "src" / "retreat" / "scenePoses.ts").read_text()
+        self.assertIn("ALL_POSE_IDS", poses)
+        self.assertIn("'back',", poses)
+        self.assertNotIn("POSES_BY_PAGE", poses)
+
+    def test_every_scene_uses_three_exact_seven_group_rounds(self):
+        source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
+        self.assertIn(
+            "const activeSceneGroups = groupsForScene(groups, activeGroupScene);",
+            source,
+        )
+        self.assertIn(
+            "const lineupGroups = displayMode === 'campfire' ? [] : activeSceneGroups;",
+            source,
+        )
+        self.assertIn(
+            "const campfireGroups = displayMode === 'campfire' ? activeSceneGroups : [];",
+            source,
+        )
+        self.assertIn("GROUP_SCENES.map(({ groupStart, groupCount })", source)
+        self.assertIn("group.groupNumber >= firstGroupNumber", source)
+        self.assertIn("group.groupNumber <= lastGroupNumber", source)
+        self.assertIn("(groupNumber - 1) % GROUPS_PER_SCENE", source)
 
     def test_legacy_custom_atlas_falls_back_to_the_new_campfire_master(self):
         source = (FRONTEND / "src" / "retreat" / "RetreatCharacter.tsx").read_text()
         self.assertIn("fixed-peter-master-edit-v5", source)
         self.assertIn("supportsCampfirePoses", source)
-        self.assertIn("fixedFrame === undefined", source)
-        self.assertIn("FIXED_MASTER_URL", source)
+        self.assertIn("needsCampfireFrames", source)
+        self.assertIn("RETREAT_MASTER_URL", source)
+        self.assertIn("retreat-live-master-v1", source)
 
 
 if __name__ == "__main__":

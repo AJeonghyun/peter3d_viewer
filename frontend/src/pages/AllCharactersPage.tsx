@@ -1,8 +1,10 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -10,7 +12,20 @@ import {
 import type { AnimationName } from '../spriteLab/types';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
-import { STAGE_UNIT_X, STAGE_UNIT_Y, getEffectiveDisplayMode } from '../retreat/displayMode';
+import {
+  RETREAT_POSES,
+  defaultPoseForPage,
+  isRetreatPoseId,
+  poseForCampfireFrame,
+  poseOptionsForPage,
+  type RetreatPoseId,
+} from '../retreat/scenePoses';
+import { STAGE_UNIT_X, STAGE_UNIT_Y } from '../retreat/displayMode';
+import {
+  deleteReferenceBackground,
+  loadReferenceBackground,
+  saveReferenceBackground,
+} from '../retreat/persistence';
 import type { RetreatGroup, RetreatPage } from '../retreat/types';
 import '../styles/retreat-world.css';
 
@@ -21,28 +36,30 @@ interface AllCharactersPageProps {
 
 type DisplayMode = RetreatPage;
 
-interface CampfireTimelineScene {
+interface GroupTimelineScene {
   duration: number;
   groupStart: number;
   groupCount: number;
 }
 
-const CAMPFIRE_DURATION = 14_000;
+const GROUP_SCENE_DURATION = 14_000;
+const GROUPS_PER_SCENE = 7;
 const START_OFFSET = 2_400;
 const TEAM_COUNT = 21;
 const REACTION_ACTIONS = ['wave'] as const satisfies readonly AnimationName[];
 const REACTION_HOLD_MS = 950;
 const REACTION_MIN_GAP_MS = 1_600;
 const REACTION_MAX_GAP_MS = 3_400;
-const STAND_LAYOUT_STORAGE_KEY = 'peter-page3-stand-layout-v2';
-const BACK_LAYOUT_STORAGE_KEY = 'peter-page3-back-layout-v1';
+const STAND_LAYOUT_STORAGE_KEY = 'peter-page3-stand-layout-v3';
+const BACK_LAYOUT_STORAGE_KEY = 'peter-page3-back-layout-v2';
 const CAMPFIRE_LAYOUT_STORAGE_KEY = 'peter-page3-campfire-layout-v1';
 const DISPLAY_MODE_STORAGE_KEY = 'peter-page3-display-mode-v1';
+const MAX_REFERENCE_BACKGROUND_BYTES = 30 * 1024 * 1024;
 
-const CAMPFIRE_SCENES: readonly CampfireTimelineScene[] = [
-  { duration: CAMPFIRE_DURATION, groupStart: 0, groupCount: 7 },
-  { duration: CAMPFIRE_DURATION, groupStart: 7, groupCount: 7 },
-  { duration: CAMPFIRE_DURATION, groupStart: 14, groupCount: 7 },
+const GROUP_SCENES: readonly GroupTimelineScene[] = [
+  { duration: GROUP_SCENE_DURATION, groupStart: 0, groupCount: GROUPS_PER_SCENE },
+  { duration: GROUP_SCENE_DURATION, groupStart: 7, groupCount: GROUPS_PER_SCENE },
+  { duration: GROUP_SCENE_DURATION, groupStart: 14, groupCount: GROUPS_PER_SCENE },
 ];
 
 const CAMPFIRE_SEATS = [
@@ -60,6 +77,8 @@ interface ScenePosition {
   bottom: number;
   scale: number;
   flipX: boolean;
+  visible: boolean;
+  poseId: RetreatPoseId;
 }
 
 type SceneLayout = Record<string, ScenePosition>;
@@ -76,27 +95,32 @@ function clamp(value: number, min = 0, max = 1) {
   return Math.max(min, Math.min(max, value));
 }
 
-// Stand scene: the whole roster lined up along the bottom band, ideal for
-// laying a transparent OBS source over a slide without covering its content.
-function defaultLineupLayout(): SceneLayout {
-  const lineupSlots = TEAM_COUNT + 1;
-  const jesusSlot = 11;
-  const xForSlot = (slot: number) => 4 + (slot / (lineupSlots - 1)) * 92;
+// Stand/back scenes show one seven-group cohort at a time. Every cohort shares
+// the same eight slots so all three rounds have a balanced, readable lineup.
+function defaultLineupLayout(mode: 'stand' | 'back' = 'stand'): SceneLayout {
+  const lineupSlots = GROUPS_PER_SCENE + 1;
+  const jesusSlot = 4;
+  const xForSlot = (slot: number) => 6 + (slot / (lineupSlots - 1)) * 88;
   const layout: SceneLayout = {
     jesus: {
       x: xForSlot(jesusSlot),
       bottom: 2.5,
       scale: 1,
       flipX: false,
+      visible: true,
+      poseId: defaultPoseForPage(mode),
     },
   };
   for (let groupNumber = 1; groupNumber <= TEAM_COUNT; groupNumber += 1) {
-    const slot = groupNumber <= jesusSlot ? groupNumber - 1 : groupNumber;
+    const cohortIndex = (groupNumber - 1) % GROUPS_PER_SCENE;
+    const slot = cohortIndex < jesusSlot ? cohortIndex : cohortIndex + 1;
     layout[`group-${groupNumber}`] = {
       x: xForSlot(slot),
       bottom: 2.5,
       scale: 1,
       flipX: false,
+      visible: true,
+      poseId: defaultPoseForPage(mode),
     };
   }
   return layout;
@@ -104,8 +128,22 @@ function defaultLineupLayout(): SceneLayout {
 
 function defaultCampfireLayout(): SceneLayout {
   const layout: SceneLayout = {
-    jesus: { x: 50, bottom: 31, scale: 1, flipX: false },
-    fire: { x: 50, bottom: 18, scale: 1, flipX: false },
+    jesus: {
+      x: 50,
+      bottom: 31,
+      scale: 1,
+      flipX: false,
+      visible: true,
+      poseId: 'listen-front',
+    },
+    fire: {
+      x: 50,
+      bottom: 18,
+      scale: 1,
+      flipX: false,
+      visible: true,
+      poseId: 'listen-front',
+    },
   };
   for (let groupNumber = 1; groupNumber <= TEAM_COUNT; groupNumber += 1) {
     const seat = CAMPFIRE_SEATS[(groupNumber - 1) % CAMPFIRE_SEATS.length];
@@ -114,18 +152,28 @@ function defaultCampfireLayout(): SceneLayout {
       bottom: seat.bottom,
       scale: seat.scale,
       flipX: seat.flipX,
+      visible: true,
+      poseId: poseForCampfireFrame(seat.fixedFrame),
     };
   }
   return layout;
 }
 
 function defaultLayoutFor(mode: DisplayMode): SceneLayout {
-  return mode === 'campfire' ? defaultCampfireLayout() : defaultLineupLayout();
+  return mode === 'campfire' ? defaultCampfireLayout() : defaultLineupLayout(mode);
 }
 
 function layoutStorageKey(mode: DisplayMode): string {
   if (mode === 'campfire') return CAMPFIRE_LAYOUT_STORAGE_KEY;
   return mode === 'back' ? BACK_LAYOUT_STORAGE_KEY : STAND_LAYOUT_STORAGE_KEY;
+}
+
+function referenceBackgroundKey(mode: DisplayMode): string {
+  return `scene-reference-${mode}-v1`;
+}
+
+function isSupportedReferenceImage(file: File): boolean {
+  return ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type);
 }
 
 function readLayout(mode: DisplayMode): SceneLayout {
@@ -149,6 +197,12 @@ function readLayout(mode: DisplayMode): SceneLayout {
           flipX: typeof value.flipX === 'boolean'
             ? value.flipX
             : defaults[key]?.flipX ?? false,
+          visible: typeof value.visible === 'boolean'
+            ? value.visible
+            : defaults[key]?.visible ?? true,
+          poseId: isRetreatPoseId(value.poseId)
+            ? value.poseId
+            : defaults[key]?.poseId ?? defaultPoseForPage(mode),
         };
       }
     }
@@ -203,13 +257,21 @@ function editableLabel(key: string) {
   return `${key.replace('group-', '')}조 베드로`;
 }
 
-function locateCampfire(time: number): CampfireTimelineScene {
+function locateGroupScene(time: number): GroupTimelineScene {
   let cursor = 0;
-  for (const scene of CAMPFIRE_SCENES) {
+  for (const scene of GROUP_SCENES) {
     if (time < cursor + scene.duration) return scene;
     cursor += scene.duration;
   }
-  return CAMPFIRE_SCENES[0];
+  return GROUP_SCENES[0];
+}
+
+function groupsForScene(groups: RetreatGroup[], scene: GroupTimelineScene): RetreatGroup[] {
+  const firstGroupNumber = scene.groupStart + 1;
+  const lastGroupNumber = scene.groupStart + scene.groupCount;
+  return groups.filter((group) => (
+    group.groupNumber >= firstGroupNumber && group.groupNumber <= lastGroupNumber
+  ));
 }
 
 function useLoopClock(playing: boolean, cycleDuration: number) {
@@ -248,9 +310,10 @@ function nicknameFor(group: RetreatGroup) {
 
 export function AllCharactersWorld({ preview = false, scene }: AllCharactersPageProps) {
   const { settings } = useRetreat();
-  const backgroundDisplayMode = getEffectiveDisplayMode(settings.transparentBackground);
   const worldRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const referenceBackgroundUrlRef = useRef('');
+  const referenceBackgroundRevisionRef = useRef(0);
   const [layoutMode] = useState(() => !preview && isLayoutRoute());
   const [layoutGroupStart, setLayoutGroupStart] = useState(0);
   const [standLayout, setStandLayout] = useState(() => readLayout('stand'));
@@ -260,10 +323,17 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const [selectedLayoutKey, setSelectedLayoutKey] = useState('group-1');
   const [localPaused, setLocalPaused] = useState(false);
   const [reaction, setReaction] = useState<{ groupNumber: number; action: AnimationName } | null>(null);
+  const [referenceBackgroundUrl, setReferenceBackgroundUrl] = useState('');
+  const [referenceBackgroundName, setReferenceBackgroundName] = useState('');
+  const [referenceBackgroundError, setReferenceBackgroundError] = useState('');
+  const [referenceBackgroundVisible, setReferenceBackgroundVisible] = useState(false);
 
-  const playing = !localPaused;
-  const campfireRotating = displayMode === 'campfire' && !layoutMode && playing;
-  const clock = useLoopClock(campfireRotating, CAMPFIRE_SCENES.length * CAMPFIRE_DURATION);
+  const playing = settings.animationPlaying && !localPaused;
+  const groupsRotating = !layoutMode && playing;
+  const clock = useLoopClock(
+    groupsRotating,
+    GROUP_SCENES.length * GROUP_SCENE_DURATION,
+  );
 
   const groups = useMemo(
     () => [...settings.groups]
@@ -284,13 +354,16 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       ? setBackLayout
       : setStandLayout;
 
-  const campfireSlice = layoutMode
-    ? { groupStart: layoutGroupStart, groupCount: 7 }
-    : locateCampfire(clock);
-  const campfireGroups = displayMode === 'campfire'
-    ? groups.slice(campfireSlice.groupStart, campfireSlice.groupStart + campfireSlice.groupCount)
-    : [];
-  const lineupGroups = displayMode === 'campfire' ? [] : groups;
+  const activeGroupScene = layoutMode
+    ? {
+        duration: GROUP_SCENE_DURATION,
+        groupStart: layoutGroupStart,
+        groupCount: GROUPS_PER_SCENE,
+      }
+    : locateGroupScene(clock);
+  const activeSceneGroups = groupsForScene(groups, activeGroupScene);
+  const campfireGroups = displayMode === 'campfire' ? activeSceneGroups : [];
+  const lineupGroups = displayMode === 'campfire' ? [] : activeSceneGroups;
 
   useEffect(() => {
     if (scene) setDisplayMode(scene);
@@ -320,10 +393,91 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     window.localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, displayMode);
   }, [displayMode]);
 
+  const replaceReferenceBackgroundUrl = useCallback((file: File | null) => {
+    if (referenceBackgroundUrlRef.current) {
+      URL.revokeObjectURL(referenceBackgroundUrlRef.current);
+      referenceBackgroundUrlRef.current = '';
+    }
+    const nextUrl = file ? URL.createObjectURL(file) : '';
+    referenceBackgroundUrlRef.current = nextUrl;
+    setReferenceBackgroundUrl(nextUrl);
+    setReferenceBackgroundName(file?.name ?? '');
+  }, []);
+
+  const applyReferenceBackground = useCallback(async (file: File) => {
+    if (!isSupportedReferenceImage(file)) {
+      setReferenceBackgroundError('PNG, JPG, WEBP, GIF 이미지를 선택하거나 PPT 슬라이드를 복사해 붙여넣으세요.');
+      return;
+    }
+    if (file.size > MAX_REFERENCE_BACKGROUND_BYTES) {
+      setReferenceBackgroundError('참조 이미지는 30MB 이하만 사용할 수 있습니다.');
+      return;
+    }
+    try {
+      referenceBackgroundRevisionRef.current += 1;
+      await saveReferenceBackground(referenceBackgroundKey(displayMode), file);
+      replaceReferenceBackgroundUrl(file);
+      setReferenceBackgroundVisible(true);
+      setReferenceBackgroundError('');
+    } catch (error) {
+      console.warn('참조 배경을 저장하지 못했습니다.', error);
+      setReferenceBackgroundError('참조 배경을 저장하지 못했습니다. 다시 시도하세요.');
+    }
+  }, [displayMode, replaceReferenceBackgroundUrl]);
+
+  useEffect(() => {
+    if (!layoutMode) return undefined;
+    let active = true;
+    const revision = referenceBackgroundRevisionRef.current + 1;
+    referenceBackgroundRevisionRef.current = revision;
+    replaceReferenceBackgroundUrl(null);
+    setReferenceBackgroundVisible(false);
+    setReferenceBackgroundError('');
+    void loadReferenceBackground(referenceBackgroundKey(displayMode)).then((file) => {
+      if (active && revision === referenceBackgroundRevisionRef.current && file) {
+        replaceReferenceBackgroundUrl(file);
+      }
+    }).catch((error: unknown) => {
+      console.warn('참조 배경을 불러오지 못했습니다.', error);
+      if (active) setReferenceBackgroundError('저장된 참조 배경을 불러오지 못했습니다.');
+    });
+    return () => {
+      active = false;
+    };
+  }, [displayMode, layoutMode, replaceReferenceBackgroundUrl]);
+
+  useEffect(() => {
+    if (!layoutMode) return undefined;
+    const handlePaste = (event: ClipboardEvent) => {
+      const imageItem = Array.from(event.clipboardData?.items ?? [])
+        .find((item) => item.type.startsWith('image/'));
+      const pasted = imageItem?.getAsFile();
+      if (!pasted) return;
+      event.preventDefault();
+      const extension = pasted.type === 'image/jpeg' ? 'jpg' : 'png';
+      const file = new File(
+        [pasted],
+        `ppt-slide-${displayMode}-${Date.now()}.${extension}`,
+        { type: pasted.type || 'image/png' },
+      );
+      void applyReferenceBackground(file);
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [applyReferenceBackground, displayMode, layoutMode]);
+
+  useEffect(() => () => {
+    if (referenceBackgroundUrlRef.current) {
+      URL.revokeObjectURL(referenceBackgroundUrlRef.current);
+    }
+  }, []);
+
   // Keep the selection valid when switching scenes so the toolbar targets a
   // present element.
   useEffect(() => {
     setSelectedLayoutKey('group-1');
+    setLayoutGroupStart(0);
+    setReferenceBackgroundVisible(false);
   }, [displayMode]);
 
   // Front lineup: every few seconds one Peter waves.
@@ -351,7 +505,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       window.clearTimeout(nextTimer);
       window.clearTimeout(holdTimer);
     };
-  }, [displayMode, playing, lineupGroups.length]);
+  }, [activeGroupScene.groupStart, displayMode, playing, lineupGroups.length]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -390,6 +544,8 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         bottom: 0,
         scale: 1,
         flipX: false,
+        visible: true,
+        poseId: defaultPoseForPage(displayMode),
       };
       const next = update(current[key] ?? fallback);
       return {
@@ -399,9 +555,21 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
           bottom: clamp(next.bottom, -4, 70),
           scale: clamp(next.scale, 0.35, 1.8),
           flipX: next.flipX,
+          visible: next.visible,
+          poseId: next.poseId,
         },
       };
     });
+  }
+
+  function setElementVisibility(key: string, visible: boolean) {
+    updateLayoutPosition(key, (current) => ({ ...current, visible }));
+    if (visible) setSelectedLayoutKey(key);
+  }
+
+  function setElementPose(key: string, poseId: RetreatPoseId) {
+    updateLayoutPosition(key, (current) => ({ ...current, poseId }));
+    setSelectedLayoutKey(key);
   }
 
   function handlePointerDown(key: string, event: ReactPointerEvent<HTMLElement>) {
@@ -475,16 +643,39 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     setSelectedLayoutKey('group-1');
   }
 
+  function handleReferenceBackgroundChange(event: ReactChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) void applyReferenceBackground(file);
+  }
+
+  async function removeReferenceBackground() {
+    try {
+      referenceBackgroundRevisionRef.current += 1;
+      await deleteReferenceBackground(referenceBackgroundKey(displayMode));
+      replaceReferenceBackgroundUrl(null);
+      setReferenceBackgroundVisible(false);
+      setReferenceBackgroundError('');
+    } catch (error) {
+      console.warn('참조 배경을 삭제하지 못했습니다.', error);
+      setReferenceBackgroundError('참조 배경을 삭제하지 못했습니다. 다시 시도하세요.');
+    }
+  }
+
   const campfireJesusPosition = campfireLayout.jesus ?? defaultCampfireLayout().jesus;
   const firePosition = campfireLayout.fire ?? defaultCampfireLayout().fire;
   const lineupLayout = displayMode === 'back' ? backLayout : standLayout;
-  const lineupJesusPosition = lineupLayout.jesus ?? defaultLineupLayout().jesus;
+  const lineupJesusPosition = lineupLayout.jesus ?? defaultLineupLayout(
+    displayMode === 'back' ? 'back' : 'stand',
+  ).jesus;
   const displayPath = displayMode === 'campfire'
     ? '/display/campfire'
     : displayMode === 'back'
       ? '/display/back'
       : '/display/stand';
   const lineupDirection = displayMode === 'back' ? '뒷모습' : '정면';
+  const sidebarGroups = activeSceneGroups;
+  const poseOptions = poseOptionsForPage(displayMode);
 
   return (
     <main
@@ -492,11 +683,12 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       className="retreat-parade"
       data-display-page="all-characters"
       data-preview={preview ? 'true' : 'false'}
-      data-obs={backgroundDisplayMode.obsMode ? 'true' : 'false'}
-      data-background-mode={backgroundDisplayMode.backgroundMode}
+      data-obs="true"
+      data-background-mode="transparent"
       data-paused={playing ? 'false' : 'true'}
       data-scene={displayMode}
       data-display-mode={displayMode}
+      data-group-range={`${activeGroupScene.groupStart + 1}-${activeGroupScene.groupStart + activeGroupScene.groupCount}`}
       data-layout-edit={layoutMode ? 'true' : 'false'}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -505,26 +697,11 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         ? '스물한 조 베드로가 나뉘어 예수님의 말씀을 듣는 모션그래픽'
         : `예수님과 스물한 조 베드로의 ${lineupDirection} 라인업 모션그래픽`}
     >
-      <div className="retreat-parade__sky" aria-hidden="true">
-        <span className="retreat-parade__sun" />
-        <span className="retreat-parade__cloud retreat-parade__cloud--one" />
-        <span className="retreat-parade__cloud retreat-parade__cloud--two" />
-        <span className="retreat-parade__cloud retreat-parade__cloud--three" />
-        <span className="retreat-parade__birds retreat-parade__birds--one" />
-        <span className="retreat-parade__birds retreat-parade__birds--two" />
-      </div>
-      <div className="retreat-parade__sea" aria-hidden="true">
-        <span className="retreat-parade__sea-light retreat-parade__sea-light--one" />
-        <span className="retreat-parade__sea-light retreat-parade__sea-light--two" />
-        <span className="retreat-parade__island" />
-      </div>
-      <div className="retreat-parade__shoreline" aria-hidden="true" />
-      <div className="retreat-parade__sand" aria-hidden="true">
-        <span className="retreat-parade__shell retreat-parade__shell--one" />
-        <span className="retreat-parade__shell retreat-parade__shell--two" />
-        <span className="retreat-parade__grass retreat-parade__grass--one" />
-        <span className="retreat-parade__grass retreat-parade__grass--two" />
-      </div>
+      {layoutMode && referenceBackgroundUrl && referenceBackgroundVisible ? (
+        <div className="retreat-parade__reference-background" aria-hidden="true">
+          <img src={referenceBackgroundUrl} alt="" />
+        </div>
+      ) : null}
 
       {layoutMode ? (
         <aside
@@ -532,34 +709,174 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
           aria-label={displayMode === 'campfire' ? '모닥불 배치 편집기' : `${lineupDirection} 라인업 배치 편집기`}
         >
           <div className="retreat-parade__layout-heading">
-            <strong>{displayMode === 'campfire' ? '모닥불 배치 편집' : `${lineupDirection} 라인업 배치 편집`}</strong>
-            <span>대상을 드래그 · 방향키로 미세 이동</span>
-          </div>
-          {displayMode === 'campfire' ? (
-            <div className="retreat-parade__layout-groups" role="group" aria-label="편집할 조 선택">
-              {[0, 7, 14].map((groupStart) => (
-                <button
-                  type="button"
-                  key={groupStart}
-                  className={layoutGroupStart === groupStart ? 'is-active' : undefined}
-                  onClick={() => {
-                    setLayoutGroupStart(groupStart);
-                    setSelectedLayoutKey(`group-${groupStart + 1}`);
-                  }}
-                >
-                  {groupStart + 1}–{groupStart + 7}조
-                </button>
-              ))}
+            <div>
+              <span>SCENE OBJECTS</span>
+              <strong>{displayMode === 'campfire' ? '모닥불 배치' : `${lineupDirection} 라인업`}</strong>
             </div>
-          ) : (
-            <p className="retreat-parade__layout-hint">
-              캐릭터를 클릭해 선택한 뒤 아래 버튼으로 조절하세요.
-            </p>
-          )}
+            <a href={displayPath}>완료</a>
+          </div>
+          <div className="retreat-parade__layout-scenes" aria-label="편집 장면 전환">
+            {([
+              ['stand', '정면', '/editor/stand'],
+              ['back', '뒷면', '/editor/back'],
+              ['campfire', '모닥불', '/editor/campfire'],
+            ] as const).map(([mode, label, path]) => (
+              <a
+                key={mode}
+                className={displayMode === mode ? 'is-active' : undefined}
+                href={path}
+              >
+                {label}
+              </a>
+            ))}
+          </div>
+          <section
+            className="retreat-parade__reference-tools"
+            data-has-reference={referenceBackgroundUrl ? 'true' : 'false'}
+            aria-label="참조 슬라이드 배경"
+          >
+            <div>
+              <strong>참조 슬라이드</strong>
+              <small>
+                {referenceBackgroundName
+                  ? `${referenceBackgroundName} · ${referenceBackgroundVisible ? '표시 중' : '숨김'}`
+                  : '기본 캔버스는 투명함'}
+              </small>
+            </div>
+            <label className="retreat-parade__reference-upload">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={handleReferenceBackgroundChange}
+              />
+              {referenceBackgroundUrl ? '이미지 교체' : '이미지 첨부'}
+            </label>
+            {referenceBackgroundUrl ? (
+              <button
+                type="button"
+                aria-pressed={referenceBackgroundVisible}
+                onClick={() => setReferenceBackgroundVisible((current) => !current)}
+              >
+                {referenceBackgroundVisible ? '참조 숨기기' : '참조 보기'}
+              </button>
+            ) : null}
+            {referenceBackgroundUrl ? (
+              <button type="button" onClick={() => void removeReferenceBackground()}>파일 삭제</button>
+            ) : null}
+            <p>PPT 슬라이드는 ⌘V로 붙여넣고 필요할 때만 켜세요. 송출에는 포함되지 않습니다.</p>
+            {referenceBackgroundError ? (
+              <p className="retreat-parade__reference-error" role="status">
+                {referenceBackgroundError}
+              </p>
+            ) : null}
+          </section>
+          <div className="retreat-parade__layout-groups" role="group" aria-label="편집할 조 회차 선택">
+            {GROUP_SCENES.map(({ groupStart, groupCount }) => (
+              <button
+                type="button"
+                key={groupStart}
+                className={layoutGroupStart === groupStart ? 'is-active' : undefined}
+                onClick={() => {
+                  setLayoutGroupStart(groupStart);
+                  setSelectedLayoutKey(`group-${groupStart + 1}`);
+                }}
+              >
+                {groupStart + 1}–{groupStart + groupCount}조
+              </button>
+            ))}
+          </div>
+
+          <div className="retreat-parade__object-list" aria-label="장면 요소 목록">
+            {(['jesus', ...(displayMode === 'campfire' ? ['fire'] : [])] as const).map((key) => {
+              const item = activeLayout[key] ?? defaultLayoutFor(displayMode)[key];
+              if (!item) return null;
+              return (
+                <div
+                  className="retreat-parade__object-row retreat-parade__object-row--prop"
+                  data-selected={selectedLayoutKey === key ? 'true' : 'false'}
+                  data-visible={item.visible ? 'true' : 'false'}
+                  key={key}
+                >
+                  <button
+                    className="retreat-parade__object-main"
+                    type="button"
+                    onClick={() => setSelectedLayoutKey(key)}
+                  >
+                    <span className="retreat-parade__object-thumb" data-kind={key} aria-hidden="true">
+                      {key === 'jesus' ? '예' : '불'}
+                    </span>
+                    <span>
+                      <strong>{key === 'jesus' ? '예수님' : '모닥불'}</strong>
+                      <small>{item.visible ? '장면에 표시 중' : '장면에서 빠짐'}</small>
+                    </span>
+                  </button>
+                  <button
+                    className="retreat-parade__object-toggle"
+                    type="button"
+                    onClick={() => setElementVisibility(key, !item.visible)}
+                  >
+                    {item.visible ? '빼기' : '+ 추가'}
+                  </button>
+                </div>
+              );
+            })}
+
+            {sidebarGroups.map((group) => {
+              const layoutKey = `group-${group.groupNumber}`;
+              const item = activeLayout[layoutKey] ?? defaultLayoutFor(displayMode)[layoutKey];
+              if (!item) return null;
+              return (
+                <div
+                  className="retreat-parade__object-row"
+                  data-selected={selectedLayoutKey === layoutKey ? 'true' : 'false'}
+                  data-visible={item.visible ? 'true' : 'false'}
+                  key={group.id}
+                >
+                  <button
+                    className="retreat-parade__object-main"
+                    type="button"
+                    onClick={() => setSelectedLayoutKey(layoutKey)}
+                  >
+                    <span className="retreat-parade__object-thumb" aria-hidden="true">
+                      {group.groupNumber}
+                    </span>
+                    <span>
+                      <strong>{nicknameFor(group)}</strong>
+                      <small>{RETREAT_POSES[item.poseId].shortLabel}</small>
+                    </span>
+                  </button>
+                  <button
+                    className="retreat-parade__object-toggle"
+                    type="button"
+                    onClick={() => setElementVisibility(layoutKey, !item.visible)}
+                  >
+                    {item.visible ? '빼기' : '+ 추가'}
+                  </button>
+                  <label className="retreat-parade__object-pose">
+                    <span>포즈</span>
+                    <select
+                      aria-label={`${nicknameFor(group)} 포즈`}
+                      value={item.poseId}
+                      onChange={(event) => setElementPose(
+                        layoutKey,
+                        event.target.value as RetreatPoseId,
+                      )}
+                    >
+                      {poseOptions.map((pose) => (
+                        <option key={pose.id} value={pose.id}>{pose.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+
           <div className="retreat-parade__layout-actions" role="toolbar" aria-label="선택 대상 조절">
-            <span className="retreat-parade__layout-selected">
-              선택: {editableLabel(selectedLayoutKey)}
-            </span>
+            <div className="retreat-parade__layout-selected">
+              <span>선택됨</span>
+              <strong>{editableLabel(selectedLayoutKey)}</strong>
+            </div>
             <button
               type="button"
               aria-label="선택 대상 축소"
@@ -592,15 +909,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             <button type="button" onClick={resetSelectedPosition}>선택 초기화</button>
             <button type="button" onClick={resetAllPositions}>전체 초기화</button>
           </div>
-          <div className="retreat-parade__layout-footer">
-            <a href={displayPath}>
-              편집 끝내기
-            </a>
-          </div>
-          <p>
-            배치는 이 브라우저에 자동 저장됩니다.
-            송출 URL: <code>{displayPath}</code>
-          </p>
+          <p>요소를 선택하고 캔버스에서 드래그하세요. 추가·빼기와 포즈는 자동 저장됩니다.</p>
         </aside>
       ) : null}
 
@@ -611,10 +920,14 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         >
           {lineupGroups.map((group) => {
             const layoutKey = `group-${group.groupNumber}`;
-            const position = lineupLayout[layoutKey] ?? defaultLineupLayout()[layoutKey];
+            const position = lineupLayout[layoutKey] ?? defaultLineupLayout(
+              displayMode === 'back' ? 'back' : 'stand',
+            )[layoutKey];
+            if (!position?.visible) return null;
             const isReacting = displayMode === 'stand'
+              && position.poseId === 'idle'
               && reaction?.groupNumber === group.groupNumber;
-            const animation: AnimationName = isReacting ? reaction!.action : 'idle';
+            const poseId: RetreatPoseId = isReacting ? 'wave' : position.poseId;
             return (
               <article
                 className="retreat-parade__stander"
@@ -634,79 +947,80 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
               >
                 <RetreatCharacter
                   group={group}
-                  animation={animation}
+                  poseId={poseId}
                   playing={playing}
                   flipX={position.flipX}
-                  view={displayMode === 'back' ? 'back' : 'front'}
                   respectReducedMotion={false}
                   className="retreat-parade__stander-character"
                 />
               </article>
             );
           })}
-          <article
-            className="retreat-parade__stander retreat-parade__stander--jesus"
-            data-layout-selected={selectedLayoutKey === 'jesus' ? 'true' : 'false'}
-            role={layoutMode ? 'button' : undefined}
-            tabIndex={layoutMode ? 0 : undefined}
-            aria-label={layoutMode ? `예수님 ${lineupDirection} 위치 편집` : undefined}
-            onPointerDown={(event) => handlePointerDown('jesus', event)}
-            onKeyDown={(event) => handleEditableKeyDown('jesus', event)}
-            style={{
-              '--stander-x': `${lineupJesusPosition.x}${STAGE_UNIT_X}`,
-              '--stander-bottom': `${lineupJesusPosition.bottom}${STAGE_UNIT_Y}`,
-              '--stander-scale': lineupJesusPosition.scale,
-            } as CSSProperties}
-          >
-            <img
-              className="retreat-parade__standing-jesus"
-              src={displayMode === 'back'
-                ? '/assets/campfire/jesus-standing-back.png'
-                : '/assets/campfire/jesus-standing-front.png'}
-              alt={`예수님 ${lineupDirection}`}
-              draggable={false}
-            />
-          </article>
+          {lineupJesusPosition.visible ? (
+            <article
+              className="retreat-parade__stander retreat-parade__stander--jesus"
+              data-layout-selected={selectedLayoutKey === 'jesus' ? 'true' : 'false'}
+              role={layoutMode ? 'button' : undefined}
+              tabIndex={layoutMode ? 0 : undefined}
+              aria-label={layoutMode ? `예수님 ${lineupDirection} 위치 편집` : undefined}
+              onPointerDown={(event) => handlePointerDown('jesus', event)}
+              onKeyDown={(event) => handleEditableKeyDown('jesus', event)}
+              style={{
+                '--stander-x': `${lineupJesusPosition.x}${STAGE_UNIT_X}`,
+                '--stander-bottom': `${lineupJesusPosition.bottom}${STAGE_UNIT_Y}`,
+                '--stander-scale': lineupJesusPosition.scale,
+              } as CSSProperties}
+            >
+              <img
+                className="retreat-parade__standing-jesus"
+                src={displayMode === 'back'
+                  ? '/assets/campfire/jesus-standing-back.png'
+                  : '/assets/campfire/jesus-standing-front.png'}
+                alt={`예수님 ${lineupDirection}`}
+                draggable={false}
+              />
+            </article>
+          ) : null}
         </section>
       ) : null}
 
       {displayMode === 'campfire' ? (
         <section className="retreat-parade__campfire-gathering" aria-label="예수님의 말씀을 듣는 조 캐릭터">
-          <div
-            className="retreat-parade__fire-glow"
-            style={{
-              '--fire-x': `${firePosition.x}${STAGE_UNIT_X}`,
-              '--fire-bottom': `${firePosition.bottom}${STAGE_UNIT_Y}`,
-              '--fire-scale': firePosition.scale,
-            } as CSSProperties}
-            aria-hidden="true"
-          />
-          <img
-            className="retreat-parade__jesus"
-            src="/assets/campfire/jesus-seated.png"
-            alt="모닥불 곁에서 말씀을 전하는 예수님"
-            draggable={false}
-            data-layout-selected={selectedLayoutKey === 'jesus' ? 'true' : 'false'}
-            role={layoutMode ? 'button' : undefined}
-            tabIndex={layoutMode ? 0 : undefined}
-            aria-label={layoutMode ? '예수님 위치 편집' : undefined}
-            onPointerDown={(event) => handlePointerDown('jesus', event)}
-            onKeyDown={(event) => handleEditableKeyDown('jesus', event)}
-            style={{
-              '--jesus-x': `${campfireJesusPosition.x}${STAGE_UNIT_X}`,
-              '--jesus-bottom': `${campfireJesusPosition.bottom}${STAGE_UNIT_Y}`,
-              '--jesus-scale': campfireJesusPosition.scale,
-            } as CSSProperties}
-          />
+          {firePosition.visible ? (
+            <div
+              className="retreat-parade__fire-glow"
+              style={{
+                '--fire-x': `${firePosition.x}${STAGE_UNIT_X}`,
+                '--fire-bottom': `${firePosition.bottom}${STAGE_UNIT_Y}`,
+                '--fire-scale': firePosition.scale,
+              } as CSSProperties}
+              aria-hidden="true"
+            />
+          ) : null}
+          {campfireJesusPosition.visible ? (
+            <img
+              className="retreat-parade__jesus"
+              src="/assets/campfire/jesus-seated.png"
+              alt="모닥불 곁에서 말씀을 전하는 예수님"
+              draggable={false}
+              data-layout-selected={selectedLayoutKey === 'jesus' ? 'true' : 'false'}
+              role={layoutMode ? 'button' : undefined}
+              tabIndex={layoutMode ? 0 : undefined}
+              aria-label={layoutMode ? '예수님 위치 편집' : undefined}
+              onPointerDown={(event) => handlePointerDown('jesus', event)}
+              onKeyDown={(event) => handleEditableKeyDown('jesus', event)}
+              style={{
+                '--jesus-x': `${campfireJesusPosition.x}${STAGE_UNIT_X}`,
+                '--jesus-bottom': `${campfireJesusPosition.bottom}${STAGE_UNIT_Y}`,
+                '--jesus-scale': campfireJesusPosition.scale,
+              } as CSSProperties}
+            />
+          ) : null}
           {campfireGroups.map((group, index) => {
             const seat = CAMPFIRE_SEATS[index];
             const layoutKey = `group-${group.groupNumber}`;
-            const position = campfireLayout[layoutKey] ?? {
-              x: seat.x,
-              bottom: seat.bottom,
-              scale: seat.scale,
-              flipX: seat.flipX,
-            };
+            const position = campfireLayout[layoutKey] ?? defaultCampfireLayout()[layoutKey];
+            if (!position?.visible) return null;
             return (
               <article
                 className="retreat-parade__listener"
@@ -726,8 +1040,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
               >
                 <RetreatCharacter
                   group={group}
-                  animation="kneel"
-                  fixedFrame={seat.fixedFrame}
+                  poseId={position.poseId}
                   playing={playing}
                   flipX={position.flipX}
                   respectReducedMotion={false}
@@ -736,23 +1049,25 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
               </article>
             );
           })}
-          <div
-            className="retreat-parade__campfire"
-            data-layout-selected={selectedLayoutKey === 'fire' ? 'true' : 'false'}
-            role={layoutMode ? 'button' : undefined}
-            tabIndex={layoutMode ? 0 : undefined}
-            aria-hidden={layoutMode ? undefined : true}
-            aria-label={layoutMode ? '모닥불 위치 편집' : undefined}
-            onPointerDown={(event) => handlePointerDown('fire', event)}
-            onKeyDown={(event) => handleEditableKeyDown('fire', event)}
-            style={{
-              '--fire-x': `${firePosition.x}${STAGE_UNIT_X}`,
-              '--fire-bottom': `${firePosition.bottom}${STAGE_UNIT_Y}`,
-              '--fire-scale': firePosition.scale,
-            } as CSSProperties}
-          >
-            <img src="/assets/campfire/campfire-sheet.png" alt="" />
-          </div>
+          {firePosition.visible ? (
+            <div
+              className="retreat-parade__campfire"
+              data-layout-selected={selectedLayoutKey === 'fire' ? 'true' : 'false'}
+              role={layoutMode ? 'button' : undefined}
+              tabIndex={layoutMode ? 0 : undefined}
+              aria-hidden={layoutMode ? undefined : true}
+              aria-label={layoutMode ? '모닥불 위치 편집' : undefined}
+              onPointerDown={(event) => handlePointerDown('fire', event)}
+              onKeyDown={(event) => handleEditableKeyDown('fire', event)}
+              style={{
+                '--fire-x': `${firePosition.x}${STAGE_UNIT_X}`,
+                '--fire-bottom': `${firePosition.bottom}${STAGE_UNIT_Y}`,
+                '--fire-scale': firePosition.scale,
+              } as CSSProperties}
+            >
+              <img src="/assets/campfire/campfire-sheet.png" alt="" />
+            </div>
+          ) : null}
         </section>
       ) : null}
 

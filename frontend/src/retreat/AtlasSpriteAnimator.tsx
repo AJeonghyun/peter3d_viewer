@@ -7,13 +7,14 @@ interface AtlasSpriteAnimatorProps {
   spriteUrl: string;
   animation: AnimationName;
   fixedFrame?: number;
+  frameSequence?: readonly number[];
   playing?: boolean;
   flipX?: boolean;
   label: string;
   className?: string;
   prepared?: boolean;
   contract?: ShowcaseSpriteContract | null;
-  layout?: 'legacy-4x3' | 'fixed-5x5';
+  layout?: 'legacy-4x3' | 'fixed-5x5' | 'retreat-7x1';
 }
 
 const FIXED_MASTER_SEQUENCES: Record<AnimationName, number[]> = {
@@ -36,6 +37,12 @@ function isFixedMasterContract(contract?: ShowcaseSpriteContract | null) {
     || contract.frame_count === 25;
 }
 
+function isRetreatMasterContract(contract?: ShowcaseSpriteContract | null) {
+  return contract?.id === 'retreat-live-master-v1'
+    || contract?.layout === '7x1'
+    || (contract?.rows === 1 && contract?.columns === 7);
+}
+
 function animationRow(animation: AnimationName) {
   if (animation === 'walk' || animation === 'run') return 1;
   if (animation === 'idle') return 0;
@@ -53,6 +60,7 @@ function AtlasSpriteAnimatorComponent({
   spriteUrl,
   animation,
   fixedFrame,
+  frameSequence,
   playing = true,
   flipX = false,
   label,
@@ -65,15 +73,23 @@ function AtlasSpriteAnimatorComponent({
   const [failed, setFailed] = useState(false);
   const [frameOffset, setFrameOffset] = useState(0);
   const fixedMaster = layout === 'fixed-5x5' || isFixedMasterContract(contract);
-  const sequence = fixedMaster && fixedFrame !== undefined
-    ? [Math.max(0, Math.min(24, Math.round(fixedFrame)))]
-    : FIXED_MASTER_SEQUENCES[animation] ?? FIXED_MASTER_SEQUENCES.idle;
+  const retreatMaster = layout === 'retreat-7x1' || isRetreatMasterContract(contract);
+  const gridAtlas = fixedMaster || retreatMaster;
+  const columns = gridAtlas ? Number(contract?.columns ?? (retreatMaster ? 7 : 5)) : 4;
+  const rows = gridAtlas ? Number(contract?.rows ?? (retreatMaster ? 1 : 5)) : 3;
+  const maxFrame = Math.max(0, columns * rows - 1);
+  const sequence = frameSequence?.length
+    ? frameSequence.map((value) => Math.max(0, Math.min(maxFrame, Math.round(value))))
+    : fixedMaster && fixedFrame !== undefined
+      ? [Math.max(0, Math.min(maxFrame, Math.round(fixedFrame)))]
+      : retreatMaster
+        ? animation === 'idle' ? [0, 1] : animation === 'wave' ? [2] : [0]
+        : FIXED_MASTER_SEQUENCES[animation] ?? FIXED_MASTER_SEQUENCES.idle;
+  const sequenceKey = sequence.join(',');
   const frame = sequence[frameOffset % sequence.length] ?? 0;
-  const columns = fixedMaster ? 5 : 4;
-  const rows = fixedMaster ? 5 : 3;
   const column = frame % columns;
   const row = Math.floor(frame / columns);
-  const displayScale = fixedMaster
+  const displayScale = gridAtlas
     ? Math.min(1.6, Math.max(0.8, contract?.display_scale ?? 1))
     : 1;
 
@@ -81,7 +97,7 @@ function AtlasSpriteAnimatorComponent({
     let active = true;
     setFailed(false);
     setPreparedUrl('');
-    if (prepared || fixedMaster) {
+    if (prepared || gridAtlas) {
       setPreparedUrl(spriteUrl);
       return () => {
         active = false;
@@ -96,25 +112,27 @@ function AtlasSpriteAnimatorComponent({
     return () => {
       active = false;
     };
-  }, [fixedMaster, prepared, spriteUrl]);
+  }, [gridAtlas, prepared, spriteUrl]);
 
   useEffect(() => {
     setFrameOffset(0);
-  }, [animation, fixedFrame, spriteUrl]);
+  }, [animation, fixedFrame, sequenceKey, spriteUrl]);
 
   useEffect(() => {
-    if (!fixedMaster || !playing || sequence.length <= 1) return undefined;
+    if (!gridAtlas || !playing || sequence.length <= 1) return undefined;
     const timer = window.setInterval(() => {
       setFrameOffset((current) => current + 1);
     }, frameDurationMs(animation));
     return () => window.clearInterval(timer);
-  }, [animation, fixedMaster, playing, sequence.length]);
+  }, [animation, gridAtlas, playing, sequence.length]);
 
   const style = {
-    '--atlas-row': fixedMaster ? row : animationRow(animation),
-    '--atlas-column': fixedMaster ? column : 0,
+    '--atlas-row': gridAtlas ? row : animationRow(animation),
+    '--atlas-column': gridAtlas ? column : 0,
     '--atlas-columns': columns,
     '--atlas-rows': rows,
+    '--atlas-position-x': `${columns > 1 ? (column / (columns - 1)) * 100 : 0}%`,
+    '--atlas-position-y': `${rows > 1 ? (row / (rows - 1)) * 100 : 0}%`,
     '--atlas-flip': flipX ? -1 : 1,
     '--atlas-display-scale': displayScale,
     '--atlas-image': preparedUrl ? `url(${JSON.stringify(preparedUrl)})` : 'none',
@@ -125,7 +143,7 @@ function AtlasSpriteAnimatorComponent({
       className={`atlas-sprite-animator ${className}`.trim()}
       data-animation={animation}
       data-fixed-frame={fixedFrame}
-      data-layout={fixedMaster ? 'fixed-5x5' : 'legacy-4x3'}
+      data-layout={retreatMaster ? 'retreat-7x1' : fixedMaster ? 'fixed-5x5' : 'legacy-4x3'}
       data-playing={playing ? 'true' : 'false'}
       data-ready={preparedUrl ? 'true' : 'false'}
       style={style}
