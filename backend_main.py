@@ -125,6 +125,7 @@ from backend.sprite_pixels import (  # noqa: F401
     normalize_master_locked_atlas,
     normalize_master_locked_frame,
     remove_connected_cell_background,
+    remove_detached_alpha_components,
     replace_garment_atlas_frame,
     validate_showcase_sprite_png,
 )

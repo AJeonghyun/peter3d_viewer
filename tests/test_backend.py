@@ -354,6 +354,30 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("chroma_spill", report["frames"][0]["issues"])
         self.assertGreater(report["frames"][0]["chroma_spill_pixels"], 0)
 
+    def test_normalizer_removes_a_detached_model_shadow(self):
+        generated = Image.open(io.BytesIO(backend_main.master_reference_for_ai())).convert("RGBA")
+        draw = ImageDraw.Draw(generated)
+        draw.ellipse((172, 366, 196, 376), fill=(92, 54, 30, 255))
+
+        normalized = backend_main.normalize_master_locked_atlas(generated)
+        report = backend_main.analyze_garment_atlas_pixels(normalized)
+
+        self.assertEqual(report["frames"][0]["alpha_component_count"], 1)
+        self.assertEqual(report["frames"][0]["detached_alpha_pixels"], 0)
+        self.assertNotIn("detached_alpha_component", report["frames"][0]["issues"])
+
+    def test_atlas_qa_rejects_a_detached_alpha_artifact(self):
+        atlas = backend_main.normalize_master_locked_atlas(
+            backend_main.master_reference_for_ai(),
+        )
+        ImageDraw.Draw(atlas).ellipse((170, 342, 188, 350), fill=(92, 54, 30, 255))
+
+        report = backend_main.analyze_garment_atlas_pixels(atlas)
+
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("detached_alpha_component", report["frames"][0]["issues"])
+        self.assertGreaterEqual(report["frames"][0]["detached_alpha_pixels"], 8)
+
     def test_master_locked_request_sends_master_first_and_omits_gpt_image_2_fidelity(self):
         generated = backend_main.master_reference_for_ai()
         expected = backend_main.SHOWCASE_MASTER_PATH.read_bytes()

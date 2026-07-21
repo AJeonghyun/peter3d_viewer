@@ -5,10 +5,10 @@ Everything here is pure image processing: no network calls, no database access.
 
 import io
 import struct
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from fastapi import HTTPException
-from PIL import Image, ImageDraw, ImageFilter, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, UnidentifiedImageError
 
 from backend import config
 from backend.media import image_to_png_bytes
@@ -355,6 +355,50 @@ def remove_connected_cell_background(cell: Image.Image, *, threshold: int = 56) 
     return decontaminate_chroma_contour(rgba)
 
 
+def _nearest_visible_seed(mask: Image.Image) -> Optional[tuple[int, int]]:
+    """Find the actor component from the center of the fixed master cell."""
+    pixels = mask.load()
+    center_x = mask.width // 2
+    center_y = mask.height // 2
+    maximum_radius = max(mask.width, mask.height)
+    for radius in range(maximum_radius):
+        left = max(0, center_x - radius)
+        right = min(mask.width - 1, center_x + radius)
+        top = max(0, center_y - radius)
+        bottom = min(mask.height - 1, center_y + radius)
+        for x in range(left, right + 1):
+            if pixels[x, top]:
+                return x, top
+            if pixels[x, bottom]:
+                return x, bottom
+        for y in range(top + 1, bottom):
+            if pixels[left, y]:
+                return left, y
+            if pixels[right, y]:
+                return right, y
+    return None
+
+
+def _main_alpha_component_mask(image: Image.Image, *, threshold: int = 8) -> Image.Image:
+    """Build a fast 8-connected mask for the centered fixed-master actor."""
+    alpha = image.convert("RGBA").getchannel("A")
+    binary = alpha.point([0] * (threshold + 1) + [255] * (255 - threshold))
+    connected = binary.filter(ImageFilter.MaxFilter(3))
+    seed = _nearest_visible_seed(connected)
+    if seed is None:
+        return Image.new("L", image.size, 0)
+    ImageDraw.floodfill(connected, seed, 128, thresh=0)
+    return connected.point([255 if value == 128 else 0 for value in range(256)])
+
+
+def remove_detached_alpha_components(image: Image.Image) -> Image.Image:
+    """Keep the actor silhouette and discard detached model artifacts or shadows."""
+    rgba = image.convert("RGBA")
+    keep = _main_alpha_component_mask(rgba)
+    rgba.putalpha(ImageChops.multiply(rgba.getchannel("A"), keep))
+    return rgba
+
+
 def master_display_target_bbox(master_bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
     """Expand a master frame to the same visual envelope as the shared Peter actor."""
     left, top, right, bottom = master_bbox
@@ -411,7 +455,9 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
             (column + 1) * config.GARMENT_AI_CELL_SIZE,
             (row + 1) * config.GARMENT_AI_CELL_SIZE,
         ))
-        cleaned = remove_connected_cell_background(source_cell)
+        cleaned = remove_detached_alpha_components(
+            remove_connected_cell_background(source_cell)
+        )
         generated_bbox = cleaned.getchannel("A").getbbox()
         master_cell = master.crop((
             column * config.GARMENT_ATLAS_CELL_SIZE,
@@ -522,7 +568,9 @@ def normalize_master_locked_frame(generated: Union[bytes, Image.Image], frame: i
             (config.GARMENT_AI_FRAME_SIZE, config.GARMENT_AI_FRAME_SIZE),
             Image.Resampling.LANCZOS,
         )
-    cleaned = remove_connected_cell_background(candidate)
+    cleaned = remove_detached_alpha_components(
+        remove_connected_cell_background(candidate)
+    )
     generated_bbox = cleaned.getchannel("A").getbbox()
     if generated_bbox is None:
         raise ValueError("AI 문제 컷 결과에 캐릭터가 없습니다")
@@ -651,6 +699,14 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
         size_ratio = None
         anchor_delta = None
         chroma_spill_pixels = count_chroma_spill_pixels(cell)
+        visible_alpha = cell.getchannel("A").point([0] * 9 + [255] * 247)
+        cleaned_alpha = remove_detached_alpha_components(cell).getchannel("A").point(
+            [0] * 9 + [255] * 247
+        )
+        detached_alpha_pixels = (
+            visible_alpha.histogram()[255] - cleaned_alpha.histogram()[255]
+        )
+        alpha_component_count = 2 if detached_alpha_pixels >= 8 else (1 if bbox else 0)
         if bbox is None:
             failed += 1
             issues.append("empty_frame")
@@ -700,6 +756,8 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
                     issues.append("master_anchor_mismatch")
             if chroma_spill_pixels:
                 issues.append("chroma_spill")
+            if detached_alpha_pixels >= 8:
+                issues.append("detached_alpha_component")
             if issues:
                 failed += 1
                 atlas_issues.append(f"{index + 1}컷: {', '.join(issues)}")
@@ -712,6 +770,8 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
             "size_ratio": size_ratio,
             "anchor_delta": anchor_delta,
             "chroma_spill_pixels": chroma_spill_pixels,
+            "alpha_component_count": alpha_component_count,
+            "detached_alpha_pixels": detached_alpha_pixels,
             "regions_checked": ["head", "hands", "feet", "shoes"],
             "issues": issues,
             "status": "failed" if issues else "passed",
