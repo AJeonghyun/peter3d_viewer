@@ -1,0 +1,202 @@
+:root {
+  font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+  color: #17324a;
+  background: #dcebf4;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.retreat-stage-shell {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #dcebf4;
+}
+
+.retreat-stage-shell[data-preview="true"] {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+.retreat-display-page {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  container-type: size;
+}
+
+html[data-background-mode="transparent"],
+html[data-background-mode="transparent"] body,
+html[data-background-mode="transparent"] #root,
+html[data-background-mode="transparent"] .retreat-stage-shell,
+html[data-background-mode="transparent"] .retreat-display-page {
+  background: transparent !important;
+}
+
+.retreat-character {
+  width: 100%;
+  height: 100%;
+  transform-origin: center bottom;
+  pointer-events: none;
+}
+
+.retreat-character > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.retreat-character .sprite-animator {
+  width: 100% !important;
+  height: 100%;
+}
+
+.retreat-character .sprite-animator__motion {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  overflow: visible;
+}
+
+.atlas-sprite-animator {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  container-type: size;
+}
+
+.atlas-sprite-animator__motion {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  transform: scaleX(var(--atlas-flip));
+  transform-origin: 50% 100%;
+}
+
+.atlas-sprite-animator__safe-frame {
+  position: absolute;
+  left: 50%;
+  bottom: 4cqh;
+  width: min(92cqw, 92cqh);
+  height: min(92cqw, 92cqh);
+  background-image: var(--atlas-image);
+  background-repeat: no-repeat;
+  background-position-x: calc(var(--atlas-column, 0) * 100% / (var(--atlas-columns, 4) - 1));
+  background-position-y: calc(var(--atlas-row, 0) * 100% / (var(--atlas-rows, 3) - 1));
+  background-size: calc(var(--atlas-columns, 4) * 100%) calc(var(--atlas-rows, 3) * 100%);
+  animation: retreat-atlas-frames 0.88s steps(1, end) infinite;
+  translate: -50% 0;
+  transform-origin: 50% 100%;
+}
+
+.atlas-sprite-animator[data-layout="fixed-5x5"] .atlas-sprite-animator__safe-frame {
+  bottom: 2cqh;
+  width: min(96cqw, 96cqh);
+  height: min(96cqw, 96cqh);
+  scale: var(--atlas-display-scale, 1);
+  animation: none;
+  image-rendering: auto;
+}
+
+.atlas-sprite-animator[data-playing="false"] .atlas-sprite-animator__safe-frame {
+  animation-play-state: paused;
+}
+
+.atlas-sprite-animator[data-animation="walk"] .atlas-sprite-animator__motion,
+.atlas-sprite-animator[data-animation="run"] .atlas-sprite-animator__motion {
+  animation: retreat-atlas-step 0.44s ease-in-out infinite alternate;
+}
+
+.atlas-sprite-animator[data-animation="jump"] .atlas-sprite-animator__motion {
+  animation: retreat-atlas-jump 0.82s ease-in-out infinite;
+}
+
+.atlas-sprite-animator[data-animation="wave"] .atlas-sprite-animator__motion {
+  animation: retreat-atlas-wave 1.1s ease-in-out infinite;
+}
+
+.atlas-sprite-animator[data-playing="false"] .atlas-sprite-animator__motion {
+  animation-play-state: paused;
+}
+
+.atlas-sprite-animator__fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: #527584;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@keyframes retreat-atlas-frames {
+  0%, 24.99% { background-position-x: 0%; }
+  25%, 49.99% { background-position-x: 33.333%; }
+  50%, 74.99% { background-position-x: 66.667%; }
+  75%, 100% { background-position-x: 100%; }
+}
+
+@keyframes retreat-atlas-step {
+  from { translate: 0 0; }
+  to { translate: 0 -1.5%; }
+}
+
+@keyframes retreat-atlas-jump {
+  0%, 100% { translate: 0 0; }
+  48% { translate: 0 -4%; }
+}
+
+@keyframes retreat-atlas-wave {
+  0%, 100% { rotate: -0.35deg; }
+  50% { rotate: 0.35deg; }
+}
+
+.app-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  background: #dcebf4;
+  color: #17324a;
+  font-weight: 800;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-sprite-animator__motion,
+  .atlas-sprite-animator__safe-frame {
+    animation: none !important;
+  }
+
+  .retreat-display-page *,
+  .retreat-display-page *::before,
+  .retreat-display-page *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "source": "frontend/public/assets/peter-sober/peter-sober-master.png",
+  "output": "frontend/public/assets/peter-sober/frames",
+  "canvas": {
+    "width": 300,
+    "height": 360,
+    "baselineY": 332,
+    "targetContentHeight": 292,
+    "maxContentWidth": 276
+  },
+  "background": {
+    "type": "transparent",
+    "removeCheckerboard": false
+  },
+  "frames": {
+    "idle-front": { "x": 0, "y": 0, "width": 251, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "walk-01": { "x": 251, "y": 0, "width": 251, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-02": { "x": 502, "y": 0, "width": 250, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-03": { "x": 752, "y": 0, "width": 251, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-04": { "x": 1003, "y": 0, "width": 251, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-05": { "x": 0, "y": 251, "width": 251, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-06": { "x": 251, "y": 251, "width": 251, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-07": { "x": 502, "y": 251, "width": 250, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-08": { "x": 752, "y": 251, "width": 251, "height": 251, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "run-01": { "x": 0, "y": 502, "width": 251, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-02": { "x": 251, "y": 502, "width": 251, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-03": { "x": 502, "y": 502, "width": 250, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-04": { "x": 752, "y": 502, "width": 251, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-05": { "x": 1003, "y": 502, "width": 251, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-06": { "x": 0, "y": 730, "width": 251, "height": 221, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-07": { "x": 251, "y": 730, "width": 251, "height": 230, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-08": { "x": 502, "y": 735, "width": 250, "height": 225, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "wave-01": { "x": 752, "y": 730, "width": 251, "height": 250, "anchorX": 0.5, "anchorY": 1.0 },
+    "jump-01": { "x": 1003, "y": 740, "width": 251, "height": 226, "anchorX": 0.5, "anchorY": 1.0 },
+    "jump-02": { "x": 0, "y": 951, "width": 251, "height": 303, "anchorX": 0.5, "anchorY": 1.0 },
+    "jump-03": { "x": 251, "y": 960, "width": 251, "height": 294, "anchorX": 0.5, "anchorY": 1.0 },
+    "pray-01": { "x": 502, "y": 960, "width": 250, "height": 294, "anchorX": 0.5, "anchorY": 1.0 },
+    "kneel-01": { "x": 752, "y": 980, "width": 251, "height": 274, "anchorX": 0.5, "anchorY": 1.0 },
+    "point-01": { "x": 1003, "y": 966, "width": 251, "height": 288, "anchorX": 0.5, "anchorY": 1.0 }
+  },
+  "animations": {
+    "idle": ["idle-front"],
+    "walk": ["walk-01", "walk-02", "walk-03", "walk-04", "walk-05", "walk-06", "walk-07", "walk-08"],
+    "run": ["run-01", "run-02", "run-03", "run-04", "run-05", "run-06", "run-07", "run-08"],
+    "wave": ["wave-01"],
+    "jump": ["jump-01", "jump-02", "jump-03"],
+    "pray": ["pray-01"],
+    "kneel": ["kneel-01"],
+    "point": ["point-01"]
+  }
+}

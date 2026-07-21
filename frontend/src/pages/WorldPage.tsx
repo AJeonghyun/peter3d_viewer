@@ -82,6 +82,7 @@ function teamsAreEqual(previous: Team[], next: Team[]) {
       && team.love === candidate.love
       && team.talents === candidate.talents
       && team.title === candidate.title
+      && team.showcase_image_url === candidate.showcase_image_url
       && team.image_url === candidate.image_url
       && team.model_url === candidate.model_url
       && team.conversion_status === candidate.conversion_status

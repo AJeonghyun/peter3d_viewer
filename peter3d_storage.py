@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable, Optional
+
+
+DEFAULT_SEATING_PRESET_ID = "default"
+DEFAULT_SEATING_PRESET_NAME = "기본 자리표"
+DEFAULT_SEATING_PRESET_TITLE = "첫째 날 자리표"
+DEFAULT_SEATING_PRESET_TIME_LABEL = ""
 
 
 def database_url() -> str:
@@ -74,6 +81,25 @@ SQLITE_SCHEMA = (
         love INTEGER NOT NULL DEFAULT 10,
         talents INTEGER NOT NULL DEFAULT 0,
         title TEXT NOT NULL DEFAULT '첫걸음을 준비하는 자',
+        showcase_image_url TEXT,
+        showcase_sprite_url TEXT,
+        showcase_sprite_active_url TEXT,
+        showcase_sprite_status TEXT NOT NULL DEFAULT 'empty',
+        showcase_sprite_error TEXT,
+        showcase_sprite_model TEXT,
+        showcase_sprite_quality_status TEXT NOT NULL DEFAULT 'unchecked',
+        showcase_sprite_quality_json TEXT,
+        showcase_sprite_qa_model TEXT,
+        showcase_sprite_updated_at TEXT,
+        showcase_capture_url TEXT,
+        showcase_capture_source_url TEXT,
+        showcase_capture_corrected_url TEXT,
+        showcase_capture_status TEXT NOT NULL DEFAULT 'empty',
+        showcase_capture_quality_json TEXT,
+        showcase_garment_parts_json TEXT,
+        showcase_sprite_contract TEXT,
+        showcase_sprite_version_id TEXT,
+        showcase_sprite_active_version_id TEXT,
         image_url TEXT,
         model_url TEXT,
         model_asset_id TEXT,
@@ -133,6 +159,29 @@ SQLITE_SCHEMA = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS sprite_versions (
+        id TEXT PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        contract TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        source_url TEXT,
+        corrected_url TEXT,
+        upper_url TEXT,
+        lower_url TEXT,
+        left_shoe_url TEXT,
+        right_shoe_url TEXT,
+        atlas_url TEXT,
+        quality_json TEXT,
+        parts_json TEXT,
+        qa_json TEXT,
+        model TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        approved_at TEXT
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS model_assets (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -143,6 +192,24 @@ SQLITE_SCHEMA = (
         glb_triangles INTEGER,
         glb_animations INTEGER,
         created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS seating_presets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        time_label TEXT NOT NULL DEFAULT '',
+        group_order TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
     """,
@@ -163,6 +230,25 @@ POSTGRES_SCHEMA = (
         love INTEGER NOT NULL DEFAULT 10,
         talents INTEGER NOT NULL DEFAULT 0,
         title TEXT NOT NULL DEFAULT '첫걸음을 준비하는 자',
+        showcase_image_url TEXT,
+        showcase_sprite_url TEXT,
+        showcase_sprite_active_url TEXT,
+        showcase_sprite_status TEXT NOT NULL DEFAULT 'empty',
+        showcase_sprite_error TEXT,
+        showcase_sprite_model TEXT,
+        showcase_sprite_quality_status TEXT NOT NULL DEFAULT 'unchecked',
+        showcase_sprite_quality_json TEXT,
+        showcase_sprite_qa_model TEXT,
+        showcase_sprite_updated_at TEXT,
+        showcase_capture_url TEXT,
+        showcase_capture_source_url TEXT,
+        showcase_capture_corrected_url TEXT,
+        showcase_capture_status TEXT NOT NULL DEFAULT 'empty',
+        showcase_capture_quality_json TEXT,
+        showcase_garment_parts_json TEXT,
+        showcase_sprite_contract TEXT,
+        showcase_sprite_version_id TEXT,
+        showcase_sprite_active_version_id TEXT,
         image_url TEXT,
         model_url TEXT,
         model_asset_id TEXT,
@@ -222,6 +308,29 @@ POSTGRES_SCHEMA = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS sprite_versions (
+        id TEXT PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        contract TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        source_url TEXT,
+        corrected_url TEXT,
+        upper_url TEXT,
+        lower_url TEXT,
+        left_shoe_url TEXT,
+        right_shoe_url TEXT,
+        atlas_url TEXT,
+        quality_json TEXT,
+        parts_json TEXT,
+        qa_json TEXT,
+        model TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        approved_at TEXT
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS model_assets (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -232,6 +341,24 @@ POSTGRES_SCHEMA = (
         glb_triangles INTEGER,
         glb_animations INTEGER,
         created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS seating_presets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        time_label TEXT NOT NULL DEFAULT '',
+        group_order TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
     """,
@@ -255,11 +382,30 @@ JOB_COLUMN_MIGRATIONS = {
 }
 
 TEAM_COLUMN_MIGRATIONS = {
+    "showcase_image_url": "TEXT",
+    "showcase_sprite_url": "TEXT",
+    "showcase_sprite_active_url": "TEXT",
+    "showcase_sprite_status": "TEXT NOT NULL DEFAULT 'empty'",
+    "showcase_sprite_error": "TEXT",
+    "showcase_sprite_model": "TEXT",
+    "showcase_sprite_quality_status": "TEXT NOT NULL DEFAULT 'unchecked'",
+    "showcase_sprite_quality_json": "TEXT",
+    "showcase_sprite_qa_model": "TEXT",
+    "showcase_sprite_updated_at": "TEXT",
+    "showcase_capture_url": "TEXT",
+    "showcase_capture_source_url": "TEXT",
+    "showcase_capture_corrected_url": "TEXT",
+    "showcase_capture_status": "TEXT NOT NULL DEFAULT 'empty'",
+    "showcase_capture_quality_json": "TEXT",
+    "showcase_garment_parts_json": "TEXT",
+    "showcase_sprite_contract": "TEXT",
+    "showcase_sprite_version_id": "TEXT",
+    "showcase_sprite_active_version_id": "TEXT",
     "model_asset_id": "TEXT",
 }
 
 
-def initialize_database(sqlite_path: Path, timestamp: str) -> None:
+def initialize_database(sqlite_path: Path, timestamp: str, *, team_count: int = 21) -> None:
     with connect_database(sqlite_path) as db:
         schema = POSTGRES_SCHEMA if db.postgres else SQLITE_SCHEMA
         for statement in schema:
@@ -272,7 +418,7 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
                 db.execute(
                     f"ALTER TABLE conversion_jobs ADD COLUMN IF NOT EXISTS {column} {definition}"
                 )
-            for team_id in range(1, 26):
+            for team_id in range(1, team_count + 1):
                 db.execute(
                     """
                     INSERT INTO teams (id, name, updated_at) VALUES (?, ?, ?)
@@ -280,6 +426,15 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
                     """,
                     (team_id, f"{team_id}조", timestamp),
                 )
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_active_url = showcase_sprite_url
+                WHERE showcase_sprite_active_url IS NULL
+                  AND showcase_sprite_status = 'ready'
+                  AND showcase_sprite_url IS NOT NULL
+                """
+            )
         else:
             team_columns = {
                 row["name"] for row in db.execute("PRAGMA table_info(teams)").fetchall()
@@ -293,11 +448,20 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
             for column, definition in JOB_COLUMN_MIGRATIONS.items():
                 if column not in columns:
                     db.execute(f"ALTER TABLE conversion_jobs ADD COLUMN {column} {definition}")
-            for team_id in range(1, 26):
+            for team_id in range(1, team_count + 1):
                 db.execute(
                     "INSERT OR IGNORE INTO teams (id, name, updated_at) VALUES (?, ?, ?)",
                     (team_id, f"{team_id}조", timestamp),
                 )
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_sprite_active_url = showcase_sprite_url
+                WHERE showcase_sprite_active_url IS NULL
+                  AND showcase_sprite_status = 'ready'
+                  AND showcase_sprite_url IS NOT NULL
+                """
+            )
 
         db.execute(
             """
@@ -331,6 +495,52 @@ def initialize_database(sqlite_path: Path, timestamp: str) -> None:
               )
             """
         )
+        default_group_order = json.dumps(list(range(1, team_count + 1)), separators=(",", ":"))
+        db.execute(
+            """
+            INSERT INTO seating_presets (
+                id, name, title, time_label, group_order, created_at, updated_at
+            )
+            SELECT ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (SELECT 1 FROM seating_presets)
+            """,
+            (
+                DEFAULT_SEATING_PRESET_ID,
+                DEFAULT_SEATING_PRESET_NAME,
+                DEFAULT_SEATING_PRESET_TITLE,
+                DEFAULT_SEATING_PRESET_TIME_LABEL,
+                default_group_order,
+                timestamp,
+                timestamp,
+            ),
+        )
+        active_exists = db.execute(
+            """
+            SELECT 1 FROM app_settings
+            WHERE key = 'active_seating_preset_id'
+              AND value IN (SELECT id FROM seating_presets)
+            """
+        ).fetchone()
+        if active_exists is None:
+            active = db.execute(
+                """
+                SELECT id FROM seating_presets
+                ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, updated_at DESC, id
+                LIMIT 1
+                """,
+                (DEFAULT_SEATING_PRESET_ID,),
+            ).fetchone()
+            if active is not None:
+                db.execute(
+                    """
+                    INSERT INTO app_settings (key, value, updated_at)
+                    VALUES ('active_seating_preset_id', ?, ?)
+                    ON CONFLICT (key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (active["id"], timestamp),
+                )
 
 
 def blob_configured() -> bool:

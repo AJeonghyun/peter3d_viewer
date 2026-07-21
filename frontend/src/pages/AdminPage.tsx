@@ -1,49 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { apiRequest } from '../lib/api';
-import { prepareUploadImage } from '../lib/prepareUploadImage';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { ApiError, apiRequest } from '../lib/api';
+import { prepareCharacterUploadImage } from '../lib/prepareUploadImage';
+import { AtlasSpriteAnimator } from '../retreat/AtlasSpriteAnimator';
 import type {
-  ConversionJob,
-  GrowthPayload,
-  ModelAsset,
-  PipelineProfile,
-  StatKey,
+  ShowcaseCaptureQuality,
+  ShowcaseCaptureResponse,
+  ShowcaseCaptureStatus,
+  ShowcaseComposeResponse,
+  ShowcaseSpriteVersion,
+  ShowcaseRestoreResponse,
+  ShowcaseVersionListResponse,
+  SpriteQualityFrame,
+  SpriteQualityReport,
   Team,
-  TripoBilling,
 } from '../types/api';
+import type { AnimationName } from '../spriteLab/types';
 import '../styles/admin.css';
-
-const STAT_FIELDS: ReadonlyArray<{ key: StatKey; label: string }> = [
-  { key: 'courage', label: '용기' },
-  { key: 'wisdom', label: '현명' },
-  { key: 'faith', label: '진실' },
-  { key: 'love', label: '열정' },
-];
-
-type DeltaId = 'talentDelta' | 'courageDelta' | 'wisdomDelta' | 'faithDelta' | 'loveDelta';
-type DeltaKey = 'talents' | StatKey;
-
-const DELTA_FIELDS: ReadonlyArray<{
-  id: DeltaId;
-  key: DeltaKey;
-  label: string;
-  step: number;
-  min: number;
-  max: number;
-}> = [
-  { id: 'talentDelta', key: 'talents', label: '달란트', step: 10, min: -10000, max: 10000 },
-  { id: 'courageDelta', key: 'courage', label: '용기', step: 1, min: -100, max: 100 },
-  { id: 'wisdomDelta', key: 'wisdom', label: '현명', step: 1, min: -100, max: 100 },
-  { id: 'faithDelta', key: 'faith', label: '진실', step: 1, min: -100, max: 100 },
-  { id: 'loveDelta', key: 'love', label: '열정', step: 1, min: -100, max: 100 },
-];
-
-const EMPTY_DELTAS: Record<DeltaId, number> = {
-  talentDelta: 0,
-  courageDelta: 0,
-  wisdomDelta: 0,
-  faithDelta: 0,
-  loveDelta: 0,
-};
 
 interface TeamDraft {
   name: string;
@@ -53,20 +25,94 @@ interface TeamDraft {
 }
 
 const EMPTY_DRAFT: TeamDraft = { name: '', color: '#67b8c7', symbol: '', identity_text: '' };
+const TEMPLATE_URL = '/assets/showcase/peter-print-template.png';
+const FIXED_MASTER_URL = '/api/showcase/fixed-master';
+const GENERATION_EXPECTED_SECONDS = 210;
+const GENERATION_RETRY_SECONDS = 10;
+const GENERATION_STAGES = [
+  {
+    status: 'generating',
+    label: 'AI가 25컷을 그리는 중',
+    detail: '고정 베드로와 학생 디자인을 함께 분석해 새 시트를 생성합니다.',
+    floor: 8,
+    ceiling: 70,
+  },
+  {
+    status: 'composing',
+    label: '크기와 발 기준선을 맞추는 중',
+    detail: '배경을 제거하고 25개 프레임을 공용 캐릭터 크기로 정렬합니다.',
+    floor: 72,
+    ceiling: 84,
+  },
+  {
+    status: 'reviewing',
+    label: '전신과 동작을 자동 검수하는 중',
+    detail: '머리·손·발 잘림, 의상 침범, 크기 차이를 픽셀과 AI로 확인합니다.',
+    floor: 86,
+    ceiling: 96,
+  },
+  {
+    status: 'saving',
+    label: '검수 결과를 저장하는 중',
+    detail: '25컷과 검수 리포트를 저장하고 미리보기를 준비합니다.',
+    floor: 98,
+    ceiling: 99,
+  },
+] as const;
 
-const FALLBACK_PIPELINE_PROFILES: PipelineProfile[] = [
-  {
-    id: 'h3_smart',
-    label: 'H3.1 40K Detail',
-    description: '40,000면으로 그림 디테일을 보존하고, 필요한 경우에만 멀티뷰로 보완합니다.',
-    estimated_credits: 0,
-  },
-  {
-    id: 'p1',
-    label: 'P1 Smart Mesh',
-    description: '정돈된 저폴리 토폴로지를 우선하는 대표 샘플 비교용 프로필입니다.',
-    estimated_credits: 0,
-  },
+type GenerationStageStatus = typeof GENERATION_STAGES[number]['status'];
+
+function isGenerationStage(status: ShowcaseCaptureStatus): status is GenerationStageStatus {
+  return GENERATION_STAGES.some((stage) => stage.status === status);
+}
+
+function formatGenerationTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes > 0 ? `${minutes}분 ${remainder}초` : `${remainder}초`;
+}
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+}
+
+function isRetryableRequestError(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.status === 408 || error.status === 429 || error.status >= 500;
+  }
+  return error instanceof TypeError;
+}
+
+function generationProgress(status: ShowcaseCaptureStatus, elapsedSeconds: number) {
+  const stageIndex = isGenerationStage(status)
+    ? GENERATION_STAGES.findIndex((stage) => stage.status === status)
+    : 0;
+  const stage = GENERATION_STAGES[Math.max(0, stageIndex)];
+  const timedPercent = 8 + (elapsedSeconds / GENERATION_EXPECTED_SECONDS) * 90;
+  const percent = Math.round(Math.min(stage.ceiling, Math.max(stage.floor, timedPercent)));
+  const stageRemaining = [GENERATION_EXPECTED_SECONDS - elapsedSeconds, 55, 30, 8];
+  const remainingSeconds = Math.max(0, stageRemaining[Math.max(0, stageIndex)] ?? 0);
+  const delayed = stageIndex === 0 && remainingSeconds === 0;
+  return { stage, stageIndex, percent, remainingSeconds, delayed };
+}
+
+const SPRITE_REVIEW_PREVIEWS: Array<{
+  label: string;
+  animation: AnimationName;
+  flipped?: boolean;
+}> = [
+  { label: '대기', animation: 'idle' },
+  { label: '왼쪽 걷기', animation: 'walk', flipped: true },
+  { label: '오른쪽 걷기', animation: 'walk' },
+  { label: '왼쪽 달리기', animation: 'run', flipped: true },
+  { label: '오른쪽 달리기', animation: 'run' },
+  { label: '점프', animation: 'jump' },
+  { label: '손 흔들기', animation: 'wave' },
+  { label: '기도', animation: 'pray' },
+  { label: '무릎', animation: 'kneel' },
+  { label: '가리키기', animation: 'point' },
 ];
 
 function draftFromTeam(team: Team): TeamDraft {
@@ -78,110 +124,246 @@ function draftFromTeam(team: Team): TeamDraft {
   };
 }
 
-function statusLabel(status: string) {
-  const label = ({
-    empty: '그림 없음',
-    queued: '대기 중',
-    modeling: '3D 생성',
-    multiview: '멀티뷰 준비',
-    multiview_starting: '멀티뷰 대기',
-    multiview_generating: '멀티뷰 이미지 생성',
-    multiview_modeling: '멀티뷰 재생성',
-    multiview_regenerating: '멀티뷰 재생성',
-    fallback_modeling: '멀티뷰 보완',
-    optimizing: '모델 경량화',
-    low_poly: '모델 경량화',
-    rig_check: '리깅 검사',
-    rigging: '뼈대 적용',
-    idle_animating: '대기 동작 적용',
-    walk_animating: '걷기 적용',
-    animating: '대기·걷기 적용',
-    finalizing: 'GLB 마무리',
-    done: '완료',
-    failed: '실패',
-  } as Record<string, string>)[status];
-  if (label) return label;
-  if (/multi.?view|fallback/i.test(status)) return '멀티뷰 보완';
-  return status;
+function spriteStatusLabel(status: ShowcaseCaptureStatus) {
+  return ({
+    empty: '대기',
+    generating: 'AI 25컷 생성 중',
+    processing: '사진 품질·보정 중',
+    garment_review: 'AI 생성 준비',
+    composing: '프레임 크기 정렬 중',
+    reviewing: '전신·동작 자동 검수 중',
+    saving: '25컷 저장 중',
+    review: '25컷 최종 검수',
+    ready: '전체 페이지 적용 완료',
+    failed: '처리 실패',
+  } as const)[status] ?? status;
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, Number.isFinite(value) ? value : 0));
+function qualityStatusLabel(status?: string) {
+  return ({
+    unchecked: '검사 전',
+    passed: '검수 통과',
+    warning: '관리자 확인 필요',
+    failed: '재촬영 권장',
+  } as const)[status ?? 'unchecked'] ?? '확인 필요';
 }
 
-function boundedResult(key: DeltaKey, current: number, delta: number) {
-  return key === 'talents'
-    ? Math.max(0, current + delta)
-    : clamp(current + delta, 0, 100);
+function stringifyQuality(quality?: ShowcaseCaptureQuality | string | null) {
+  if (!quality) return '';
+  if (typeof quality === 'string') return quality;
+  const lines = [
+    quality.summary,
+    typeof quality.score === 'number' ? `품질 점수 ${Math.round(quality.score * 100) / 100}` : '',
+    ...(quality.issues ?? []),
+    ...(quality.warnings ?? []),
+  ].filter(Boolean);
+  return lines.join(' · ');
 }
 
-function signed(value: number) {
-  return `${value > 0 ? '+' : ''}${value}`;
+function captureStatus(team: Team | null): ShowcaseCaptureStatus {
+  return team?.showcase_capture_status ?? team?.showcase_sprite_status ?? 'empty';
 }
 
-function formatCredits(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value)
-    ? '확인 중'
-    : `${new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 }).format(value)} cr`;
+function correctedCaptureUrl(team: Team | null) {
+  return team?.showcase_capture_corrected_url
+    || team?.showcase_corrected_capture_url
+    || team?.showcase_capture_url
+    || team?.showcase_image_url
+    || '';
 }
 
-function formatBytes(bytes: number) {
-  return bytes >= 1024 * 1024
-    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    : `${Math.round(bytes / 1024)} KB`;
+function activeSpriteUrl(team: Team | null) {
+  if (!isFixedMaster(team)) return '';
+  return team?.showcase_sprite_url
+    || team?.showcase_sprite_active_url
+    || team?.showcase_sprite_contract?.atlas_url
+    || '';
 }
 
-function metricEntries(job: ConversionJob): Array<[string, string | number | boolean]> {
-  const direct: Array<[string, string | number]> = [];
-  if (job.glb_bytes != null) direct.push(['용량', formatBytes(job.glb_bytes)]);
-  if (job.glb_triangles != null) direct.push(['삼각형', job.glb_triangles.toLocaleString('ko-KR')]);
-  if (job.glb_animations != null) direct.push(['애니메이션', job.glb_animations]);
-  const extra = Object.entries(job.metrics ?? {})
-    .filter((entry): entry is [string, string | number | boolean] => (
-      ['string', 'number', 'boolean'].includes(typeof entry[1])
-    ));
-  return [...direct, ...extra].slice(0, 4);
+function isFixedMaster(team: Team | null) {
+  const contract = team?.showcase_sprite_contract;
+  return contract?.version === 2
+    || contract?.version === '2'
+    || contract?.layout === '5x5'
+    || (contract?.rows === 5 && contract?.columns === 5)
+    || contract?.frame_count === 25;
+}
+
+function problemFrameNumbers(report: SpriteQualityReport | null | undefined) {
+  if (!report) return [];
+  const frames = new Set<number>();
+  report.deterministic.frames.forEach((frame) => {
+    if (frame.status !== 'passed' || frame.issues.length > 0) frames.add(frame.frame);
+  });
+  report.ai.frames.forEach((frame) => {
+    if (frame.severity === 'warning' || frame.severity === 'failed') frames.add(frame.frame);
+  });
+  return [...frames].filter((frame) => frame >= 1 && frame <= 25).sort((a, b) => a - b);
+}
+
+function SpriteMotionPreview({
+  label,
+  animation,
+  flipped = false,
+  spriteUrl,
+  team,
+}: {
+  label: string;
+  animation: AnimationName;
+  flipped?: boolean;
+  spriteUrl: string;
+  team: Team;
+}) {
+  return (
+    <div className="sprite-motion-preview">
+      <div className="sprite-motion-viewport">
+        <AtlasSpriteAnimator
+          spriteUrl={spriteUrl}
+          animation={animation}
+          flipX={flipped}
+          label={`${label} 애니메이션 미리보기`}
+          contract={team.showcase_sprite_contract}
+          prepared={isFixedMaster(team)}
+        />
+      </div>
+      <strong>{label}</strong>
+    </div>
+  );
+}
+
+function SpriteFrameInspection({
+  frame,
+  spriteUrl,
+  aiIssue,
+  fixedMaster,
+  selectable,
+  selected,
+  onSelectionChange,
+}: {
+  frame: SpriteQualityFrame;
+  spriteUrl: string;
+  aiIssue?: string;
+  fixedMaster: boolean;
+  selectable: boolean;
+  selected: boolean;
+  onSelectionChange: (frame: number, selected: boolean) => void;
+}) {
+  const frameIndex = Math.max(0, frame.frame - 1);
+  const columns = fixedMaster ? 5 : 4;
+  const rows = fixedMaster ? 5 : 3;
+  const column = frameIndex % columns;
+  const row = Math.floor(frameIndex / columns);
+  const status = aiIssue && frame.status === 'passed' ? 'warning' : frame.status;
+  const issue = [...frame.issues, ...(aiIssue ? [aiIssue] : [])].join(' · ');
+  const minimumMargin = frame.margins
+    ? Math.min(...Object.values(frame.margins))
+    : null;
+  return (
+    <article
+      className="sprite-frame-inspection"
+      data-status={status}
+      data-selected={selected ? 'true' : 'false'}
+    >
+      <div
+        className="sprite-frame-inspection__image"
+        style={{
+          '--frame-columns': columns,
+          '--frame-rows': rows,
+          '--frame-column': column,
+          '--frame-row': row,
+          backgroundImage: `url(${JSON.stringify(spriteUrl)})`,
+        } as CSSProperties}
+        role="img"
+        aria-label={`${frame.frame}번 프레임`}
+      />
+      <div>
+        <strong>{frame.frame}컷 · {status === 'passed' ? '안전' : status === 'failed' ? '재생성 필요' : '확인 필요'}</strong>
+        <span>{minimumMargin === null ? '여백 측정 실패' : `최소 여백 ${minimumMargin}px`}</span>
+        {issue && <small>{issue}</small>}
+        {selectable && (
+          <label className="sprite-frame-inspection__select">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(event) => onSelectionChange(frame.frame, event.currentTarget.checked)}
+            />
+            이 컷만 교체
+          </label>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function SpriteAtlasFrame({ frame, spriteUrl }: { frame: number; spriteUrl: string }) {
+  const column = frame % 5;
+  const row = Math.floor(frame / 5);
+  return (
+    <div className="sprite-atlas-frame">
+      <div
+        className="sprite-atlas-frame__image"
+        style={{
+          '--frame-columns': 5,
+          '--frame-rows': 5,
+          '--frame-column': column,
+          '--frame-row': row,
+          backgroundImage: `url(${JSON.stringify(spriteUrl)})`,
+        } as CSSProperties}
+        role="img"
+        aria-label={`${frame}번 프레임`}
+      />
+      <span>{frame}</span>
+    </div>
+  );
 }
 
 export default function AdminPage() {
   const [teams, setTeams] = useState<Team[]>([]);
-  const [jobs, setJobs] = useState<ConversionJob[]>([]);
-  const [modelAssets, setModelAssets] = useState<ModelAsset[]>([]);
-  const [billing, setBilling] = useState<TripoBilling | null>(null);
-  const [billingError, setBillingError] = useState(false);
-  const [pipelineProfile, setPipelineProfile] = useState('h3_smart');
-  const [assetName, setAssetName] = useState('');
-  const [uploadedAssetName, setUploadedAssetName] = useState('');
-  const [applyTeamIds, setApplyTeamIds] = useState<number[]>([]);
-  const [applyingAssetId, setApplyingAssetId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [teamDraft, setTeamDraft] = useState<TeamDraft>(EMPTY_DRAFT);
-  const [source, setSource] = useState('');
-  const [note, setNote] = useState('');
-  const [deltas, setDeltas] = useState<Record<DeltaId, number>>(EMPTY_DELTAS);
   const [toast, setToast] = useState('');
   const [savingTeam, setSavingTeam] = useState(false);
-  const [savingGrowth, setSavingGrowth] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadingGlb, setUploadingGlb] = useState(false);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const glbInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingCapture, setUploadingCapture] = useState(false);
+  const [composingSprite, setComposingSprite] = useState(false);
+  const [approvingSprite, setApprovingSprite] = useState(false);
+  const [versions, setVersions] = useState<ShowcaseSpriteVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [restoringVersionId, setRestoringVersionId] = useState<string | number | null>(null);
+  const [generationJob, setGenerationJob] = useState<{ teamId: number; startedAt: number } | null>(null);
+  const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
+  const [selectedPatchFrames, setSelectedPatchFrames] = useState<number[]>([]);
+  const characterInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const composeWorkflowTeamRef = useRef<number | null>(null);
 
   const selected = useMemo(
     () => teams.find((team) => team.id === selectedId) ?? null,
     [teams, selectedId],
   );
-  const pipelineProfiles = billing?.profiles?.length
-    ? billing.profiles
-    : FALLBACK_PIPELINE_PROFILES;
-  const selectedProfile = pipelineProfiles.find((profile) => profile.id === pipelineProfile)
-    ?? pipelineProfiles[0];
+  const selectedSpriteUrl = activeSpriteUrl(selected);
+  const fixedMaster = isFixedMaster(selected);
+  const designReferenceReady = Boolean(correctedCaptureUrl(selected));
+  const generationActive = Boolean(
+    composingSprite && generationJob && selected?.id === generationJob.teamId,
+  );
+  const generationStatus = isGenerationStage(selected?.showcase_sprite_status ?? 'generating')
+    ? selected?.showcase_sprite_status ?? 'generating'
+    : 'generating';
+  const generation = generationProgress(generationStatus, generationElapsedSeconds);
+  const qaProblemFrames = useMemo(
+    () => problemFrameNumbers(selected?.showcase_sprite_quality),
+    [selected?.showcase_sprite_quality],
+  );
+  const qaProblemFrameKey = qaProblemFrames.join(',');
 
   function showToast(message: string) {
     setToast(message);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(''), 2800);
+  }
+
+  function updateTeam(updated: Team) {
+    setTeams((current) => current.map((team) => team.id === updated.id ? updated : team));
   }
 
   async function refreshTeams() {
@@ -190,48 +372,29 @@ export default function AdminPage() {
     return fresh;
   }
 
-  async function refreshJobs() {
-    const fresh = await apiRequest<ConversionJob[]>('/jobs', { cache: 'no-store' });
-    setJobs(fresh);
-    return fresh;
-  }
-
-  async function refreshModelAssets() {
-    const fresh = await apiRequest<ModelAsset[]>('/model-assets', { cache: 'no-store' });
-    setModelAssets(fresh);
-    return fresh;
-  }
-
-  async function refreshBilling() {
+  async function refreshVersions(teamId: number) {
+    setLoadingVersions(true);
     try {
-      const fresh = await apiRequest<TripoBilling>('/tripo/billing', { cache: 'no-store' });
-      setBilling(fresh);
-      setBillingError(false);
-      setPipelineProfile((current) => (
-        fresh.profiles.some((profile) => profile.id === current)
-          ? current
-          : fresh.profiles[0]?.id ?? current
-      ));
-      return fresh;
+      const response = await apiRequest<ShowcaseVersionListResponse>(
+        `/teams/${teamId}/sprite-versions`,
+        { cache: 'no-store' },
+      );
+      setVersions(response.versions);
     } catch (error) {
-      setBillingError(true);
-      throw error;
+      console.warn('스프라이트 버전 기록을 불러오지 못했습니다.', error);
+      setVersions([]);
+    } finally {
+      setLoadingVersions(false);
     }
   }
 
   useEffect(() => {
-    document.title = '베드로 키우기 — 운영진';
+    document.title = '베드로 키우기 | 운영진';
     let active = true;
 
-    void Promise.all([
-      apiRequest<Team[]>('/teams', { cache: 'no-store' }),
-      apiRequest<ConversionJob[]>('/jobs', { cache: 'no-store' }),
-      apiRequest<ModelAsset[]>('/model-assets', { cache: 'no-store' }),
-    ]).then(([freshTeams, freshJobs, freshAssets]) => {
+    void apiRequest<Team[]>('/teams', { cache: 'no-store' }).then((freshTeams) => {
       if (!active) return;
       setTeams(freshTeams);
-      setJobs(freshJobs);
-      setModelAssets(freshAssets);
       const first = freshTeams[0];
       if (first) {
         setSelectedId(first.id);
@@ -240,31 +403,91 @@ export default function AdminPage() {
     }).catch((error: unknown) => {
       if (active) showToast(error instanceof Error ? error.message : '데이터를 불러오지 못했습니다');
     });
-    void refreshBilling().catch(console.warn);
 
     const polling = window.setInterval(() => {
-      void refreshJobs().catch(console.warn);
-      void refreshModelAssets().catch(console.warn);
       if (!document.querySelector('input:focus, textarea:focus')) {
         void refreshTeams().catch(console.warn);
       }
     }, 7000);
-    const billingPolling = window.setInterval(() => {
-      void refreshBilling().catch(console.warn);
-    }, 30000);
 
     return () => {
       active = false;
       window.clearInterval(polling);
-      window.clearInterval(billingPolling);
       if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     };
   }, []);
 
+  useEffect(() => {
+    if (!selectedId) {
+      setVersions([]);
+      return;
+    }
+    void refreshVersions(selectedId);
+  }, [selectedId]);
+
+  useEffect(() => {
+    setSelectedPatchFrames(
+      qaProblemFrameKey
+        ? qaProblemFrameKey.split(',').map(Number)
+        : [],
+    );
+  }, [selectedId, selected?.showcase_sprite_version_id, qaProblemFrameKey]);
+
+  useEffect(() => {
+    if (!generationJob) {
+      setGenerationElapsedSeconds(0);
+      return undefined;
+    }
+    const updateElapsed = () => {
+      setGenerationElapsedSeconds(Math.max(
+        0,
+        Math.floor((Date.now() - generationJob.startedAt) / 1000),
+      ));
+    };
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [generationJob]);
+
+  useEffect(() => {
+    if (!generationJob) return undefined;
+    let active = true;
+    const pollGenerationStage = async () => {
+      try {
+        const team = await apiRequest<Team>(`/teams/${generationJob.teamId}`, {
+          cache: 'no-store',
+        });
+        if (active) {
+          setTeams((current) => current.map((item) => item.id === team.id ? team : item));
+        }
+      } catch (error) {
+        console.warn('25컷 생성 단계를 확인하지 못했습니다.', error);
+      }
+    };
+    void pollGenerationStage();
+    const timer = window.setInterval(() => {
+      void pollGenerationStage();
+    }, 2000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [generationJob]);
+
+  useEffect(() => {
+    if (composeWorkflowTeamRef.current !== null) return;
+    const activeTeam = teams.find((team) => isGenerationStage(team.showcase_sprite_status));
+    if (!activeTeam) return;
+    if (selectedId !== activeTeam.id) {
+      setSelectedId(activeTeam.id);
+      setTeamDraft(draftFromTeam(activeTeam));
+    }
+    void runComposeWorkflow(activeTeam.id, false);
+  }, [teams, selectedId]);
+
   function chooseTeam(team: Team) {
     setSelectedId(team.id);
     setTeamDraft(draftFromTeam(team));
-    setDeltas(EMPTY_DELTAS);
   }
 
   async function saveTeam(event: FormEvent<HTMLFormElement>) {
@@ -277,7 +500,7 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(teamDraft),
       });
-      setTeams((current) => current.map((team) => team.id === updated.id ? updated : team));
+      updateTeam(updated);
       setTeamDraft(draftFromTeam(updated));
       showToast('조 정보를 저장했습니다');
     } catch (error) {
@@ -287,157 +510,280 @@ export default function AdminPage() {
     }
   }
 
-  function setDelta(field: typeof DELTA_FIELDS[number], value: number) {
-    const minimum = field.key === 'talents' && selected
-      ? Math.max(field.min, -selected.talents)
-      : field.min;
-    setDeltas((current) => ({ ...current, [field.id]: clamp(value, minimum, field.max) }));
+  async function uploadCapturePhoto(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const image = characterInputRef.current?.files?.[0];
+    if (!selected || !image) return;
+    setUploadingCapture(true);
+    setTeams((current) => current.map((team) => (
+      team.id === selected.id
+        ? { ...team, showcase_capture_status: 'processing', showcase_sprite_status: 'processing', showcase_sprite_error: null }
+        : team
+    )));
+    try {
+      const prepared = await prepareCharacterUploadImage(image);
+      const form = new FormData();
+      form.append('reference', prepared.file);
+      const response = await apiRequest<ShowcaseCaptureResponse>(`/teams/${selected.id}/capture/process`, {
+        method: 'POST',
+        body: form,
+      });
+      updateTeam(response.team);
+      if (characterInputRef.current) characterInputRef.current.value = '';
+      if (response.can_process === false) {
+        showToast(response.quality?.summary || '촬영 품질 문제로 처리를 중단했습니다. 사진을 다시 촬영해주세요.');
+      } else {
+        showToast(`촬영 사진을 보정하고 AI 디자인 참조를 준비했습니다${prepared.optimized ? ' · PNG 자동 최적화됨' : ''}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '촬영 사진을 처리하지 못했습니다';
+      setTeams((current) => current.map((team) => (
+        team.id === selected.id
+          ? { ...team, showcase_capture_status: 'failed', showcase_sprite_status: 'failed', showcase_sprite_error: message }
+          : team
+      )));
+      showToast(message);
+    } finally {
+      setUploadingCapture(false);
+    }
   }
 
-  async function saveGrowth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function getComposeStatusUntilAvailable(teamId: number) {
+    let retrySeconds = 3;
+    for (;;) {
+      try {
+        return await apiRequest<ShowcaseComposeResponse>(
+          `/teams/${teamId}/capture/compose/status`,
+          { cache: 'no-store' },
+        );
+      } catch (error) {
+        if (!isRetryableRequestError(error)) throw error;
+        const message = error instanceof Error ? error.message : '서버 연결을 다시 확인하는 중입니다';
+        setTeams((current) => current.map((team) => (
+          team.id === teamId
+            ? {
+                ...team,
+                showcase_sprite_status: isGenerationStage(team.showcase_sprite_status)
+                  ? team.showcase_sprite_status
+                  : 'generating',
+                showcase_sprite_error: `${message} · 자동으로 다시 연결합니다.`,
+              }
+            : team
+        )));
+        await wait(retrySeconds * 1000);
+        retrySeconds = Math.min(30, retrySeconds + 3);
+      }
+    }
+  }
+
+  async function startComposeUntilAvailable(teamId: number) {
+    for (;;) {
+      try {
+        return await apiRequest<ShowcaseComposeResponse>(
+          `/teams/${teamId}/capture/compose/start`,
+          { method: 'POST' },
+        );
+      } catch (error) {
+        if (!isRetryableRequestError(error)) throw error;
+        const message = error instanceof Error ? error.message : '생성 작업 시작을 확인하는 중입니다';
+        setTeams((current) => current.map((team) => (
+          team.id === teamId
+            ? {
+                ...team,
+                showcase_sprite_status: 'generating',
+                showcase_sprite_error: `${message} · 자동으로 다시 연결합니다.`,
+              }
+            : team
+        )));
+        await wait(GENERATION_RETRY_SECONDS * 1000);
+      }
+    }
+  }
+
+  async function startFramePatchUntilAvailable(teamId: number, frames: number[]) {
+    for (;;) {
+      try {
+        return await apiRequest<ShowcaseComposeResponse>(
+          `/teams/${teamId}/capture/compose/patch/start`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frames }),
+          },
+        );
+      } catch (error) {
+        if (!isRetryableRequestError(error)) throw error;
+        const message = error instanceof Error ? error.message : '문제 컷 교체 작업 시작을 확인하는 중입니다';
+        setTeams((current) => current.map((team) => (
+          team.id === teamId
+            ? {
+                ...team,
+                showcase_sprite_status: 'generating',
+                showcase_sprite_error: `${message} · 자동으로 다시 연결합니다.`,
+              }
+            : team
+        )));
+        await wait(GENERATION_RETRY_SECONDS * 1000);
+      }
+    }
+  }
+
+  async function runComposeWorkflow(teamId: number, restart: boolean, patchFrames: number[] = []) {
+    if (composeWorkflowTeamRef.current !== null) return;
+    composeWorkflowTeamRef.current = teamId;
+    setComposingSprite(true);
+    setGenerationJob({ teamId, startedAt: Date.now() });
+    setTeams((current) => current.map((team) => (
+      team.id === teamId
+        ? { ...team, showcase_sprite_status: 'generating', showcase_sprite_error: null }
+        : team
+    )));
+    try {
+      let patchWorkflow = patchFrames.length > 0;
+      let response = patchFrames.length
+        ? await startFramePatchUntilAvailable(teamId, patchFrames)
+        : restart
+          ? await startComposeUntilAvailable(teamId)
+          : await getComposeStatusUntilAvailable(teamId);
+
+      for (;;) {
+        patchWorkflow = patchWorkflow || Boolean(response.frame_patch);
+        updateTeam(response.team);
+        if (response.next_action === 'complete') {
+          void refreshVersions(response.team.id);
+          showToast(patchWorkflow
+            ? `${response.team.name}의 선택한 문제 컷을 교체하고 전체 QA를 마쳤습니다.`
+            : `${response.team.name}의 마스터 고정 25컷을 만들었습니다. 실제 동작을 확인해주세요.`);
+          break;
+        }
+        if (response.next_action === 'failed') {
+          throw new Error(response.team.showcase_sprite_error || '25컷 생성 작업이 중단되었습니다');
+        }
+        if (response.next_action === 'wait' || response.next_action === 'retry') {
+          await wait((response.retry_after_seconds ?? GENERATION_RETRY_SECONDS) * 1000);
+          response = await getComposeStatusUntilAvailable(teamId);
+          continue;
+        }
+
+        const action = response.next_action === 'review'
+          ? 'review'
+          : response.next_action === 'patch' ? 'patch' : 'generate';
+        try {
+          response = await apiRequest<ShowcaseComposeResponse>(
+            `/teams/${teamId}/capture/compose/${action}`,
+            { method: 'POST' },
+          );
+        } catch (error) {
+          if (!isRetryableRequestError(error)) throw error;
+          const message = error instanceof Error ? error.message : '생성 서버 응답이 지연되고 있습니다';
+          setTeams((current) => current.map((team) => (
+            team.id === teamId
+              ? {
+                  ...team,
+                  showcase_sprite_error: `${message} · 저장된 단계부터 자동으로 다시 이어갑니다.`,
+                }
+              : team
+          )));
+          await wait(GENERATION_RETRY_SECONDS * 1000);
+          response = await getComposeStatusUntilAvailable(teamId);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '25컷 아틀라스를 만들지 못했습니다';
+      setTeams((current) => current.map((team) => (
+        team.id === teamId
+          ? { ...team, showcase_sprite_status: 'failed', showcase_sprite_error: message }
+          : team
+      )));
+      showToast(message);
+    } finally {
+      composeWorkflowTeamRef.current = null;
+      setComposingSprite(false);
+      setGenerationJob(null);
+    }
+  }
+
+  async function composeShowcaseSprite() {
     if (!selected) return;
-    const stats: GrowthPayload['stats'] = {};
-    STAT_FIELDS.forEach(({ key }) => {
-      const delta = deltas[`${key}Delta` as DeltaId];
-      if (delta) stats[key] = delta;
-    });
-    const payload: GrowthPayload = {
-      source,
-      note,
-      talent_delta: deltas.talentDelta,
-      stats,
-    };
-    setSavingGrowth(true);
+    await runComposeWorkflow(selected.id, true);
+  }
+
+  async function regenerateSelectedFrames() {
+    if (!selected || selectedPatchFrames.length === 0) return;
+    const frames = [...selectedPatchFrames].sort((a, b) => a - b);
+    await runComposeWorkflow(selected.id, false, frames);
+  }
+
+  function togglePatchFrame(frame: number, checked: boolean) {
+    setSelectedPatchFrames((current) => (
+      checked
+        ? [...new Set([...current, frame])].sort((a, b) => a - b)
+        : current.filter((candidate) => candidate !== frame)
+    ));
+  }
+
+  async function approveShowcaseSprite(force = false) {
+    if (!selected || selected.showcase_sprite_status !== 'review') return;
+    if (force && !window.confirm(
+      '자동 검수에서 문제가 발견된 결과입니다. 화면에서 25컷 전부가 온전히 보이는 것을 직접 확인했다면 강제 적용할 수 있습니다. 계속할까요?',
+    )) return;
+    setApprovingSprite(true);
     try {
-      const updated = await apiRequest<Team>(`/teams/${selected.id}/growth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      setTeams((current) => current.map((team) => team.id === updated.id ? updated : team));
-      setSource('');
-      setNote('');
-      setDeltas(EMPTY_DELTAS);
-      showToast('기록을 반영했습니다');
+      const updated = await apiRequest<Team>(
+        `/teams/${selected.id}/showcase-sprite/approve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force }),
+        },
+      );
+      updateTeam(updated);
+      void refreshVersions(updated.id);
+      showToast(`${updated.name}의 25컷을 PAGE 1·2·3·showcase에 적용했습니다.`);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '기록을 반영하지 못했습니다');
+      showToast(error instanceof Error ? error.message : '25컷 아틀라스를 승인하지 못했습니다');
     } finally {
-      setSavingGrowth(false);
+      setApprovingSprite(false);
     }
   }
 
-  async function generateModelAsset(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const image = imageInputRef.current?.files?.[0];
-    if (!image || !assetName.trim()) return;
-    setUploading(true);
+  async function restoreVersion(versionId: string | number) {
+    if (!selected) return;
+    setRestoringVersionId(versionId);
     try {
-      const prepared = await prepareUploadImage(image);
-      const form = new FormData();
-      form.append('image', prepared.file);
-      form.append('name', assetName.trim());
-      form.append('pipeline_profile', pipelineProfile);
-      const result = await apiRequest<{ job_id: string }>('/model-assets/generate', {
-        method: 'POST',
-        body: form,
-      });
-      if (imageInputRef.current) imageInputRef.current.value = '';
-      setAssetName('');
-      await refreshJobs();
-      showToast(`공용 모델 작업 ${result.job_id}를 ${selectedProfile?.label ?? pipelineProfile}로 등록했습니다${prepared.optimized ? ' · 사진 자동 최적화됨' : ''}`);
+      const response = await apiRequest<ShowcaseRestoreResponse>(
+        `/teams/${selected.id}/sprite-versions/${versionId}/restore`,
+        { method: 'POST' },
+      );
+      updateTeam(response.team);
+      void refreshVersions(response.team.id);
+      showToast(`${response.team.name}의 이전 버전을 복원했습니다.`);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '이미지를 등록하지 못했습니다');
+      showToast(error instanceof Error ? error.message : '이전 버전을 복원하지 못했습니다');
     } finally {
-      setUploading(false);
+      setRestoringVersionId(null);
     }
   }
-
-  async function uploadExistingGlb(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const glb = glbInputRef.current?.files?.[0];
-    const name = uploadedAssetName.trim();
-    if (!glb || !name) return;
-    if (!glb.name.toLowerCase().endsWith('.glb')) {
-      showToast('.glb 파일을 선택해주세요');
-      return;
-    }
-    if (glb.size > 10 * 1024 * 1024) {
-      showToast('GLB는 10MB 이하여야 합니다');
-      return;
-    }
-    setUploadingGlb(true);
-    try {
-      const form = new FormData();
-      form.append('glb', glb);
-      form.append('name', name);
-      const asset = await apiRequest<ModelAsset>('/model-assets/upload', {
-        method: 'POST',
-        body: form,
-      });
-      if (glbInputRef.current) glbInputRef.current.value = '';
-      setUploadedAssetName('');
-      await refreshModelAssets();
-      showToast(`${asset.name} GLB를 모델 보관함에 등록했습니다`);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'GLB를 등록하지 못했습니다');
-    } finally {
-      setUploadingGlb(false);
-    }
-  }
-
-  function toggleApplyTeam(teamId: number) {
-    setApplyTeamIds((current) => current.includes(teamId)
-      ? current.filter((id) => id !== teamId)
-      : [...current, teamId].sort((a, b) => a - b));
-  }
-
-  async function applyModelAsset(asset: ModelAsset) {
-    if (!applyTeamIds.length) {
-      showToast('모델을 적용할 조를 먼저 선택해주세요');
-      return;
-    }
-    setApplyingAssetId(asset.id);
-    try {
-      await apiRequest(`/model-assets/${asset.id}/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_ids: applyTeamIds }),
-      });
-      await Promise.all([refreshTeams(), refreshModelAssets()]);
-      showToast(`${asset.name}을 ${applyTeamIds.length}개 조에 적용했습니다`);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '모델을 조에 적용하지 못했습니다');
-    } finally {
-      setApplyingAssetId(null);
-    }
-  }
-
-  const changes = selected
-    ? DELTA_FIELDS.flatMap((field) => {
-      const delta = deltas[field.id];
-      if (!delta) return [];
-      const current = selected[field.key];
-      return [{ ...field, delta, result: boundedResult(field.key, current, delta) }];
-    })
-    : [];
 
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <div><h1>베드로 키우기 운영실</h1><small>조 정보 · 달란트 · 성품 · 3D 변환</small></div>
-        <a href="/">← 갈릴리 월드로 돌아가기</a>
+        <div><h1>베드로 키우기 운영실</h1><small>인쇄 도안 · 촬영 보정 · 25컷 QA</small></div>
+        <div className="admin-header-links">
+          <a href="/print-template">인쇄 도안</a>
+          <a href="/">갈릴리 마당</a>
+        </div>
       </header>
 
       <main className="admin-layout">
         <section className="card team-list-card">
-          <h2>25개 조</h2>
+          <h2>21개 조</h2>
           <div className="teams">
             {teams.map((team) => (
               <button
                 key={team.id}
                 className={`team-button ${selectedId === team.id ? 'active' : ''}`}
-                style={{ '--team-color': team.color } as React.CSSProperties}
+                style={{ '--team-color': team.color } as CSSProperties}
                 onClick={() => chooseTeam(team)}
               >
                 <span className="dot" />{team.name}
@@ -456,196 +802,363 @@ export default function AdminPage() {
             <div className="full actions"><button className="primary" disabled={!selected || savingTeam}>{savingTeam ? '저장 중…' : '조 정보 저장'}</button></div>
           </form>
 
-          <div className="stats">
-            {STAT_FIELDS.map(({ key, label }) => <div className="stat" key={key}><span>{label}</span><b>{selected?.[key] ?? 0}</b></div>)}
-            <div className="stat"><span>달란트</span><b>{selected?.talents ?? 0}</b></div>
-          </div>
-
-          <hr />
-          <h2>프로그램 기록 반영</h2>
-          <p className="muted growth-guide">현재 수치를 확인하며 −/+ 버튼으로 변화량을 정하세요. 반영될 결과를 아래에서 바로 확인할 수 있습니다.</p>
-          <form className="form-grid" onSubmit={saveGrowth}>
-            <label className="full">프로그램·활동명<input value={source} placeholder="예: 조별 협동 게임" required onChange={(event) => setSource(event.target.value)} /></label>
-            <div className="full delta-grid">
-              {DELTA_FIELDS.map((field) => {
-                const current = selected?.[field.key] ?? 0;
-                const delta = deltas[field.id];
-                return (
-                  <div className="delta-control" key={field.id} data-delta={field.id}>
-                    <div className="delta-head"><strong>{field.label}</strong><span>현재 <b>{current}</b></span></div>
-                    <div className="stepper">
-                      <button type="button" aria-label={`${field.label} ${field.step} 감소`} onClick={() => setDelta(field, delta - field.step)}>−{field.step === 1 ? '' : field.step}</button>
-                      <input
-                        id={field.id}
-                        type="number"
-                        value={delta}
-                        min={field.min}
-                        max={field.max}
-                        aria-label={`${field.label} 변화량`}
-                        onChange={(event) => setDelta(field, Number(event.target.value))}
-                      />
-                      <button type="button" aria-label={`${field.label} ${field.step} 증가`} onClick={() => setDelta(field, delta + field.step)}>+{field.step === 1 ? '' : field.step}</button>
-                    </div>
-                    <div className="delta-result"><span>반영 후</span><b>{boundedResult(field.key, current, delta)}</b></div>
-                  </div>
-                );
-              })}
+          <section className="character-upload-card">
+            <div className="character-preview-stack">
+              <div className="character-preview">
+                <span>고정 인쇄 도안</span>
+                <img src={TEMPLATE_URL} alt="베드로 꾸미기 인쇄 도안" />
+              </div>
+              <a className="template-print-link" href="/print-template">A4 도안 열기</a>
             </div>
-            <label className="full">메모 <span className="muted">(선택)</span><input value={note} maxLength={200} placeholder="기록에 남길 설명" onChange={(event) => setNote(event.target.value)} /></label>
-            <section className="full change-preview" aria-live="polite">
-              <strong>이번에 반영되는 변화</strong>
-              <div className="change-list">
-                {changes.length ? changes.map((change) => (
-                  <span key={change.id} className={`change-pill ${change.delta > 0 ? 'positive' : 'negative'}`}>
-                    {change.label} {signed(change.delta)} → {change.result}
+            <div className="character-workflow">
+              <form onSubmit={uploadCapturePhoto}>
+                <div>
+                  <h3>1. 휴대폰 촬영 사진 업로드</h3>
+                  <p className="muted">
+                    고정 도안에 학생이 상의·하의·왼쪽 신발·오른쪽 신발을 꾸민 뒤 종이 네 모서리가
+                    모두 보이도록 촬영한 사진을 등록하세요.
+                  </p>
+                </div>
+                <input ref={characterInputRef} type="file" accept="image/png,image/jpeg" required />
+                <div className="character-upload-actions">
+                  <button className="primary" disabled={!selected || uploadingCapture || composingSprite}>
+                    {uploadingCapture ? '사진 처리 중…' : '사진 품질검사·자동 보정'}
+                  </button>
+                  <span className="capture-tip">{spriteStatusLabel(captureStatus(selected))}</span>
+                </div>
+              </form>
+              <section
+                className="sprite-generation-panel"
+                data-status={selected?.showcase_sprite_status ?? 'empty'}
+                aria-live="polite"
+              >
+                <div className="sprite-generation-heading">
+                  <div>
+                    <h3>2. 촬영 품질·보정 사진 확인</h3>
+                    <p className="muted">
+                      종이의 기울기·색상·테두리가 보정된 전신 사진을 확인합니다. 이 한 장이 AI의 의상 디자인 참조가 됩니다.
+                    </p>
+                  </div>
+                  <span>{spriteStatusLabel(selected?.showcase_sprite_status ?? 'empty')}</span>
+                </div>
+                {selected?.showcase_sprite_error && (
+                  <p className="sprite-generation-error">{selected.showcase_sprite_error}</p>
+                )}
+                <div className="capture-review-grid">
+                  <div className="capture-review-image">
+                    <span>업로드 원본</span>
+                    <img
+                      src={selected?.showcase_capture_source_url || selected?.showcase_image_url || TEMPLATE_URL}
+                      alt={selected ? `${selected.name} 업로드 원본` : '업로드 원본'}
+                    />
+                  </div>
+                  <div className="capture-review-image">
+                    <span>보정 사진</span>
+                    <img
+                      src={correctedCaptureUrl(selected) || TEMPLATE_URL}
+                      alt={selected ? `${selected.name} 보정된 촬영 사진` : '보정 사진'}
+                    />
+                  </div>
+                  <div className="capture-quality-report">
+                    <strong>{qualityStatusLabel(selected?.showcase_capture_quality?.status)}</strong>
+                    <p>{stringifyQuality(selected?.showcase_capture_quality) || '사진 처리 후 품질 리포트가 여기에 표시됩니다.'}</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section className="garment-parts-card" aria-label="마스터 고정 25컷 생성">
+            <header className="sprite-review-header">
+              <div>
+                <span>3</span>
+                <div>
+                  <h3>마스터 고정 25컷 새로 만들기</h3>
+                  <p className="muted">
+                    AI가 고정 베드로의 얼굴·몸·25개 동작·크기를 잠그고, 보정 사진에서 상의·하의·양쪽 신발 디자인만 옮깁니다.
+                  </p>
+                </div>
+              </div>
+              <strong>{designReferenceReady ? '생성 준비 완료' : '보정 사진 대기'}</strong>
+            </header>
+            <div className="master-edit-reference-grid">
+              <article className="master-edit-reference">
+                <span>고정 25컷 마스터</span>
+                <div><img src={FIXED_MASTER_URL} alt="모든 조가 공유하는 고정 베드로 25컷 마스터" /></div>
+                <p>얼굴 · 헤어 · 수염 · 몸 비율 · 동작 · 프레임 크기 고정</p>
+              </article>
+              <article className="master-edit-reference">
+                <span>학생 디자인 참조</span>
+                <div>
+                  <img
+                    src={correctedCaptureUrl(selected) || TEMPLATE_URL}
+                    alt={selected ? `${selected.name} 학생 디자인 참조` : '학생 디자인 참조'}
+                  />
+                </div>
+                <p>상의 · 하의 · 왼쪽 신발 · 오른쪽 신발 디자인만 반영</p>
+              </article>
+              <article className="master-edit-contract">
+                <strong>생성 후 자동 처리</strong>
+                <ul>
+                  <li>25개 프레임을 마스터와 같은 크기로 정규화</li>
+                  <li>각 프레임의 하단 중앙 기준점 고정</li>
+                  <li>머리·손·발·신발 잘림과 의상 침범 검사</li>
+                  <li>문제 발생 시 QA 내용을 반영해 다시 생성</li>
+                </ul>
+              </article>
+            </div>
+            <div className="sprite-review-actions">
+              <button
+                type="button"
+                className="primary"
+                disabled={!selected || composingSprite || !designReferenceReady}
+                onClick={() => { void composeShowcaseSprite(); }}
+              >
+                {composingSprite
+                  ? `${generation.stage.label}…`
+                  : selectedSpriteUrl
+                    ? 'QA 반영해 25컷 다시 생성'
+                    : 'AI로 마스터 고정 25컷 생성'}
+              </button>
+              <span>몇 분이 걸려도 완료될 때까지 단계별 저장·자동 재시도합니다. 현재 QA의 프레임별 문제도 반영합니다.</span>
+            </div>
+            {generationActive && (
+              <div className="sprite-generation-live" role="status" aria-live="polite">
+                <header>
+                  <div>
+                    <strong>{generation.stage.label}</strong>
+                    <span>{generation.stage.detail}</span>
+                  </div>
+                  <b>{generation.percent}%</b>
+                </header>
+                <progress
+                  value={generation.percent}
+                  max={100}
+                  aria-label="마스터 고정 25컷 생성 진행률"
+                />
+                <div className="sprite-generation-time">
+                  <span>{formatGenerationTime(generationElapsedSeconds)} 경과</span>
+                  <span>
+                    {generation.delayed
+                      ? '예상보다 지연 중 · 계속 자동 확인합니다'
+                      : `약 ${formatGenerationTime(generation.remainingSeconds)} 남음`}
                   </span>
-                )) : <span className="muted">아직 선택한 변화가 없습니다</span>}
+                </div>
+                <ol>
+                  {GENERATION_STAGES.map((stage, index) => {
+                    const state = index < generation.stageIndex
+                      ? 'complete'
+                      : index === generation.stageIndex ? 'active' : 'pending';
+                    return (
+                      <li
+                        key={stage.status}
+                        data-state={state}
+                        aria-current={state === 'active' ? 'step' : undefined}
+                      >
+                        <i>{state === 'complete' ? '✓' : index + 1}</i>
+                        <span>{stage.label}</span>
+                      </li>
+                    );
+                  })}
+                </ol>
+                <p>예상 시간은 이미지 복잡도와 AI 서버 상태에 따라 달라질 수 있습니다. 504나 일시적인 연결 오류가 나도 저장된 단계부터 자동 재시도하며, 새로고침 후 다시 접속해도 이어서 진행합니다.</p>
+              </div>
+            )}
+          </section>
+
+          {selected && selectedSpriteUrl && ['review', 'ready'].includes(selected.showcase_sprite_status) && (
+            <section
+              className="sprite-review-card"
+              data-status={selected.showcase_sprite_status}
+              aria-label={`${selected.name} 25컷 검수`}
+            >
+              <header className="sprite-review-header">
+                <div>
+                  <span>4</span>
+                  <div>
+                    <h3>25컷 최종 QA</h3>
+                    <p className="muted">마스터와 같은 크기로 정렬된 5×5 아틀라스와 실제 동작을 확인한 뒤 전체 화면 적용을 승인하세요.</p>
+                  </div>
+                </div>
+                <strong>{selected.showcase_sprite_status === 'ready' ? '승인·적용 완료' : '승인 전'}</strong>
+              </header>
+
+              <div className="sprite-review-layout">
+                <a
+                  className="sprite-review-sheet"
+                  href={selectedSpriteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span>{fixedMaster ? '5 × 5 전체 아틀라스' : '4 × 3 legacy 시트'} · 클릭해서 원본 확인</span>
+                  <img src={selectedSpriteUrl} alt={`${selected.name} 스프라이트 아틀라스`} />
+                </a>
+                <div className="sprite-motion-grid sprite-motion-grid--wide">
+                  {SPRITE_REVIEW_PREVIEWS.map((preview) => (
+                    <SpriteMotionPreview
+                      key={`${preview.animation}-${preview.label}`}
+                      {...preview}
+                      spriteUrl={selectedSpriteUrl}
+                      team={selected}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {fixedMaster && (
+                <section className="sprite-atlas-qa">
+                  <h4>25프레임 그리드 QA</h4>
+                  <div className="sprite-atlas-grid">
+                    {Array.from({ length: 25 }, (_, frame) => (
+                      <SpriteAtlasFrame key={frame} frame={frame} spriteUrl={selectedSpriteUrl} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {selected.showcase_sprite_quality && (
+                <section
+                  className="sprite-quality-report"
+                  data-status={selected.showcase_sprite_quality.status}
+                >
+                  <header>
+                    <div>
+                      <strong>{qualityStatusLabel(selected.showcase_sprite_quality_status)}</strong>
+                      <span>{selected.showcase_sprite_quality.summary}</span>
+                    </div>
+                    <em>
+                      픽셀 검사 {selected.showcase_sprite_quality.deterministic.status === 'passed' ? '통과' : '확인 필요'}
+                      {' · '}
+                      AI 검사 {selected.showcase_sprite_quality.ai.status === 'passed'
+                        ? '통과'
+                        : selected.showcase_sprite_quality.ai.status === 'unavailable'
+                          ? '실행 불가'
+                          : '확인 필요'}
+                    </em>
+                  </header>
+                  <p>{selected.showcase_sprite_quality.deterministic.summary}</p>
+                  <p>{selected.showcase_sprite_quality.ai.summary}</p>
+                  <div className="sprite-frame-inspection-grid">
+                    {selected.showcase_sprite_quality.deterministic.frames.map((frame) => (
+                      <SpriteFrameInspection
+                        key={frame.frame}
+                        frame={frame}
+                        spriteUrl={selectedSpriteUrl}
+                        fixedMaster={fixedMaster}
+                        aiIssue={selected.showcase_sprite_quality?.ai.frames.find(
+                          (candidate) => candidate.frame === frame.frame,
+                        )?.issue}
+                        selectable={qaProblemFrames.includes(frame.frame)}
+                        selected={selectedPatchFrames.includes(frame.frame)}
+                        onSelectionChange={togglePatchFrame}
+                      />
+                    ))}
+                  </div>
+                  {qaProblemFrames.length > 0 && (
+                    <div className="sprite-frame-patch-actions">
+                      <div>
+                        <strong>문제 컷 {qaProblemFrames.length}개 감지</strong>
+                        <span>
+                          선택한 컷만 새로 만들고 기존 아틀라스의 같은 위치에 교체합니다.
+                          선택하지 않은 컷은 픽셀 그대로 유지됩니다.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={composingSprite || selectedPatchFrames.length === 0}
+                        onClick={() => { void regenerateSelectedFrames(); }}
+                      >
+                        {composingSprite
+                          ? '문제 컷 교체 중…'
+                          : `선택한 ${selectedPatchFrames.length}컷만 재생성`}
+                      </button>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              <ul className="sprite-review-checklist">
+                <li>25컷 모두 정사각형 안전 프레임 안에서 머리부터 신발 밑창까지 온전히 보이나요?</li>
+                <li>상의와 하의가 분리되어 있고, 왼쪽·오른쪽 신발이 학생 기준 좌우와 일치하나요?</li>
+                <li>기존 마스터와 얼굴·몸 비율·캐릭터 크기가 동일하게 보이나요?</li>
+                <li>idle 0·9, walk 1-8, run 10-17, wave 18, jump 20, kneel 21, pray 22, point 24 매핑이 맞나요?</li>
+                <li>PAGE 1·2·3·showcase에서 동일한 active 버전으로 보일 준비가 되었나요?</li>
+              </ul>
+
+              <div className="sprite-review-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    selected.showcase_sprite_status !== 'review'
+                    || approvingSprite
+                    || !selected.showcase_sprite_quality?.can_approve
+                  }
+                  onClick={() => { void approveShowcaseSprite(); }}
+                >
+                  {approvingSprite
+                    ? '전체 페이지 적용 중…'
+                    : selected.showcase_sprite_status === 'ready'
+                      ? 'PAGE 1·2·3·showcase 적용 완료'
+                      : '최종 QA 통과 · 전체 적용'}
+                </button>
+                {selected.showcase_sprite_status === 'review'
+                  && selected.showcase_sprite_quality
+                  && !selected.showcase_sprite_quality.can_approve
+                  && (
+                    <button
+                      type="button"
+                      className="danger-outline"
+                      disabled={approvingSprite}
+                      onClick={() => { void approveShowcaseSprite(true); }}
+                    >
+                      문제 확인함 · 강제 적용
+                    </button>
+                  )}
+                <span>문제 컷만 교체할 수 있으며, 필요하면 위의 전체 25컷 재생성도 사용할 수 있습니다.</span>
               </div>
             </section>
-            <div className="full actions growth-actions">
-              <button type="button" className="secondary" onClick={() => setDeltas(EMPTY_DELTAS)}>변화량 초기화</button>
-              <button className="primary" disabled={!selected || savingGrowth}>{savingGrowth ? '반영 중…' : '이 기록 반영하기'}</button>
-            </div>
-          </form>
+          )}
 
-        </section>
-
-        <section className="card jobs-card">
-          <section className="model-workspace">
-            <div className="workspace-step">
-              <span>1</span>
-              <div><h2>모델 보관함에 추가</h2><p className="muted">그림으로 새로 만들거나, 가지고 있는 GLB를 바로 등록합니다.</p></div>
-            </div>
-            <div className="asset-source-grid">
-              <section className="asset-source-card">
-                <h3>그림으로 새 모델 생성</h3>
-                <p className="muted">Tripo 크레딧을 사용해 모델·리깅·동작을 만듭니다.</p>
-                <form className="asset-generation-form" onSubmit={generateModelAsset}>
-                  <label>
-                    모델 이름
-                    <input value={assetName} maxLength={60} placeholder="예: 파란 구름 베드로" required onChange={(event) => setAssetName(event.target.value)} />
-                  </label>
-                  <label className="pipeline-select">
-                    생성 프로필
-                    <select value={pipelineProfile} onChange={(event) => setPipelineProfile(event.target.value)}>
-                      {pipelineProfiles.map((profile) => (
-                        <option key={profile.id} value={profile.id}>
-                          {profile.label}{profile.estimated_credits > 0 ? ` · 약 ${profile.estimated_credits} cr` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedProfile && <small>{selectedProfile.description}</small>}
-                  </label>
-                  <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" required />
-                  <button className="primary" disabled={uploading}>{uploading ? '등록 중…' : '모델 생성 대기열에 추가'}</button>
-                </form>
-              </section>
-
-              <section className="asset-source-card imported-glb-card">
-                <h3>기존 GLB 파일 등록</h3>
-                <p className="muted">10MB 이하 · 스켈레톤과 애니메이션 1개 이상이 필요합니다.</p>
-                <form className="asset-generation-form" onSubmit={uploadExistingGlb}>
-                  <label>
-                    모델 이름
-                    <input value={uploadedAssetName} maxLength={60} placeholder="예: 완성된 4조 베드로" required onChange={(event) => setUploadedAssetName(event.target.value)} />
-                  </label>
-                  <input ref={glbInputRef} type="file" accept=".glb,model/gltf-binary" required />
-                  <button className="primary" disabled={uploadingGlb}>{uploadingGlb ? '검사·업로드 중…' : 'GLB 모델 보관함에 등록'}</button>
-                </form>
-              </section>
-            </div>
-
-            <div className="workspace-step apply-step">
-              <span>2</span>
-              <div><h2>완성 모델을 조에 적용</h2><p className="muted">한 모델을 여러 조에 동시에 배정할 수 있습니다.</p></div>
-            </div>
-            <div className="target-actions">
-              <button type="button" className="secondary" disabled={!selected} onClick={() => selected && setApplyTeamIds([selected.id])}>현재 조만</button>
-              <button type="button" className="secondary" onClick={() => setApplyTeamIds(teams.map((team) => team.id))}>전체 25조</button>
-              <button type="button" className="secondary" onClick={() => setApplyTeamIds([])}>선택 해제</button>
-              <strong>{applyTeamIds.length}개 조 선택</strong>
-            </div>
-            <div className="target-team-grid" aria-label="모델 적용 대상 조">
-              {teams.map((team) => (
-                <label key={team.id} className={applyTeamIds.includes(team.id) ? 'checked' : ''}>
-                  <input type="checkbox" checked={applyTeamIds.includes(team.id)} onChange={() => toggleApplyTeam(team.id)} />
-                  {team.id}조
-                </label>
-              ))}
-            </div>
-            <div className="asset-library">
-              {modelAssets.length ? modelAssets.map((asset) => (
-                <article className="asset-card" key={asset.id}>
-                  <div className="asset-card-head">
+          <section className="sprite-version-card">
+            <header className="sprite-review-header">
+              <div>
+                <span>5</span>
+                <div>
+                  <h3>버전 기록 복원</h3>
+                  <p className="muted">승인 또는 생성된 이전 25컷 버전을 선택해 active 버전으로 되돌립니다.</p>
+                </div>
+              </div>
+              <strong>{loadingVersions ? '불러오는 중' : `${versions.length}개`}</strong>
+            </header>
+            <div className="sprite-version-list">
+              {versions.length ? versions.map((version) => {
+                const versionUrl = version.sprite_url || version.atlas_url || version.contract?.atlas_url || '';
+                const active = String(version.id) === String(selected?.showcase_sprite_active_version_id);
+                return (
+                  <article key={version.id} className="sprite-version-item" data-active={active ? 'true' : 'false'}>
+                    {versionUrl ? <img src={versionUrl} alt={`${version.id} 버전 미리보기`} /> : <div />}
                     <div>
-                      <strong>{asset.name}{asset.pipeline_profile === 'uploaded_glb' && <em className="imported-badge">직접 업로드</em>}</strong>
-                      <span>{asset.team_ids.length ? `${asset.team_ids.join(', ')}조 적용 중` : '아직 적용된 조 없음'}</span>
+                      <strong>{active ? '현재 적용 버전' : `버전 ${version.id}`}</strong>
+                      <span>{version.created_at || version.approved_at || version.restored_at || '날짜 없음'}</span>
+                      {version.note && <small>{version.note}</small>}
                     </div>
-                    <a href={asset.glb_url} target="_blank" rel="noreferrer">GLB 확인</a>
-                  </div>
-                  <div className="asset-metrics">
-                    {asset.glb_bytes != null && <span>{formatBytes(asset.glb_bytes)}</span>}
-                    {asset.glb_triangles != null && <span>{asset.glb_triangles.toLocaleString('ko-KR')} tris</span>}
-                    {asset.glb_animations != null && <span>동작 {asset.glb_animations}개</span>}
-                  </div>
-                  <button className="primary" type="button" disabled={!applyTeamIds.length || applyingAssetId !== null} onClick={() => void applyModelAsset(asset)}>
-                    {applyingAssetId === asset.id ? '적용 중…' : `선택한 ${applyTeamIds.length}개 조에 적용`}
-                  </button>
-                </article>
-              )) : <p className="empty-library">완성된 공용 모델이 없습니다. 위에서 첫 모델을 생성해주세요.</p>}
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={!selected || active || restoringVersionId === version.id}
+                      onClick={() => { void restoreVersion(version.id); }}
+                    >
+                      {restoringVersionId === version.id ? '복원 중…' : '복원'}
+                    </button>
+                  </article>
+                );
+              }) : (
+                <p className="sprite-generation-help">아직 저장된 버전이 없습니다.</p>
+              )}
             </div>
           </section>
-
-          <hr />
-          <h2>3D 변환 작업</h2>
-          <section className={`billing-panel ${billingError || billing?.error ? 'unavailable' : ''}`} aria-label="Tripo 크레딧 현황">
-            <div className="billing-title">
-              <strong>Tripo 사용 현황</strong>
-              <span>{billingError || billing?.error ? '조회 실패' : billing ? (billing.configured ? '연결됨' : 'API 미설정') : '연결 확인 중'}</span>
-            </div>
-            <div className="billing-stats">
-              <div><span>사용 가능</span><b>{formatCredits(billing?.balance)}</b></div>
-              <div><span>보류</span><b>{formatCredits(billing?.frozen)}</b></div>
-              <div><span>누적 실사용</span><b>{formatCredits(billing?.tracked_credits)}</b></div>
-              <div><span>동시 처리</span><b>{billing ? `${billing.workers}개` : '확인 중'}</b></div>
-            </div>
-          </section>
-          <p className="muted jobs-guide">
-            서버가 최대 {billing?.workers ?? '설정된 수'}개씩 처리하며, 단일 이미지 결과가 부족한 조만 멀티뷰로 다시 생성합니다.
-          </p>
-          <div className="jobs-scroll">
-            <table className="jobs">
-              <thead><tr><th>조</th><th>상태</th><th>프로필</th><th>사용량</th><th>결과</th></tr></thead>
-              <tbody>
-                {jobs.length ? jobs.map((job) => {
-                  const metrics = metricEntries(job);
-                  return (
-                    <tr key={job.id}>
-                      <td>{job.asset_only ? (job.asset_name || '공용 모델') : `${job.team_id}조`}<br /><span className="muted job-id">{job.id}</span></td>
-                      <td>
-                        <span className={`status ${job.status}`}>{statusLabel(job.status)}</span>
-                        {job.fallback_used && <span className="fallback-badge">멀티뷰 보완</span>}
-                        {job.fallback_used === false && <span className="fallback-badge normal">기본 경로</span>}
-                      </td>
-                      <td>{pipelineProfiles.find((profile) => profile.id === job.pipeline_profile)?.label ?? job.pipeline_profile ?? '기본'}</td>
-                      <td>
-                        <strong className="credit-used">{formatCredits(job.credits_used)}</strong>
-                        {metrics.length > 0 && (
-                          <details className="job-metrics">
-                            <summary>세부 지표</summary>
-                            {metrics.map(([key, value]) => <span key={key}>{key}: {String(value)}</span>)}
-                          </details>
-                        )}
-                      </td>
-                      <td>{job.glb_url
-                        ? <a className="result-link" href={job.glb_url} target="_blank" rel="noreferrer">GLB 보기</a>
-                        : job.error ? <span className="error">{job.error}</span> : '—'}</td>
-                    </tr>
-                  );
-                }) : <tr><td colSpan={5} className="muted">아직 변환 작업이 없습니다</td></tr>}
-              </tbody>
-            </table>
-          </div>
         </section>
       </main>
 

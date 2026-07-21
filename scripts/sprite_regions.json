@@ -1,0 +1,62 @@
+{
+  "source": "frontend/public/assets/peter/peter-sprite-sheet.png",
+  "output": "frontend/public/assets/peter/frames",
+  "canvas": {
+    "width": 280,
+    "height": 340,
+    "baselineY": 302,
+    "targetContentHeight": 252,
+    "maxContentWidth": 244
+  },
+  "background": {
+    "type": "embedded-checkerboard",
+    "removeCheckerboard": true,
+    "whiteThreshold": 218,
+    "grayDeltaTolerance": 24,
+    "edgeFloodFill": true
+  },
+  "frames": {
+    "idle-front": { "x": 0, "y": 62, "width": 224, "height": 310, "anchorX": 0.5, "anchorY": 1.0 },
+    "idle-three-quarter": { "x": 224, "y": 62, "width": 225, "height": 310, "anchorX": 0.5, "anchorY": 1.0 },
+    "idle-side": { "x": 449, "y": 62, "width": 224, "height": 310, "anchorX": 0.5, "anchorY": 1.0 },
+    "idle-back": { "x": 673, "y": 62, "width": 225, "height": 310, "anchorX": 0.5, "anchorY": 1.0 },
+    "idle-front-alt": { "x": 898, "y": 62, "width": 224, "height": 310, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "walk-01": { "x": 0, "y": 450, "width": 187, "height": 270, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-02": { "x": 187, "y": 450, "width": 187, "height": 270, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-03": { "x": 374, "y": 450, "width": 187, "height": 270, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-04": { "x": 561, "y": 450, "width": 187, "height": 270, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-05": { "x": 748, "y": 450, "width": 187, "height": 270, "anchorX": 0.5, "anchorY": 1.0 },
+    "walk-06": { "x": 935, "y": 450, "width": 187, "height": 270, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "run-01": { "x": 0, "y": 780, "width": 224, "height": 245, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-02": { "x": 224, "y": 780, "width": 225, "height": 245, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-03": { "x": 449, "y": 780, "width": 224, "height": 245, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-04": { "x": 673, "y": 780, "width": 225, "height": 245, "anchorX": 0.5, "anchorY": 1.0 },
+    "run-05": { "x": 898, "y": 780, "width": 224, "height": 245, "anchorX": 0.5, "anchorY": 1.0 },
+
+    "wave-01": { "x": 0, "y": 1090, "width": 224, "height": 275, "anchorX": 0.5, "anchorY": 1.0 },
+    "jump-01": { "x": 224, "y": 1090, "width": 225, "height": 275, "anchorX": 0.5, "anchorY": 1.0 },
+    "pray-01": { "x": 449, "y": 1090, "width": 224, "height": 275, "anchorX": 0.5, "anchorY": 1.0 },
+    "kneel-01": {
+      "x": 673,
+      "y": 1090,
+      "width": 225,
+      "height": 275,
+      "anchorX": 0.5,
+      "anchorY": 1.0,
+      "normalizeHeight": false
+    },
+    "point-01": { "x": 898, "y": 1090, "width": 224, "height": 275, "anchorX": 0.5, "anchorY": 1.0 }
+  },
+  "animations": {
+    "idle": ["idle-front"],
+    "walk": ["walk-01", "walk-02", "walk-03", "walk-04", "walk-05", "walk-06"],
+    "run": ["run-01", "run-02", "run-03", "run-04", "run-05"],
+    "wave": ["wave-01"],
+    "jump": ["jump-01"],
+    "pray": ["pray-01"],
+    "kneel": ["kneel-01"],
+    "point": ["point-01"]
+  }
+}

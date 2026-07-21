@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1500" viewBox="0 0 1000 1500">
+  <rect width="1000" height="1500" fill="#fffdf4"/>
+  <rect x="50" y="50" width="900" height="1400" rx="24" fill="none" stroke="#b7aa91" stroke-width="4"/>
+  <circle cx="50" cy="50" r="28" fill="#e64040"/>
+  <circle cx="950" cy="50" r="28" fill="#2f78dc"/>
+  <circle cx="950" cy="1450" r="28" fill="#38a657"/>
+  <circle cx="50" cy="1450" r="28" fill="#e6ad28"/>
+
+  <g fill="none" stroke="#c9bda7" stroke-width="5" stroke-dasharray="14 12">
+    <ellipse cx="500" cy="300" rx="165" ry="170"/>
+    <path d="M330 472 L238 690 L315 720 L350 585 L350 1050 L650 1050 L650 585 L685 720 L762 690 L670 472 Z"/>
+    <path d="M394 1050 L378 1200 L475 1200 L500 1050"/>
+    <path d="M500 1050 L525 1200 L622 1200 L606 1050"/>
+    <rect x="180" y="1240" width="640" height="190" rx="36"/>
+  </g>
+
+  <g fill="#756958" font-family="Apple SD Gothic Neo, sans-serif" text-anchor="middle">
+    <text x="500" y="92" font-size="28" font-weight="700">갈릴리 마당 촬영판</text>
+    <text x="500" y="1140" font-size="24">발끝을 점선 안에 맞춰주세요</text>
+    <text x="500" y="1335" font-size="29" font-weight="700">학생이 만든 닉네임창 영역</text>
+    <text x="500" y="1380" font-size="21">네 색 기준점이 사진에 모두 나오게 촬영</text>
+  </g>
+</svg>

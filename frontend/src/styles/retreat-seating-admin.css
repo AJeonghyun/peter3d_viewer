@@ -1,0 +1,186 @@
+.seating-admin-page {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 15% 12%, rgb(255 255 255 / 72%), transparent 24%),
+    linear-gradient(180deg, #d9f6ff 0%, #eef9fb 42%, #fff3cf 100%);
+}
+
+.seating-admin-links {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.seating-admin-links a {
+  color: inherit;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.seating-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 18px;
+  width: min(1440px, calc(100% - 36px));
+  margin: 0 auto;
+  padding: 0 0 32px;
+}
+
+.seating-plan-list,
+.seating-editor-card {
+  border: 1px solid rgb(22 68 88 / 18%);
+  color: #17324a;
+  background: rgb(255 255 255 / 86%);
+  box-shadow: none;
+}
+
+.seating-plan-list__header,
+.seating-editor-card__top,
+.seating-editor-actions,
+.seating-slot-card__moves {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.seating-plan-list__header {
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.seating-plan-button {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid rgb(23 57 76 / 16%);
+  border-radius: 16px;
+  margin-bottom: 10px;
+  color: #17324a;
+  text-align: left;
+  background: rgb(255 255 255 / 78%);
+  cursor: pointer;
+}
+
+.seating-plan-button[data-active="true"] {
+  border-color: #1d7d99;
+  background: #f0fbff;
+}
+
+.seating-plan-button strong {
+  font-size: 16px;
+}
+
+.seating-plan-button span,
+.seating-plan-button em {
+  color: rgb(23 50 74 / 72%);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.seating-editor-card__top {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.9fr) minmax(210px, 1.2fr) minmax(180px, 0.9fr) auto;
+  margin-bottom: 18px;
+}
+
+.seating-editor-card__top label {
+  display: grid;
+  gap: 7px;
+  color: rgb(23 50 74 / 78%);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.seating-editor-card__top input,
+.seating-slot-card select {
+  width: 100%;
+  border: 1px solid rgb(23 57 76 / 18%);
+  border-radius: 12px;
+  color: #17324a;
+  background: #fff;
+}
+
+.seating-editor-card__top input {
+  padding: 12px 13px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.seating-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.seating-slot-card:nth-child(20) {
+  grid-column: 2;
+}
+
+.seating-admin-message {
+  margin: -4px 0 16px;
+  color: rgb(23 50 74 / 72%);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.seating-slot-card {
+  display: grid;
+  gap: 8px;
+  min-height: 138px;
+  padding: 11px;
+  border: 1px solid rgb(23 57 76 / 14%);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 72%);
+}
+
+.seating-slot-card__index {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  color: #fffaf0;
+  font-size: 13px;
+  font-weight: 900;
+  background: #1d7d99;
+}
+
+.seating-slot-card select {
+  min-width: 0;
+  padding: 9px 8px;
+  font-weight: 800;
+}
+
+.seating-slot-card strong {
+  color: #15324c;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.seating-slot-card__moves button {
+  flex: 1;
+  border: 1px solid rgb(23 57 76 / 16%);
+  border-radius: 10px;
+  padding: 7px 8px;
+  color: #17324a;
+  font-weight: 800;
+  background: #f5fbfd;
+  cursor: pointer;
+}
+
+.seating-slot-card__moves button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@media (max-width: 980px) {
+  .seating-admin-layout,
+  .seating-editor-card__top {
+    grid-template-columns: 1fr;
+  }
+
+  .seating-slot-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

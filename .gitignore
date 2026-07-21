@@ -19,3 +19,4 @@ static/models/*
 !static/models/.gitkeep
 .vercel
 .env*
+.claude/settings.local.json
