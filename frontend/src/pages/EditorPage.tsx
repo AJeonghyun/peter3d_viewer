@@ -20,9 +20,9 @@ import type {
 } from '../retreat/types';
 import '../styles/retreat-editor.css';
 
-const PAGE_META: Array<{ id: RetreatPage; label: string; path: string }> = [
-  { id: 'walk', label: '베드로 걷기', path: '/display/walk' },
-  { id: 'campfire', label: '갈릴리 모닥불', path: '/display/campfire' },
+const PAGE_META: Array<{ id: RetreatPage; label: string; path: string; editPath: string }> = [
+  { id: 'stand', label: '베드로 라인업', path: '/display/stand', editPath: '/editor/stand' },
+  { id: 'campfire', label: '갈릴리 모닥불', path: '/display/campfire', editPath: '/editor/campfire' },
 ];
 
 function downloadJson(settings: RetreatSettings) {
@@ -223,10 +223,28 @@ export default function EditorPage() {
           </div>
         </section>
 
-
+        <section className="editor-section">
+          <h2>장면별 배치 편집</h2>
+          <p className="editor-section__help">
+            각 장면의 캐릭터 위치·크기·좌우 반전을 드래그로 편집합니다. 배치는 이 브라우저에 저장됩니다.
+          </p>
+          <div className="editor-obs-links">
+            {PAGE_META.map((item) => (
+              <a
+                key={item.id}
+                className="editor-link-button"
+                href={item.editPath}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {item.label} 배치 편집 열기
+              </a>
+            ))}
+          </div>
+        </section>
 
         <section className="editor-section">
-            <h2>걷기·모닥불 화면 설정</h2>
+            <h2>라인업·모닥불 화면 설정</h2>
             <label>메인 제목
               <input
                 value={settings.world.title}

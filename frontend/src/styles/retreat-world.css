@@ -701,6 +701,83 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   box-shadow: 0 0.5cqh 1.3cqh rgb(5 9 22 / 24%);
 }
 
+/* Stand scene: the whole roster lined up along the bottom band. */
+.retreat-parade__lineup {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  pointer-events: none;
+}
+
+.retreat-parade__stander {
+  --stander-x: 50vw;
+  --stander-x: 50cqw;
+  --stander-bottom: 2.5vh;
+  --stander-bottom: 2.5cqh;
+  --stander-scale: 1;
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  bottom: var(--stander-bottom);
+  width: clamp(112px, 8.2vw, 168px);
+  width: clamp(112px, 8.2cqw, 168px);
+  height: clamp(152px, 11.2vw, 224px);
+  height: clamp(152px, 11.2cqw, 224px);
+  transform: translateX(calc(var(--stander-x) - 50%)) scale(var(--stander-scale));
+  transform-origin: 50% 100%;
+}
+
+.retreat-parade__stander-character,
+.retreat-parade__stander-character.retreat-character,
+.retreat-parade__stander-character .sprite-animator,
+.retreat-parade__stander-character .sprite-animator__motion,
+.retreat-parade__stander-character .sprite-animator__motion > *,
+.retreat-parade__stander-character .atlas-sprite-animator,
+.retreat-parade__stander-character .atlas-sprite-animator__motion,
+.retreat-parade__stander-character img {
+  width: 100%;
+  height: 100%;
+}
+
+.retreat-parade__stander-character img {
+  display: block;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+.retreat-parade__stander-character .sprite-animator,
+.retreat-parade__stander-character .atlas-sprite-animator {
+  overflow: visible;
+  transform-origin: 50% 100%;
+}
+
+.retreat-parade__stander-character .sprite-animator__motion {
+  display: grid;
+  place-items: center;
+  overflow: visible;
+}
+
+/* One-shot hop when a lined-up Peter reacts; the base transform is reused so
+   the character keeps its edited position and scale mid-jump. */
+.retreat-parade__stander[data-reaction="jump"] {
+  animation: retreat-stander-hop 0.9s ease;
+}
+
+.retreat-parade__stander .retreat-parade__nameplate {
+  bottom: -0.4vh;
+  bottom: -0.4cqh;
+  min-width: clamp(44px, 3.4vw, 66px);
+  min-width: clamp(44px, 3.4cqw, 66px);
+  max-width: clamp(64px, 5vw, 92px);
+  max-width: clamp(64px, 5cqw, 92px);
+  min-height: clamp(20px, 2vh, 26px);
+  min-height: clamp(20px, 2cqh, 26px);
+  padding: 0.24vh 0.4vw;
+  padding: 0.24cqh 0.4cqw;
+  font-size: clamp(10px, 0.72vw, 14px);
+  font-size: clamp(10px, 0.72cqw, 14px);
+}
+
 .retreat-parade__campfire {
   --fire-x: 50vw;
   --fire-bottom: 18vh;
@@ -836,6 +913,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 
 .retreat-parade[data-layout-edit="true"] .retreat-parade__jesus,
 .retreat-parade[data-layout-edit="true"] .retreat-parade__listener,
+.retreat-parade[data-layout-edit="true"] .retreat-parade__stander,
 .retreat-parade[data-layout-edit="true"] .retreat-parade__campfire {
   pointer-events: auto;
   touch-action: none;
@@ -844,6 +922,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 
 .retreat-parade[data-layout-edit="true"] .retreat-parade__jesus:active,
 .retreat-parade[data-layout-edit="true"] .retreat-parade__listener:active,
+.retreat-parade[data-layout-edit="true"] .retreat-parade__stander:active,
 .retreat-parade[data-layout-edit="true"] .retreat-parade__campfire:active {
   cursor: grabbing;
 }
@@ -859,6 +938,21 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade[data-paused="true"] *::before,
 .retreat-parade[data-paused="true"] *::after {
   animation-play-state: paused !important;
+}
+
+@keyframes retreat-stander-hop {
+  0%,
+  100% {
+    transform: translateX(calc(var(--stander-x) - 50%)) translateY(0) scale(var(--stander-scale));
+  }
+
+  35% {
+    transform: translateX(calc(var(--stander-x) - 50%)) translateY(-16%) scale(var(--stander-scale));
+  }
+
+  70% {
+    transform: translateX(calc(var(--stander-x) - 50%)) translateY(-3%) scale(var(--stander-scale));
+  }
 }
 
 @keyframes retreat-cloud-drift {

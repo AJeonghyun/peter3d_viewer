@@ -10,7 +10,7 @@ type PageName =
   | 'showcase'
   | 'print-template'
   | 'editor'
-  | 'walk'
+  | 'stand'
   | 'campfire'
   | 'garment-test';
 
@@ -21,6 +21,9 @@ function resolvePage(pathname: string): PageName {
   if (pathname === '/editor/campfire' || pathname.startsWith('/editor/campfire/')) {
     return 'campfire';
   }
+  if (pathname === '/editor/stand' || pathname.startsWith('/editor/stand/')) {
+    return 'stand';
+  }
   if (pathname === '/editor' || pathname.startsWith('/editor/')) return 'editor';
   if (
     pathname === '/display/campfire'
@@ -28,10 +31,14 @@ function resolvePage(pathname: string): PageName {
     || pathname === '/campfire'
   ) return 'campfire';
   if (
-    pathname === '/display/walk'
+    pathname === '/display/stand'
+    || pathname.startsWith('/display/stand/')
+    || pathname === '/stand'
+    // Legacy walk routes now resolve to the lineup (stand) scene.
+    || pathname === '/display/walk'
     || pathname.startsWith('/display/walk/')
     || pathname === '/walk'
-  ) return 'walk';
+  ) return 'stand';
   if (pathname === '/showcase' || pathname.startsWith('/showcase/')) return 'showcase';
   if (pathname === '/print-template' || pathname.startsWith('/print-template/')) return 'print-template';
   if (pathname === '/garment-test' || pathname.startsWith('/garment-test/')) return 'garment-test';
@@ -43,7 +50,7 @@ function resolvePage(pathname: string): PageName {
   ) {
     return 'sprite-lab';
   }
-  return 'walk';
+  return 'stand';
 }
 
 const page = resolvePage(window.location.pathname);
@@ -51,7 +58,7 @@ const Page = ({
   admin: lazy(() => import('./pages/AdminPage')),
   'admin-seating': lazy(() => import('./pages/SeatingAdminPage')),
   editor: lazy(() => import('./pages/EditorPage')),
-  walk: lazy(() => import('./pages/AllCharactersPage')),
+  stand: lazy(() => import('./pages/AllCharactersPage')),
   campfire: lazy(() => import('./pages/AllCharactersPage')),
   'garment-test': lazy(() => import('./pages/GarmentTransferTestPage')),
   showcase: lazy(() => import('./pages/ShowcasePage')),

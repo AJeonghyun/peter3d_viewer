@@ -19,38 +19,29 @@ interface AllCharactersPageProps {
   scene?: DisplayMode;
 }
 
-type ParadeScene =
-  | { type: 'walk'; duration: number; groupStart: number; groupCount: number }
-  | { type: 'campfire'; duration: number; groupStart: number; groupCount: number };
+type DisplayMode = 'stand' | 'campfire';
 
-type DisplayMode = 'walk' | 'campfire';
-
-interface LocatedScene {
-  scene: ParadeScene;
-  elapsed: number;
-  index: number;
-  startedAt: number;
+interface CampfireTimelineScene {
+  duration: number;
+  groupStart: number;
+  groupCount: number;
 }
 
-const WALK_DURATION = 12_000;
-const WALK_STAGGER = 3_000;
-const WALK_SCENE_DURATION = WALK_STAGGER * 6 + WALK_DURATION + 1_200;
 const CAMPFIRE_DURATION = 14_000;
 const START_OFFSET = 2_400;
-const ACTIONS = ['wave', 'pray', 'jump', 'point'] as const satisfies readonly AnimationName[];
+const TEAM_COUNT = 21;
+const REACTION_ACTIONS = ['wave', 'jump'] as const satisfies readonly AnimationName[];
+const REACTION_HOLD_MS = 950;
+const REACTION_MIN_GAP_MS = 1_600;
+const REACTION_MAX_GAP_MS = 3_400;
+const STAND_LAYOUT_STORAGE_KEY = 'peter-page3-stand-layout-v1';
 const CAMPFIRE_LAYOUT_STORAGE_KEY = 'peter-page3-campfire-layout-v1';
 const DISPLAY_MODE_STORAGE_KEY = 'peter-page3-display-mode-v1';
 
-const WALK_SCENES: readonly ParadeScene[] = [
-  { type: 'walk', duration: WALK_SCENE_DURATION, groupStart: 0, groupCount: 7 },
-  { type: 'walk', duration: WALK_SCENE_DURATION, groupStart: 7, groupCount: 7 },
-  { type: 'walk', duration: WALK_SCENE_DURATION, groupStart: 14, groupCount: 7 },
-];
-
-const CAMPFIRE_SCENES: readonly ParadeScene[] = [
-  { type: 'campfire', duration: CAMPFIRE_DURATION, groupStart: 0, groupCount: 7 },
-  { type: 'campfire', duration: CAMPFIRE_DURATION, groupStart: 7, groupCount: 7 },
-  { type: 'campfire', duration: CAMPFIRE_DURATION, groupStart: 14, groupCount: 7 },
+const CAMPFIRE_SCENES: readonly CampfireTimelineScene[] = [
+  { duration: CAMPFIRE_DURATION, groupStart: 0, groupCount: 7 },
+  { duration: CAMPFIRE_DURATION, groupStart: 7, groupCount: 7 },
+  { duration: CAMPFIRE_DURATION, groupStart: 14, groupCount: 7 },
 ];
 
 const CAMPFIRE_SEATS = [
@@ -63,29 +54,49 @@ const CAMPFIRE_SEATS = [
   { x: 62, bottom: 5, scale: 1.02, fixedFrame: 19, flipX: true, depth: 'front' },
 ] as const;
 
-interface CampfirePosition {
+interface ScenePosition {
   x: number;
   bottom: number;
   scale: number;
   flipX: boolean;
 }
 
-type CampfireLayout = Record<string, CampfirePosition>;
+type SceneLayout = Record<string, ScenePosition>;
 
 interface DragState {
   key: string;
   pointerId: number;
   startClientX: number;
   startClientY: number;
-  startPosition: CampfirePosition;
+  startPosition: ScenePosition;
 }
 
-function defaultCampfireLayout(): CampfireLayout {
-  const layout: CampfireLayout = {
+function clamp(value: number, min = 0, max = 1) {
+  return Math.max(min, Math.min(max, value));
+}
+
+// Stand scene: the whole roster lined up along the bottom band, ideal for
+// laying a transparent OBS source over a slide without covering its content.
+function defaultStandLayout(): SceneLayout {
+  const layout: SceneLayout = {};
+  for (let groupNumber = 1; groupNumber <= TEAM_COUNT; groupNumber += 1) {
+    const ratio = TEAM_COUNT > 1 ? (groupNumber - 1) / (TEAM_COUNT - 1) : 0.5;
+    layout[`group-${groupNumber}`] = {
+      x: 6 + ratio * 88,
+      bottom: 2.5,
+      scale: 0.62,
+      flipX: false,
+    };
+  }
+  return layout;
+}
+
+function defaultCampfireLayout(): SceneLayout {
+  const layout: SceneLayout = {
     jesus: { x: 50, bottom: 31, scale: 1, flipX: false },
     fire: { x: 50, bottom: 18, scale: 1, flipX: false },
   };
-  for (let groupNumber = 1; groupNumber <= 21; groupNumber += 1) {
+  for (let groupNumber = 1; groupNumber <= TEAM_COUNT; groupNumber += 1) {
     const seat = CAMPFIRE_SEATS[(groupNumber - 1) % CAMPFIRE_SEATS.length];
     layout[`group-${groupNumber}`] = {
       x: seat.x,
@@ -97,11 +108,21 @@ function defaultCampfireLayout(): CampfireLayout {
   return layout;
 }
 
-function readCampfireLayout(): CampfireLayout {
-  const defaults = defaultCampfireLayout();
+function defaultLayoutFor(mode: DisplayMode): SceneLayout {
+  return mode === 'stand' ? defaultStandLayout() : defaultCampfireLayout();
+}
+
+function layoutStorageKey(mode: DisplayMode): string {
+  return mode === 'stand' ? STAND_LAYOUT_STORAGE_KEY : CAMPFIRE_LAYOUT_STORAGE_KEY;
+}
+
+function readLayout(mode: DisplayMode): SceneLayout {
+  const defaults = defaultLayoutFor(mode);
   if (typeof window === 'undefined') return defaults;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(CAMPFIRE_LAYOUT_STORAGE_KEY) ?? '{}') as CampfireLayout;
+    const parsed = JSON.parse(
+      window.localStorage.getItem(layoutStorageKey(mode)) ?? '{}',
+    ) as SceneLayout;
     for (const [key, value] of Object.entries(parsed)) {
       if (
         value
@@ -112,7 +133,7 @@ function readCampfireLayout(): CampfireLayout {
         defaults[key] = {
           x: clamp(value.x, 2, 98),
           bottom: clamp(value.bottom, -4, 70),
-          scale: clamp(value.scale, 0.45, 1.6),
+          scale: clamp(value.scale, 0.35, 1.8),
           flipX: typeof value.flipX === 'boolean'
             ? value.flipX
             : defaults[key]?.flipX ?? false,
@@ -126,16 +147,37 @@ function readCampfireLayout(): CampfireLayout {
 }
 
 function readDisplayMode(): DisplayMode {
-  if (typeof window === 'undefined') return 'walk';
+  if (typeof window === 'undefined') return 'stand';
   const pathname = window.location.pathname;
-  if (pathname === '/display/campfire' || pathname === '/campfire') return 'campfire';
-  if (pathname.startsWith('/editor/campfire')) return 'campfire';
-  if (pathname === '/display/walk' || pathname === '/walk') return 'walk';
+  if (
+    pathname === '/display/campfire'
+    || pathname === '/campfire'
+    || pathname.startsWith('/editor/campfire')
+  ) return 'campfire';
+  if (
+    pathname === '/display/stand'
+    || pathname === '/stand'
+    || pathname.startsWith('/editor/stand')
+    // Legacy walk routes now resolve to the lineup scene.
+    || pathname === '/display/walk'
+    || pathname === '/walk'
+  ) return 'stand';
   const requested = new URLSearchParams(window.location.search).get('scene');
-  if (requested === 'walk' || requested === 'campfire') return requested;
+  if (requested === 'stand' || requested === 'campfire') return requested;
+  if (requested === 'walk') return 'stand';
   return window.localStorage.getItem(DISPLAY_MODE_STORAGE_KEY) === 'campfire'
     ? 'campfire'
-    : 'walk';
+    : 'stand';
+}
+
+function isLayoutRoute(): boolean {
+  if (typeof window === 'undefined') return false;
+  const pathname = window.location.pathname;
+  return (
+    pathname.startsWith('/editor/stand')
+    || pathname.startsWith('/editor/campfire')
+    || new URLSearchParams(window.location.search).get('layout') === '1'
+  );
 }
 
 function editableLabel(key: string) {
@@ -144,35 +186,13 @@ function editableLabel(key: string) {
   return `${key.replace('group-', '')}조 베드로`;
 }
 
-function clamp(value: number, min = 0, max = 1) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function smoothstep(value: number) {
-  const next = clamp(value);
-  return next * next * (3 - 2 * next);
-}
-
-function locateScene(time: number, scenes: readonly ParadeScene[]): LocatedScene {
+function locateCampfire(time: number): CampfireTimelineScene {
   let cursor = 0;
-  for (let index = 0; index < scenes.length; index += 1) {
-    const scene = scenes[index];
-    if (time < cursor + scene.duration) {
-      return {
-        scene,
-        elapsed: time - cursor,
-        index,
-        startedAt: cursor,
-      };
-    }
+  for (const scene of CAMPFIRE_SCENES) {
+    if (time < cursor + scene.duration) return scene;
     cursor += scene.duration;
   }
-  return {
-    scene: scenes[0],
-    elapsed: 0,
-    index: 0,
-    startedAt: 0,
-  };
+  return CAMPFIRE_SCENES[0];
 }
 
 function useLoopClock(playing: boolean, cycleDuration: number) {
@@ -204,20 +224,6 @@ function useLoopClock(playing: boolean, cycleDuration: number) {
   return time;
 }
 
-function paradeX(progress: number) {
-  if (progress < 0.42) {
-    return -10 + smoothstep(progress / 0.42) * 56;
-  }
-  if (progress < 0.58) {
-    return 46 + smoothstep((progress - 0.42) / 0.16) * 4;
-  }
-  return 50 + smoothstep((progress - 0.58) / 0.42) * 62;
-}
-
-function eventFor(group: RetreatGroup) {
-  return ACTIONS[(group.groupNumber - 1) % ACTIONS.length];
-}
-
 function nicknameFor(group: RetreatGroup) {
   const nickname = group.groupName.trim();
   return nickname || `${group.groupNumber}조`;
@@ -228,51 +234,49 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const backgroundDisplayMode = getEffectiveDisplayMode(settings.transparentBackground);
   const worldRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
-  const [layoutMode] = useState(() => {
-    if (preview || typeof window === 'undefined') return false;
-    if (window.location.pathname.startsWith('/editor/campfire')) return true;
-    return new URLSearchParams(window.location.search).get('layout') === '1';
-  });
+  const [layoutMode] = useState(() => !preview && isLayoutRoute());
   const [layoutGroupStart, setLayoutGroupStart] = useState(0);
-  const [campfireLayout, setCampfireLayout] = useState(readCampfireLayout);
+  const [standLayout, setStandLayout] = useState(() => readLayout('stand'));
+  const [campfireLayout, setCampfireLayout] = useState(() => readLayout('campfire'));
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => scene ?? readDisplayMode());
-  const [selectedLayoutKey, setSelectedLayoutKey] = useState('fire');
+  const [selectedLayoutKey, setSelectedLayoutKey] = useState('group-1');
   const [localPaused, setLocalPaused] = useState(false);
-  const scenes = displayMode === 'walk' ? WALK_SCENES : CAMPFIRE_SCENES;
-  const cycleDuration = scenes.reduce((total, scene) => total + scene.duration, 0);
-  const playing = !localPaused && (!layoutMode || displayMode === 'walk');
-  const clock = useLoopClock(playing, cycleDuration);
-  const timelineTime = clock;
-  const located: LocatedScene = layoutMode && displayMode === 'campfire'
-    ? {
-      scene: {
-        type: 'campfire',
-        duration: CAMPFIRE_DURATION,
-        groupStart: layoutGroupStart,
-        groupCount: 7,
-      },
-      elapsed: 0,
-      index: 0,
-      startedAt: 0,
-    }
-    : locateScene(timelineTime, scenes);
+  const [reaction, setReaction] = useState<{ groupNumber: number; action: AnimationName } | null>(null);
+
+  const playing = !localPaused;
+  const campfireRotating = displayMode === 'campfire' && !layoutMode && playing;
+  const clock = useLoopClock(campfireRotating, CAMPFIRE_SCENES.length * CAMPFIRE_DURATION);
+
   const groups = useMemo(
     () => [...settings.groups]
       .filter((group) => group.enabled)
       .sort((first, second) => first.groupNumber - second.groupNumber)
-      .slice(0, 21),
+      .slice(0, TEAM_COUNT),
     [settings.groups],
   );
+
+  const activeLayout = displayMode === 'stand' ? standLayout : campfireLayout;
+  const setActiveLayout = displayMode === 'stand' ? setStandLayout : setCampfireLayout;
+
+  const campfireSlice = layoutMode
+    ? { groupStart: layoutGroupStart, groupCount: 7 }
+    : locateCampfire(clock);
+  const campfireGroups = displayMode === 'campfire'
+    ? groups.slice(campfireSlice.groupStart, campfireSlice.groupStart + campfireSlice.groupCount)
+    : [];
+  const standGroups = displayMode === 'stand' ? groups : [];
 
   useEffect(() => {
     if (scene) setDisplayMode(scene);
   }, [scene]);
 
   useEffect(() => {
-    document.title = displayMode === 'campfire'
-      ? '갈릴리 모닥불'
-      : '베드로 걷기';
+    document.title = displayMode === 'campfire' ? '갈릴리 모닥불' : '베드로 라인업';
   }, [displayMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(STAND_LAYOUT_STORAGE_KEY, JSON.stringify(standLayout));
+  }, [standLayout]);
 
   useEffect(() => {
     window.localStorage.setItem(CAMPFIRE_LAYOUT_STORAGE_KEY, JSON.stringify(campfireLayout));
@@ -281,6 +285,40 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   useEffect(() => {
     window.localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, displayMode);
   }, [displayMode]);
+
+  // Keep the selection valid when switching scenes so the toolbar targets a
+  // present element.
+  useEffect(() => {
+    const key = displayMode === 'stand' ? 'group-1' : 'group-1';
+    setSelectedLayoutKey(key);
+  }, [displayMode]);
+
+  // Stand scene: every few seconds one lined-up Peter waves or hops.
+  useEffect(() => {
+    if (displayMode !== 'stand' || !playing || standGroups.length === 0) {
+      setReaction(null);
+      return undefined;
+    }
+    let holdTimer = 0;
+    let nextTimer = 0;
+    const scheduleNext = () => {
+      const gap = REACTION_MIN_GAP_MS + Math.random() * (REACTION_MAX_GAP_MS - REACTION_MIN_GAP_MS);
+      nextTimer = window.setTimeout(() => {
+        const target = standGroups[Math.floor(Math.random() * standGroups.length)];
+        const action = REACTION_ACTIONS[Math.floor(Math.random() * REACTION_ACTIONS.length)];
+        setReaction({ groupNumber: target.groupNumber, action });
+        holdTimer = window.setTimeout(() => {
+          setReaction(null);
+          scheduleNext();
+        }, REACTION_HOLD_MS);
+      }, gap);
+    };
+    scheduleNext();
+    return () => {
+      window.clearTimeout(nextTimer);
+      window.clearTimeout(holdTimer);
+    };
+  }, [displayMode, playing, standGroups.length]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -309,40 +347,12 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     };
   }, []);
 
-  const walkingActors = located.scene.type === 'walk'
-    ? groups
-      .slice(located.scene.groupStart, located.scene.groupStart + located.scene.groupCount)
-      .map((group, index) => {
-        const localTime = located.elapsed - index * WALK_STAGGER;
-        const progress = localTime / WALK_DURATION;
-        if (progress < 0 || progress > 1) return null;
-        const event = eventFor(group);
-        const eventActive = progress >= 0.42 && progress < 0.58;
-        const entranceOpacity = clamp(progress / 0.045);
-        const exitOpacity = clamp((1 - progress) / 0.055);
-        return {
-          group,
-          event,
-          eventActive,
-          animation: (eventActive ? event : 'walk') as AnimationName,
-          x: paradeX(progress),
-          opacity: Math.min(entranceOpacity, exitOpacity),
-          progress,
-        };
-      })
-      .filter((actor): actor is NonNullable<typeof actor> => actor !== null)
-    : [];
-
-  const campfireGroups = located.scene.type === 'campfire'
-    ? groups.slice(located.scene.groupStart, located.scene.groupStart + located.scene.groupCount)
-    : [];
-
   function updateLayoutPosition(
     key: string,
-    update: (current: CampfirePosition) => CampfirePosition,
+    update: (current: ScenePosition) => ScenePosition,
   ) {
-    setCampfireLayout((current) => {
-      const fallback = defaultCampfireLayout()[key] ?? {
+    setActiveLayout((current) => {
+      const fallback = defaultLayoutFor(displayMode)[key] ?? {
         x: 50,
         bottom: 0,
         scale: 1,
@@ -354,7 +364,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         [key]: {
           x: clamp(next.x, 2, 98),
           bottom: clamp(next.bottom, -4, 70),
-          scale: clamp(next.scale, 0.45, 1.6),
+          scale: clamp(next.scale, 0.35, 1.8),
           flipX: next.flipX,
         },
       };
@@ -365,7 +375,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     if (!layoutMode) return;
     event.preventDefault();
     event.stopPropagation();
-    const startPosition = campfireLayout[key] ?? defaultCampfireLayout()[key];
+    const startPosition = activeLayout[key] ?? defaultLayoutFor(displayMode)[key];
     if (!startPosition) return;
     setSelectedLayoutKey(key);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -413,9 +423,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   }
 
   function resetSelectedPosition() {
-    const initial = defaultCampfireLayout()[selectedLayoutKey];
+    const initial = defaultLayoutFor(displayMode)[selectedLayoutKey];
     if (initial) {
-      setCampfireLayout((current) => ({ ...current, [selectedLayoutKey]: initial }));
+      setActiveLayout((current) => ({ ...current, [selectedLayoutKey]: initial }));
     }
   }
 
@@ -428,8 +438,8 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   }
 
   function resetAllPositions() {
-    setCampfireLayout(defaultCampfireLayout());
-    setSelectedLayoutKey('fire');
+    setActiveLayout(defaultLayoutFor(displayMode));
+    setSelectedLayoutKey('group-1');
   }
 
   const jesusPosition = campfireLayout.jesus ?? defaultCampfireLayout().jesus;
@@ -444,7 +454,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       data-obs={backgroundDisplayMode.obsMode ? 'true' : 'false'}
       data-background-mode={backgroundDisplayMode.backgroundMode}
       data-paused={playing ? 'false' : 'true'}
-      data-scene={located.scene.type}
+      data-scene={displayMode}
       data-display-mode={displayMode}
       data-layout-edit={layoutMode ? 'true' : 'false'}
       onPointerMove={handlePointerMove}
@@ -452,7 +462,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       onPointerCancel={handlePointerUp}
       aria-label={displayMode === 'campfire'
         ? '스물한 조 베드로가 나뉘어 예수님의 말씀을 듣는 모션그래픽'
-        : '스물한 조 베드로가 나뉘어 해변을 걷는 모션그래픽'}
+        : '스물한 조 베드로가 해변에 나란히 서 있는 모션그래픽'}
     >
       <div className="retreat-parade__sky" aria-hidden="true">
         <span className="retreat-parade__sun" />
@@ -476,28 +486,13 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       </div>
 
       {layoutMode ? (
-        <aside className="retreat-parade__layout-panel" aria-label="걷기·모닥불 장면 및 배치 편집기">
+        <aside
+          className="retreat-parade__layout-panel"
+          aria-label={displayMode === 'campfire' ? '모닥불 배치 편집기' : '라인업 배치 편집기'}
+        >
           <div className="retreat-parade__layout-heading">
-            <strong>장면 미리보기·배치 편집</strong>
-            <span>{displayMode === 'campfire' ? '대상을 드래그 · 방향키로 미세 이동' : '걷기 장면 미리보기'}</span>
-          </div>
-          <div className="retreat-parade__layout-scenes" role="group" aria-label="출력할 장면 선택">
-            <button
-              type="button"
-              className={displayMode === 'walk' ? 'is-active' : undefined}
-              aria-pressed={displayMode === 'walk'}
-              onClick={() => setDisplayMode('walk')}
-            >
-              걷기만 보여주기
-            </button>
-            <button
-              type="button"
-              className={displayMode === 'campfire' ? 'is-active' : undefined}
-              aria-pressed={displayMode === 'campfire'}
-              onClick={() => setDisplayMode('campfire')}
-            >
-              모닥불만 보여주기
-            </button>
+            <strong>{displayMode === 'campfire' ? '모닥불 배치 편집' : '라인업 배치 편집'}</strong>
+            <span>대상을 드래그 · 방향키로 미세 이동</span>
           </div>
           {displayMode === 'campfire' ? (
             <div className="retreat-parade__layout-groups" role="group" aria-label="편집할 조 선택">
@@ -515,83 +510,99 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 </button>
               ))}
             </div>
-          ) : null}
-          {displayMode === 'campfire' ? (
-            <div className="retreat-parade__layout-actions" role="toolbar" aria-label="선택 대상 조절">
-              <span className="retreat-parade__layout-selected">
-                선택: {editableLabel(selectedLayoutKey)}
-              </span>
+          ) : (
+            <p className="retreat-parade__layout-hint">
+              캐릭터를 클릭해 선택한 뒤 아래 버튼으로 조절하세요.
+            </p>
+          )}
+          <div className="retreat-parade__layout-actions" role="toolbar" aria-label="선택 대상 조절">
+            <span className="retreat-parade__layout-selected">
+              선택: {editableLabel(selectedLayoutKey)}
+            </span>
+            <button
+              type="button"
+              aria-label="선택 대상 축소"
+              onClick={() => updateLayoutPosition(
+                selectedLayoutKey,
+                (current) => ({ ...current, scale: current.scale - 0.05 }),
+              )}
+            >
+              작게 −
+            </button>
+            <button
+              type="button"
+              aria-label="선택 대상 확대"
+              onClick={() => updateLayoutPosition(
+                selectedLayoutKey,
+                (current) => ({ ...current, scale: current.scale + 0.05 }),
+              )}
+            >
+              크게 +
+            </button>
+            {selectedLayoutKey.startsWith('group-') ? (
               <button
                 type="button"
-                aria-label="선택 대상 축소"
-                onClick={() => updateLayoutPosition(
-                  selectedLayoutKey,
-                  (current) => ({ ...current, scale: current.scale - 0.05 }),
-                )}
+                aria-label={`${editableLabel(selectedLayoutKey)} 좌우 방향 반전`}
+                onClick={flipSelectedPeter}
               >
-                작게 −
+                좌우 반전 (F)
               </button>
-              <button
-                type="button"
-                aria-label="선택 대상 확대"
-                onClick={() => updateLayoutPosition(
-                  selectedLayoutKey,
-                  (current) => ({ ...current, scale: current.scale + 0.05 }),
-                )}
-              >
-                크게 +
-              </button>
-              {selectedLayoutKey.startsWith('group-') ? (
-                <button
-                  type="button"
-                  aria-label={`${editableLabel(selectedLayoutKey)} 좌우 방향 반전`}
-                  onClick={flipSelectedPeter}
-                >
-                  좌우 반전 (F)
-                </button>
-              ) : null}
-              <button type="button" onClick={resetSelectedPosition}>선택 초기화</button>
-              <button type="button" onClick={resetAllPositions}>전체 초기화</button>
-            </div>
-          ) : null}
+            ) : null}
+            <button type="button" onClick={resetSelectedPosition}>선택 초기화</button>
+            <button type="button" onClick={resetAllPositions}>전체 초기화</button>
+          </div>
           <div className="retreat-parade__layout-footer">
-            <a href="/display/campfire">편집 끝내기</a>
+            <a href={displayMode === 'campfire' ? '/display/campfire' : '/display/stand'}>
+              편집 끝내기
+            </a>
           </div>
           <p>
             배치는 이 브라우저에 자동 저장됩니다.
-            송출 URL: <code>{displayMode === 'campfire' ? '/display/campfire' : '/display/walk'}</code>
+            송출 URL: <code>{displayMode === 'campfire' ? '/display/campfire' : '/display/stand'}</code>
           </p>
         </aside>
       ) : null}
 
-      <section className="retreat-parade__walkers" aria-label="순서대로 입장하는 조 캐릭터">
-        {walkingActors.map((actor) => (
-          <article
-            key={actor.group.id}
-            className="retreat-parade__actor"
-            data-action={actor.eventActive ? actor.event : 'walk'}
-            style={{
-              '--actor-x': `${actor.x}${STAGE_UNIT_X}`,
-              '--actor-opacity': actor.opacity,
-              '--actor-lift': actor.eventActive && actor.event === 'jump' ? `-4.6${STAGE_UNIT_Y}` : '0px',
-              '--actor-scale': 0.96 + Math.min(actor.progress, 0.15) * 0.26,
-            } as CSSProperties}
-          >
-            <span className="retreat-parade__action-accent" aria-hidden="true" />
-            <RetreatCharacter
-              group={actor.group}
-              animation={actor.animation}
-              playing={playing}
-              respectReducedMotion={false}
-              flipX={false}
-              className="retreat-parade__character"
-            />
-            <span className="retreat-parade__nameplate">{nicknameFor(actor.group)}</span>
-          </article>
-        ))}
-      </section>
+      {displayMode === 'stand' ? (
+        <section className="retreat-parade__lineup" aria-label="해변에 나란히 선 조 캐릭터">
+          {standGroups.map((group) => {
+            const layoutKey = `group-${group.groupNumber}`;
+            const position = standLayout[layoutKey] ?? defaultStandLayout()[layoutKey];
+            const isReacting = reaction?.groupNumber === group.groupNumber;
+            const animation: AnimationName = isReacting ? reaction!.action : 'idle';
+            return (
+              <article
+                className="retreat-parade__stander"
+                data-reaction={isReacting ? reaction!.action : 'idle'}
+                data-layout-selected={selectedLayoutKey === layoutKey ? 'true' : 'false'}
+                key={group.id}
+                role={layoutMode ? 'button' : undefined}
+                tabIndex={layoutMode ? 0 : undefined}
+                aria-label={layoutMode ? `${nicknameFor(group)} 베드로 위치 편집` : undefined}
+                onPointerDown={(event) => handlePointerDown(layoutKey, event)}
+                onKeyDown={(event) => handleEditableKeyDown(layoutKey, event)}
+                style={{
+                  '--stander-x': `${position.x}${STAGE_UNIT_X}`,
+                  '--stander-bottom': `${position.bottom}${STAGE_UNIT_Y}`,
+                  '--stander-scale': position.scale,
+                } as CSSProperties}
+              >
+                <RetreatCharacter
+                  group={group}
+                  animation={animation}
+                  playing={playing}
+                  flipX={position.flipX}
+                  respectReducedMotion={false}
+                  className="retreat-parade__stander-character"
+                />
+                <span className="retreat-parade__nameplate">{nicknameFor(group)}</span>
+              </article>
+            );
+          })}
+        </section>
+      ) : null}
 
-      {located.scene.type === 'campfire' ? (
+      {displayMode === 'campfire' ? (
         <section className="retreat-parade__campfire-gathering" aria-label="예수님의 말씀을 듣는 조 캐릭터">
           <div
             className="retreat-parade__fire-glow"

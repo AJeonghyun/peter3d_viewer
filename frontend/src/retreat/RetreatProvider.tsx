@@ -38,8 +38,8 @@ function normalizeSettings(candidate: RetreatSettings | null): RetreatSettings {
     ...fallback,
     ...(candidate.groups.find((group) => group.id === fallback.id) ?? {}),
   }));
-  // Saved settings may predate the walk/campfire split (e.g. 'group-layout').
-  const currentPage = candidate.currentPage === 'campfire' ? 'campfire' : 'walk';
+  // Saved settings may predate the stand/campfire split (e.g. 'walk' or 'group-layout').
+  const currentPage = candidate.currentPage === 'campfire' ? 'campfire' : 'stand';
   const candidatePlans = Array.isArray(candidate.seatingPlans) ? candidate.seatingPlans : [];
   const seatingPlans = candidatePlans.length > 0
     ? candidatePlans.map((plan, index) => ({

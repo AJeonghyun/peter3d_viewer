@@ -49,7 +49,7 @@ export function createDefaultSeatingPlans(groups = createDefaultGroups()): Seati
 
 export const DEFAULT_RETREAT_SETTINGS: RetreatSettings = {
   version: 1,
-  currentPage: 'walk',
+  currentPage: 'stand',
   animationPlaying: true,
   transparentBackground: false,
   groups: createDefaultGroups(),
