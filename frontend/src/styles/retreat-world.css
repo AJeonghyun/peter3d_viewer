@@ -757,12 +757,6 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   overflow: visible;
 }
 
-/* One-shot hop when a lined-up Peter reacts; the base transform is reused so
-   the character keeps its edited position and scale mid-jump. */
-.retreat-parade__stander[data-reaction="jump"] {
-  animation: retreat-stander-hop 0.9s ease;
-}
-
 .retreat-parade__stander .retreat-parade__nameplate {
   bottom: -0.4vh;
   bottom: -0.4cqh;
@@ -938,21 +932,6 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade[data-paused="true"] *::before,
 .retreat-parade[data-paused="true"] *::after {
   animation-play-state: paused !important;
-}
-
-@keyframes retreat-stander-hop {
-  0%,
-  100% {
-    transform: translateX(calc(var(--stander-x) - 50%)) translateY(0) scale(var(--stander-scale));
-  }
-
-  35% {
-    transform: translateX(calc(var(--stander-x) - 50%)) translateY(-16%) scale(var(--stander-scale));
-  }
-
-  70% {
-    transform: translateX(calc(var(--stander-x) - 50%)) translateY(-3%) scale(var(--stander-scale));
-  }
 }
 
 @keyframes retreat-cloud-drift {

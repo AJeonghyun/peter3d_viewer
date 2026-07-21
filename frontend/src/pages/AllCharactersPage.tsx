@@ -30,7 +30,7 @@ interface CampfireTimelineScene {
 const CAMPFIRE_DURATION = 14_000;
 const START_OFFSET = 2_400;
 const TEAM_COUNT = 21;
-const REACTION_ACTIONS = ['wave', 'jump'] as const satisfies readonly AnimationName[];
+const REACTION_ACTIONS = ['wave'] as const satisfies readonly AnimationName[];
 const REACTION_HOLD_MS = 950;
 const REACTION_MIN_GAP_MS = 1_600;
 const REACTION_MAX_GAP_MS = 3_400;
