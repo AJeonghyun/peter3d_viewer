@@ -287,10 +287,12 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("handmade texture", prompt)
         self.assertIn("strict 90-degree side-profile walking-right", prompt)
 
-    def test_master_edit_prompt_locks_all_25_poses_and_garment_boundaries(self):
+    def test_master_edit_prompt_locks_all_32_poses_and_garment_boundaries(self):
         prompt = backend_main.GARMENT_MASTER_EDIT_PROMPT
         self.assertIn("fixed master is an immutable template", prompt)
-        self.assertIn("exactly 25 complete characters", prompt)
+        self.assertIn("exactly 32 complete characters", prompt)
+        self.assertIn("strict 8-column by 4-row grid", prompt)
+        self.assertIn("idle-a, idle-b, wave, listen-front, listen-rear, listen-side, back", prompt)
         self.assertIn("upper garment", prompt)
         self.assertIn("lower garment", prompt)
         self.assertIn("student-left footwear", prompt)
@@ -400,14 +402,14 @@ class Peter3DBackendTests(unittest.TestCase):
             ))
 
         with Image.open(io.BytesIO(actual)) as atlas:
-            self.assertEqual(atlas.size, (1800, 1800))
+            self.assertEqual(atlas.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
         self.assertEqual(recorded["url"], backend_main.OPENAI_IMAGE_API_URL)
         self.assertEqual(recorded["data"]["model"], "gpt-image-2")
-        self.assertEqual(recorded["data"]["size"], "1920x1920")
+        self.assertEqual(recorded["data"]["size"], "3072x1536")
         self.assertEqual(recorded["data"]["quality"], "high")
         self.assertEqual(recorded["data"]["background"], "opaque")
         self.assertNotIn("input_fidelity", recorded["data"])
-        self.assertEqual(recorded["files"][0][1][0], "fixed-peter-master-5x5.png")
+        self.assertEqual(recorded["files"][0][1][0], "fixed-peter-master-8x4-v6.png")
         self.assertEqual(recorded["files"][1], (
             "image[]",
             ("team-1-corrected.png", b"corrected-student-peter", "image/png"),
@@ -793,7 +795,7 @@ class Peter3DBackendTests(unittest.TestCase):
         atlas_quality = {
             "status": "passed",
             "can_approve": True,
-            "summary": "마스터 고정 25컷 검수 통과",
+            "summary": "마스터 고정 32컷 검수 통과",
             "deterministic": backend_main.analyze_garment_atlas_pixels(atlas),
             "ai": {
                 "status": "passed",
@@ -838,7 +840,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(composed["team"]["showcase_sprite_quality"]["deterministic"]["status"], "passed")
         atlas_path = config.UPLOADS_DIR / Path(composed["atlas_url"]).name
         with Image.open(atlas_path) as atlas:
-            self.assertEqual(atlas.size, (1800, 1800))
+            self.assertEqual(atlas.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
 
         approved = asyncio.run(backend_main.approve_showcase_sprite(1))
         self.assertEqual(approved["showcase_sprite_status"], "ready")
@@ -1002,7 +1004,7 @@ class Peter3DBackendTests(unittest.TestCase):
                 **deterministic,
                 "status": "passed",
                 "can_approve": True,
-                "summary": "25-frame alpha bbox QA passed.",
+                "summary": "32-frame alpha bbox QA passed.",
                 "issues": [],
                 "frames": [
                     {**frame, "status": "passed", "issues": []}
@@ -1088,7 +1090,7 @@ class Peter3DBackendTests(unittest.TestCase):
                 "backend.ai_generation.request_master_locked_garment_atlas",
                 new=AsyncMock(side_effect=HTTPException(
                     status_code=502,
-                    detail="AI 25컷 응답 형식이 올바르지 않습니다",
+                    detail="AI 32컷 응답 형식이 올바르지 않습니다",
                 )),
             ),
             self.assertRaises(HTTPException),
@@ -1179,8 +1181,8 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(first["atlas_url"], resumed["atlas_url"])
 
     def test_master_locked_normalization_matches_shared_actor_scale_and_baseline(self):
-        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as source:
-            master_cell = source.convert("RGBA").crop((0, 0, 360, 360))
+        source = backend_main.load_garment_master_atlas()
+        master_cell = source.crop((0, 0, 360, 360))
         master_bbox = master_cell.getchannel("A").getbbox()
         self.assertIsNotNone(master_bbox)
         target_bbox = backend_main.master_display_target_bbox(master_bbox)
@@ -1191,7 +1193,7 @@ class Peter3DBackendTests(unittest.TestCase):
         report = backend_main.analyze_garment_atlas_pixels(normalized)
         normalized_bbox = normalized.crop((0, 0, 360, 360)).getchannel("A").getbbox()
 
-        self.assertEqual(normalized.size, (1800, 1800))
+        self.assertEqual(normalized.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
         self.assertEqual(report["status"], "passed")
         self.assertIsNotNone(normalized_bbox)
         self.assertGreater(
@@ -1212,17 +1214,22 @@ class Peter3DBackendTests(unittest.TestCase):
             backend_main.PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT,
         )
         current = backend_main.public_sprite_contract(backend_main.GARMENT_TRANSFER_CONTRACT)
+        v5 = backend_main.public_sprite_contract(backend_main.V5_GARMENT_TRANSFER_CONTRACT)
 
         self.assertEqual(previous["version"], 3)
         self.assertEqual(previous["display_scale"], backend_main.GARMENT_DISPLAY_SCALE)
         self.assertEqual(pre_campfire["version"], 4)
         self.assertEqual(pre_campfire["display_scale"], 1.0)
-        self.assertEqual(current["version"], 5)
+        self.assertEqual(v5["version"], 5)
+        self.assertEqual(v5["layout"], "5x5")
+        self.assertEqual(v5["frame_count"], 25)
+        self.assertEqual(current["version"], 6)
+        self.assertEqual(current["layout"], "8x4")
+        self.assertEqual(current["frame_count"], 32)
         self.assertEqual(current["display_scale"], 1.0)
 
     def test_master_atlas_quality_rejects_a_character_shrunk_inside_its_cell(self):
-        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as source:
-            atlas = source.convert("RGBA")
+        atlas = backend_main.load_garment_master_atlas()
         cell = atlas.crop((0, 0, 360, 360))
         bbox = cell.getchannel("A").getbbox()
         self.assertIsNotNone(bbox)
@@ -1273,32 +1280,30 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertGreater(samples[3][0], samples[3][2])
         self.assertGreater(samples[3][1], samples[3][2])
 
-    def test_safe_master_keeps_all_25_poses_inside_cell_margins(self):
-        self.assertEqual(backend_main.SHOWCASE_MASTER_PATH, backend_main.SHOWCASE_SAFE_MASTER_PATH)
-        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as master:
-            self.assertEqual(master.size, (1800, 1800))
-            for index in range(25):
-                column = index % 5
-                row = index // 5
-                bbox = master.crop((
-                    column * 360,
-                    row * 360,
-                    (column + 1) * 360,
-                    (row + 1) * 360,
-                )).getchannel("A").getbbox()
-                self.assertIsNotNone(bbox)
-                self.assertGreaterEqual(min(
-                    bbox[0],
-                    bbox[1],
-                    360 - bbox[2],
-                    360 - bbox[3],
-                ), 18)
+    def test_master_loader_keeps_all_32_poses_inside_cell_margins(self):
+        expected_path = (
+            backend_main.SHOWCASE_EXPANDED_MASTER_PATH
+            if backend_main.SHOWCASE_EXPANDED_MASTER_PATH.is_file()
+            else backend_main.SHOWCASE_SAFE_MASTER_PATH
+        )
+        self.assertEqual(backend_main.SHOWCASE_MASTER_PATH, expected_path)
+        master = backend_main.load_garment_master_atlas()
+        self.assertEqual(master.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
+        for frame in range(1, backend_main.GARMENT_FRAME_COUNT + 1):
+            bbox = master.crop(backend_main.garment_atlas_frame_box(frame)).getchannel("A").getbbox()
+            self.assertIsNotNone(bbox)
+            self.assertGreaterEqual(min(
+                bbox[0],
+                bbox[1],
+                360 - bbox[2],
+                360 - bbox[3],
+            ), 18)
         normalized = backend_main.normalize_master_locked_atlas(
             backend_main.master_reference_for_ai(),
         )
         report = backend_main.analyze_garment_atlas_pixels(normalized)
         self.assertEqual(report["status"], "passed")
-        self.assertEqual(len(report["frames"]), 25)
+        self.assertEqual(len(report["frames"]), backend_main.GARMENT_FRAME_COUNT)
         for frame in report["frames"]:
             self.assertGreaterEqual(min(frame["margins"].values()), 14)
 
@@ -1392,21 +1397,18 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(result["openai_image_model"], backend_main.OPENAI_IMAGE_MODEL)
         self.assertEqual(result["openai_image_quality"], "high")
         self.assertTrue(result["fixed_peter_master_available"])
-        self.assertEqual(result["fixed_peter_master_frames"], 25)
+        self.assertEqual(result["fixed_peter_master_frames"], backend_main.GARMENT_FRAME_COUNT)
 
-    def test_fixed_peter_master_endpoint_serves_safe_25_frame_atlas(self):
+    def test_fixed_peter_master_endpoint_serves_configured_master_atlas(self):
         response = asyncio.run(backend_main.fixed_peter_master())
-        self.assertEqual(Path(response.path), backend_main.SHOWCASE_SAFE_MASTER_PATH)
+        self.assertEqual(Path(response.path), backend_main.SHOWCASE_MASTER_PATH)
         self.assertEqual(response.media_type, "image/png")
         self.assertEqual(response.headers["cache-control"], "public, max-age=3600")
 
     def test_vercel_function_bundle_includes_fixed_peter_master(self):
         config = json.loads((backend_main.ROOT / "vercel.json").read_text())
         function = config["functions"]["api/index.py"]
-        self.assertEqual(
-            function["includeFiles"],
-            "runtime-assets/peter-sober-master-safe.png",
-        )
+        self.assertEqual(function["includeFiles"], "runtime-assets/**")
         self.assertTrue(backend_main.SHOWCASE_SAFE_MASTER_PATH.is_file())
 
 

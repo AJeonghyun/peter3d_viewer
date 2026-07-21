@@ -127,6 +127,7 @@ html[data-background-mode="transparent"] .retreat-display-page {
   transform-origin: 50% 100%;
 }
 
+.atlas-sprite-animator[data-layout="fixed-grid"] .atlas-sprite-animator__safe-frame,
 .atlas-sprite-animator[data-layout="fixed-5x5"] .atlas-sprite-animator__safe-frame {
   bottom: 2%;
   bottom: 2cqh;

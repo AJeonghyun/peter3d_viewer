@@ -7,7 +7,7 @@ import { loadSpriteAsset } from './persistence';
 import { RETREAT_POSES, type RetreatPoseId } from './scenePoses';
 import type { RetreatGroup } from './types';
 
-const RETREAT_MASTER_URL = '/assets/retreat/peter-retreat-master.png';
+const EXPANDED_MASTER_URL = '/api/showcase/fixed-master';
 const CAMPFIRE_MASTER_CONTRACT = {
   id: 'fixed-peter-master-edit-v5',
   version: 5,
@@ -16,19 +16,27 @@ const CAMPFIRE_MASTER_CONTRACT = {
   columns: 5,
   frame_count: 25,
 } as const;
-const RETREAT_MASTER_CONTRACT = {
-  id: 'retreat-live-master-v1',
-  version: 1,
-  layout: '7x1',
-  rows: 1,
-  columns: 7,
-  frame_count: 7,
+const EXPANDED_MASTER_CONTRACT = {
+  id: 'fixed-peter-master-edit-v6',
+  version: 6,
+  layout: '8x4',
+  rows: 4,
+  columns: 8,
+  frame_count: 32,
 } as const;
 
 function supportsCampfirePoses(contract: RetreatGroup['spriteAtlasContract']) {
   const version = Number(contract?.version);
   return version >= CAMPFIRE_MASTER_CONTRACT.version
     || contract?.id === CAMPFIRE_MASTER_CONTRACT.id;
+}
+
+function supportsExpandedMaster(contract: RetreatGroup['spriteAtlasContract']) {
+  const version = Number(contract?.version);
+  return version >= EXPANDED_MASTER_CONTRACT.version
+    || contract?.id === EXPANDED_MASTER_CONTRACT.id
+    || contract?.layout === EXPANDED_MASTER_CONTRACT.layout
+    || contract?.frame_count === EXPANDED_MASTER_CONTRACT.frame_count;
 }
 
 interface RetreatCharacterProps {
@@ -110,26 +118,31 @@ function RetreatCharacterComponent({
     : '';
   const resolvedPoseId = poseId ?? (view === 'back' ? 'back' : undefined);
   const pose = resolvedPoseId ? RETREAT_POSES[resolvedPoseId] : null;
-  const needsRetreatMaster = resolvedPoseId === 'back';
+  const expandedGroupAtlas = supportsExpandedMaster(group.spriteAtlasContract);
   const needsCampfireFrames = pose
     ? pose.legacyFrames.some((frame) => frame >= 19)
     : fixedFrame !== undefined && fixedFrame >= 19;
+  const groupAtlasSupportsPose = pose
+    ? expandedGroupAtlas || (
+      pose.legacyFrames.length > 0
+      && (!needsCampfireFrames || supportsCampfirePoses(group.spriteAtlasContract))
+    )
+    : !needsCampfireFrames || supportsCampfirePoses(group.spriteAtlasContract);
   const useGroupAtlas = Boolean(group.spriteAtlasUrl)
-    && !needsRetreatMaster
-    && (!needsCampfireFrames || supportsCampfirePoses(group.spriteAtlasContract));
+    && groupAtlasSupportsPose;
   const atlasUrl = useGroupAtlas
-    ? group.spriteAtlasUrl || RETREAT_MASTER_URL
-    : RETREAT_MASTER_URL;
-  const atlasContract = useGroupAtlas ? group.spriteAtlasContract : RETREAT_MASTER_CONTRACT;
+    ? group.spriteAtlasUrl || EXPANDED_MASTER_URL
+    : EXPANDED_MASTER_URL;
+  const atlasContract = useGroupAtlas ? group.spriteAtlasContract : EXPANDED_MASTER_CONTRACT;
   const poseSequence = pose
-    ? useGroupAtlas ? pose.legacyFrames : pose.retreatFrames
+    ? useGroupAtlas && !expandedGroupAtlas ? pose.legacyFrames : pose.expandedFrames
     : undefined;
   const fallbackFixedFrame = fixedFrame === 19
-    ? 3
+    ? 28
     : fixedFrame === 21
-      ? 4
+      ? 29
       : fixedFrame === 23
-        ? 5
+        ? 30
         : fixedFrame;
   const resolvedFixedFrame = useGroupAtlas ? fixedFrame : fallbackFixedFrame;
   const resolvedAnimation = pose?.animation ?? animation;

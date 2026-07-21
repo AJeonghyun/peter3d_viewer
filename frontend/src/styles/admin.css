@@ -175,7 +175,7 @@ textarea { resize:vertical; min-height:68px; }
 .danger-outline:hover:not(:disabled) { background:rgba(205,91,67,.16); }
 .sprite-atlas-qa { display:grid; gap:8px; margin-top:13px; }
 .sprite-atlas-qa h4 { margin:0; color:#dce8e5; font-size:12px; }
-.sprite-atlas-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; padding:8px; border:1px solid rgba(255,255,255,.09); border-radius:12px; background:rgba(255,255,255,.03); }
+.sprite-atlas-grid { display:grid; grid-template-columns:repeat(var(--atlas-grid-columns,5),minmax(0,1fr)); gap:6px; padding:8px; border:1px solid rgba(255,255,255,.09); border-radius:12px; background:rgba(255,255,255,.03); }
 .sprite-atlas-frame { position:relative; overflow:hidden; border-radius:8px; background:rgba(255,255,255,.04); }
 .sprite-atlas-frame span { position:absolute; top:4px; left:4px; min-width:18px; padding:2px 4px; border-radius:99px; color:#17343c; background:rgba(255,255,255,.9); text-align:center; font-size:7px; font-weight:900; }
 .sprite-version-list { display:grid; gap:8px; }

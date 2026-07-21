@@ -27,12 +27,15 @@ interface TeamDraft {
 const EMPTY_DRAFT: TeamDraft = { name: '', color: '#67b8c7', symbol: '', identity_text: '' };
 const TEMPLATE_URL = '/assets/showcase/peter-print-template.png';
 const FIXED_MASTER_URL = '/api/showcase/fixed-master';
+const CURRENT_MASTER_FRAME_COUNT = 32;
+const CURRENT_MASTER_COLUMNS = 8;
+const CURRENT_MASTER_ROWS = 4;
 const GENERATION_EXPECTED_SECONDS = 210;
 const GENERATION_RETRY_SECONDS = 10;
 const GENERATION_STAGES = [
   {
     status: 'generating',
-    label: 'AI가 25컷을 그리는 중',
+    label: 'AI가 32컷을 그리는 중',
     detail: '고정 베드로와 학생 디자인을 함께 분석해 새 시트를 생성합니다.',
     floor: 8,
     ceiling: 70,
@@ -40,7 +43,7 @@ const GENERATION_STAGES = [
   {
     status: 'composing',
     label: '크기와 발 기준선을 맞추는 중',
-    detail: '배경을 제거하고 25개 프레임을 공용 캐릭터 크기로 정렬합니다.',
+    detail: '배경을 제거하고 32개 프레임을 공용 캐릭터 크기로 정렬합니다.',
     floor: 72,
     ceiling: 84,
   },
@@ -54,7 +57,7 @@ const GENERATION_STAGES = [
   {
     status: 'saving',
     label: '검수 결과를 저장하는 중',
-    detail: '25컷과 검수 리포트를 저장하고 미리보기를 준비합니다.',
+    detail: '32컷과 검수 리포트를 저장하고 미리보기를 준비합니다.',
     floor: 98,
     ceiling: 99,
   },
@@ -127,13 +130,13 @@ function draftFromTeam(team: Team): TeamDraft {
 function spriteStatusLabel(status: ShowcaseCaptureStatus) {
   return ({
     empty: '대기',
-    generating: 'AI 25컷 생성 중',
+    generating: 'AI 32컷 생성 중',
     processing: '사진 품질·보정 중',
     garment_review: 'AI 생성 준비',
     composing: '프레임 크기 정렬 중',
     reviewing: '전신·동작 자동 검수 중',
-    saving: '25컷 저장 중',
-    review: '25컷 최종 검수',
+    saving: '32컷 저장 중',
+    review: '32컷 최종 검수',
     ready: '전체 페이지 적용 완료',
     failed: '처리 실패',
   } as const)[status] ?? status;
@@ -185,8 +188,11 @@ function isFixedMaster(team: Team | null) {
   return contract?.version === 2
     || contract?.version === '2'
     || contract?.layout === '5x5'
+    || contract?.layout === '8x4'
     || (contract?.rows === 5 && contract?.columns === 5)
-    || contract?.frame_count === 25;
+    || (contract?.rows === 4 && contract?.columns === 8)
+    || contract?.frame_count === 25
+    || contract?.frame_count === CURRENT_MASTER_FRAME_COUNT;
 }
 
 function problemFrameNumbers(report: SpriteQualityReport | null | undefined) {
@@ -198,7 +204,9 @@ function problemFrameNumbers(report: SpriteQualityReport | null | undefined) {
   report.ai.frames.forEach((frame) => {
     if (frame.severity === 'warning' || frame.severity === 'failed') frames.add(frame.frame);
   });
-  return [...frames].filter((frame) => frame >= 1 && frame <= 25).sort((a, b) => a - b);
+  return [...frames]
+    .filter((frame) => frame >= 1 && frame <= CURRENT_MASTER_FRAME_COUNT)
+    .sort((a, b) => a - b);
 }
 
 function SpriteMotionPreview({
@@ -295,24 +303,34 @@ function SpriteFrameInspection({
   );
 }
 
-function SpriteAtlasFrame({ frame, spriteUrl }: { frame: number; spriteUrl: string }) {
-  const column = frame % 5;
-  const row = Math.floor(frame / 5);
+function SpriteAtlasFrame({
+  frame,
+  spriteUrl,
+  columns,
+  rows,
+}: {
+  frame: number;
+  spriteUrl: string;
+  columns: number;
+  rows: number;
+}) {
+  const column = frame % columns;
+  const row = Math.floor(frame / columns);
   return (
     <div className="sprite-atlas-frame">
       <div
         className="sprite-atlas-frame__image"
         style={{
-          '--frame-columns': 5,
-          '--frame-rows': 5,
+          '--frame-columns': columns,
+          '--frame-rows': rows,
           '--frame-column': column,
           '--frame-row': row,
           backgroundImage: `url(${JSON.stringify(spriteUrl)})`,
         } as CSSProperties}
         role="img"
-        aria-label={`${frame}번 프레임`}
+        aria-label={`${frame + 1}번 프레임`}
       />
-      <span>{frame}</span>
+      <span>{frame + 1}</span>
     </div>
   );
 }
@@ -461,7 +479,7 @@ export default function AdminPage() {
           setTeams((current) => current.map((item) => item.id === team.id ? team : item));
         }
       } catch (error) {
-        console.warn('25컷 생성 단계를 확인하지 못했습니다.', error);
+        console.warn('32컷 생성 단계를 확인하지 못했습니다.', error);
       }
     };
     void pollGenerationStage();
@@ -653,11 +671,11 @@ export default function AdminPage() {
           void refreshVersions(response.team.id);
           showToast(patchWorkflow
             ? `${response.team.name}의 선택한 문제 컷을 교체하고 전체 QA를 마쳤습니다.`
-            : `${response.team.name}의 마스터 고정 25컷을 만들었습니다. 실제 동작을 확인해주세요.`);
+            : `${response.team.name}의 마스터 고정 32컷을 만들었습니다. 실제 동작을 확인해주세요.`);
           break;
         }
         if (response.next_action === 'failed') {
-          throw new Error(response.team.showcase_sprite_error || '25컷 생성 작업이 중단되었습니다');
+          throw new Error(response.team.showcase_sprite_error || '32컷 생성 작업이 중단되었습니다');
         }
         if (response.next_action === 'wait' || response.next_action === 'retry') {
           await wait((response.retry_after_seconds ?? GENERATION_RETRY_SECONDS) * 1000);
@@ -689,7 +707,7 @@ export default function AdminPage() {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : '25컷 아틀라스를 만들지 못했습니다';
+      const message = error instanceof Error ? error.message : '32컷 아틀라스를 만들지 못했습니다';
       setTeams((current) => current.map((team) => (
         team.id === teamId
           ? { ...team, showcase_sprite_status: 'failed', showcase_sprite_error: message }
@@ -725,7 +743,7 @@ export default function AdminPage() {
   async function approveShowcaseSprite(force = false) {
     if (!selected || selected.showcase_sprite_status !== 'review') return;
     if (force && !window.confirm(
-      '자동 검수에서 문제가 발견된 결과입니다. 화면에서 25컷 전부가 온전히 보이는 것을 직접 확인했다면 강제 적용할 수 있습니다. 계속할까요?',
+      '자동 검수에서 문제가 발견된 결과입니다. 화면에서 32컷 전부가 온전히 보이는 것을 직접 확인했다면 강제 적용할 수 있습니다. 계속할까요?',
     )) return;
     setApprovingSprite(true);
     try {
@@ -739,9 +757,9 @@ export default function AdminPage() {
       );
       updateTeam(updated);
       void refreshVersions(updated.id);
-      showToast(`${updated.name}의 25컷을 PAGE 1·2·3·showcase에 적용했습니다.`);
+      showToast(`${updated.name}의 32컷을 PAGE 1·2·3·showcase에 적용했습니다.`);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '25컷 아틀라스를 승인하지 못했습니다');
+      showToast(error instanceof Error ? error.message : '32컷 아틀라스를 승인하지 못했습니다');
     } finally {
       setApprovingSprite(false);
     }
@@ -768,7 +786,7 @@ export default function AdminPage() {
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <div><h1>베드로 키우기 운영실</h1><small>인쇄 도안 · 촬영 보정 · 25컷 QA</small></div>
+        <div><h1>베드로 키우기 운영실</h1><small>인쇄 도안 · 촬영 보정 · 32컷 QA</small></div>
         <div className="admin-header-links">
           <a href="/print-template">인쇄 도안</a>
           <a href="/">갈릴리 마당</a>
@@ -868,14 +886,14 @@ export default function AdminPage() {
             </div>
           </section>
 
-          <section className="garment-parts-card" aria-label="마스터 고정 25컷 생성">
+          <section className="garment-parts-card" aria-label="마스터 고정 32컷 생성">
             <header className="sprite-review-header">
               <div>
                 <span>3</span>
                 <div>
-                  <h3>마스터 고정 25컷 새로 만들기</h3>
+                  <h3>마스터 고정 32컷 새로 만들기</h3>
                   <p className="muted">
-                    AI가 고정 베드로의 얼굴·몸·25개 동작·크기를 잠그고, 보정 사진에서 상의·하의·양쪽 신발 디자인만 옮깁니다.
+                    AI가 고정 베드로의 얼굴·몸·32개 동작·크기를 잠그고, 보정 사진에서 상의·하의·양쪽 신발 디자인만 옮깁니다.
                   </p>
                 </div>
               </div>
@@ -883,8 +901,8 @@ export default function AdminPage() {
             </header>
             <div className="master-edit-reference-grid">
               <article className="master-edit-reference">
-                <span>고정 25컷 마스터</span>
-                <div><img src={FIXED_MASTER_URL} alt="모든 조가 공유하는 고정 베드로 25컷 마스터" /></div>
+                <span>고정 32컷 마스터</span>
+                <div><img src={FIXED_MASTER_URL} alt="모든 조가 공유하는 고정 베드로 32컷 마스터" /></div>
                 <p>얼굴 · 헤어 · 수염 · 몸 비율 · 동작 · 프레임 크기 고정</p>
               </article>
               <article className="master-edit-reference">
@@ -900,7 +918,7 @@ export default function AdminPage() {
               <article className="master-edit-contract">
                 <strong>생성 후 자동 처리</strong>
                 <ul>
-                  <li>25개 프레임을 마스터와 같은 크기로 정규화</li>
+                  <li>32개 프레임을 마스터와 같은 크기로 정규화</li>
                   <li>각 프레임의 하단 중앙 기준점 고정</li>
                   <li>머리·손·발·신발 잘림과 의상 침범 검사</li>
                   <li>문제 발생 시 QA 내용을 반영해 다시 생성</li>
@@ -917,8 +935,8 @@ export default function AdminPage() {
                 {composingSprite
                   ? `${generation.stage.label}…`
                   : selectedSpriteUrl
-                    ? 'QA 반영해 25컷 다시 생성'
-                    : 'AI로 마스터 고정 25컷 생성'}
+                    ? 'QA 반영해 32컷 다시 생성'
+                    : 'AI로 마스터 고정 32컷 생성'}
               </button>
               <span>몇 분이 걸려도 완료될 때까지 단계별 저장·자동 재시도합니다. 현재 QA의 프레임별 문제도 반영합니다.</span>
             </div>
@@ -934,7 +952,7 @@ export default function AdminPage() {
                 <progress
                   value={generation.percent}
                   max={100}
-                  aria-label="마스터 고정 25컷 생성 진행률"
+                  aria-label="마스터 고정 32컷 생성 진행률"
                 />
                 <div className="sprite-generation-time">
                   <span>{formatGenerationTime(generationElapsedSeconds)} 경과</span>
@@ -970,14 +988,14 @@ export default function AdminPage() {
             <section
               className="sprite-review-card"
               data-status={selected.showcase_sprite_status}
-              aria-label={`${selected.name} 25컷 검수`}
+              aria-label={`${selected.name} 32컷 검수`}
             >
               <header className="sprite-review-header">
                 <div>
                   <span>4</span>
                   <div>
-                    <h3>25컷 최종 QA</h3>
-                    <p className="muted">마스터와 같은 크기로 정렬된 5×5 아틀라스와 실제 동작을 확인한 뒤 전체 화면 적용을 승인하세요.</p>
+                    <h3>32컷 최종 QA</h3>
+                    <p className="muted">마스터와 같은 크기로 정렬된 8×4 아틀라스와 실제 동작을 확인한 뒤 전체 화면 적용을 승인하세요.</p>
                   </div>
                 </div>
                 <strong>{selected.showcase_sprite_status === 'ready' ? '승인·적용 완료' : '승인 전'}</strong>
@@ -990,7 +1008,7 @@ export default function AdminPage() {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <span>{fixedMaster ? '5 × 5 전체 아틀라스' : '4 × 3 legacy 시트'} · 클릭해서 원본 확인</span>
+                  <span>{fixedMaster ? '8 × 4 전체 아틀라스' : '4 × 3 legacy 시트'} · 클릭해서 원본 확인</span>
                   <img src={selectedSpriteUrl} alt={`${selected.name} 스프라이트 아틀라스`} />
                 </a>
                 <div className="sprite-motion-grid sprite-motion-grid--wide">
@@ -1007,10 +1025,19 @@ export default function AdminPage() {
 
               {fixedMaster && (
                 <section className="sprite-atlas-qa">
-                  <h4>25프레임 그리드 QA</h4>
-                  <div className="sprite-atlas-grid">
-                    {Array.from({ length: 25 }, (_, frame) => (
-                      <SpriteAtlasFrame key={frame} frame={frame} spriteUrl={selectedSpriteUrl} />
+                  <h4>32프레임 그리드 QA</h4>
+                  <div
+                    className="sprite-atlas-grid"
+                    style={{ '--atlas-grid-columns': CURRENT_MASTER_COLUMNS } as CSSProperties}
+                  >
+                    {Array.from({ length: CURRENT_MASTER_FRAME_COUNT }, (_, frame) => (
+                      <SpriteAtlasFrame
+                        key={frame}
+                        frame={frame}
+                        spriteUrl={selectedSpriteUrl}
+                        columns={CURRENT_MASTER_COLUMNS}
+                        rows={CURRENT_MASTER_ROWS}
+                      />
                     ))}
                   </div>
                 </section>
@@ -1079,10 +1106,10 @@ export default function AdminPage() {
               )}
 
               <ul className="sprite-review-checklist">
-                <li>25컷 모두 정사각형 안전 프레임 안에서 머리부터 신발 밑창까지 온전히 보이나요?</li>
+                <li>32컷 모두 정사각형 안전 프레임 안에서 머리부터 신발 밑창까지 온전히 보이나요?</li>
                 <li>상의와 하의가 분리되어 있고, 왼쪽·오른쪽 신발이 학생 기준 좌우와 일치하나요?</li>
                 <li>기존 마스터와 얼굴·몸 비율·캐릭터 크기가 동일하게 보이나요?</li>
-                <li>idle 0·9, walk 1-8, run 10-17, wave 18, jump 20, kneel 21, pray 22, point 24 매핑이 맞나요?</li>
+                <li>기존 1~25번 동작과 26~32번 edit 전용 포즈가 마스터 순서대로 보이나요?</li>
                 <li>PAGE 1·2·3·showcase에서 동일한 active 버전으로 보일 준비가 되었나요?</li>
               </ul>
 
@@ -1116,7 +1143,7 @@ export default function AdminPage() {
                       문제 확인함 · 강제 적용
                     </button>
                   )}
-                <span>문제 컷만 교체할 수 있으며, 필요하면 위의 전체 25컷 재생성도 사용할 수 있습니다.</span>
+                <span>문제 컷만 교체할 수 있으며, 필요하면 위의 전체 32컷 재생성도 사용할 수 있습니다.</span>
               </div>
             </section>
           )}
@@ -1127,7 +1154,7 @@ export default function AdminPage() {
                 <span>5</span>
                 <div>
                   <h3>버전 기록 복원</h3>
-                  <p className="muted">승인 또는 생성된 이전 25컷 버전을 선택해 active 버전으로 되돌립니다.</p>
+                  <p className="muted">승인 또는 생성된 이전 스프라이트 버전을 선택해 active 버전으로 되돌립니다.</p>
                 </div>
               </div>
               <strong>{loadingVersions ? '불러오는 중' : `${versions.length}개`}</strong>

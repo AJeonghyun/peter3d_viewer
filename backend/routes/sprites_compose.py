@@ -1,4 +1,4 @@
-"""25-frame master-locked compose workflow: start, generate, patch, review."""
+"""32-frame master-locked compose workflow: start, generate, patch, review."""
 
 import asyncio
 import json
@@ -89,10 +89,10 @@ async def start_showcase_capture_compose(team_id: int):
 async def start_showcase_frame_patch(team_id: int, payload: SpriteFramePatchPayload):
     team, source_version = current_compose_version(team_id)
     frames = sorted(set(payload.frames))
-    frame_count = config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS
+    frame_count = config.GARMENT_FRAME_COUNT
     invalid_frames = [frame for frame in frames if frame < 1 or frame > frame_count]
     if invalid_frames:
-        raise HTTPException(status_code=422, detail="프레임 번호는 1부터 25까지여야 합니다")
+        raise HTTPException(status_code=422, detail=f"프레임 번호는 1부터 {frame_count}까지여야 합니다")
     existing_patch = frame_patch_metadata(source_version)
     if team.get("showcase_sprite_status") in config.COMPOSE_ACTIVE_TEAM_STATUSES and existing_patch:
         existing_frames = sorted({
@@ -105,9 +105,9 @@ async def start_showcase_frame_patch(team_id: int, payload: SpriteFramePatchPayl
         raise HTTPException(status_code=409, detail="다른 문제 컷 교체 작업이 이미 진행 중입니다")
     ensure_compose_not_active(team)
     if source_version.get("contract") != config.GARMENT_TRANSFER_CONTRACT:
-        raise HTTPException(status_code=409, detail="마스터 고정 25컷만 문제 컷을 교체할 수 있습니다")
+        raise HTTPException(status_code=409, detail="마스터 고정 32컷만 문제 컷을 교체할 수 있습니다")
     if not source_version.get("atlas_url"):
-        raise HTTPException(status_code=409, detail="교체할 기존 25컷 아틀라스가 없습니다")
+        raise HTTPException(status_code=409, detail="교체할 기존 32컷 아틀라스가 없습니다")
     source_qa = source_version.get("qa_json") or team.get("showcase_sprite_quality_json")
     problem_frames = set(ai_review.garment_problem_frames(source_qa))
     if not problem_frames:
@@ -314,7 +314,7 @@ async def regenerate_showcase_frame_patch(team_id: int):
         patched_bytes = image_to_png_bytes(patched_atlas)
         atlas_url = await persist_showcase_asset(
             team_id,
-            f"sprite-v4-frame-{frame}",
+            f"sprite-v6-frame-{frame}",
             patched_bytes,
         )
     except HTTPException as exc:
@@ -495,7 +495,7 @@ async def generate_showcase_capture_atlas(team_id: int):
             correction=correction,
             on_progress=report_progress,
         )
-        atlas_url = await persist_showcase_asset(team_id, "sprite-v4-atlas", atlas_bytes)
+        atlas_url = await persist_showcase_asset(team_id, "sprite-v6-atlas", atlas_bytes)
     except HTTPException as exc:
         report_timing(f"failed_{exc.status_code}")
         if retryable_compose_error(exc):
@@ -515,11 +515,11 @@ async def generate_showcase_capture_atlas(team_id: int):
             version_id,
             version_status="queued",
             team_status="generating",
-            detail=f"25컷 생성 결과를 처리하지 못했습니다: {str(exc)[:160]}",
+            detail=f"32컷 생성 결과를 처리하지 못했습니다: {str(exc)[:160]}",
         )
     except Exception as exc:  # noqa: BLE001 - persist a terminal stage instead of stranding the lease
         report_timing("failed_internal")
-        detail = f"25컷 생성 결과를 처리하지 못했습니다: {str(exc)[:220]}"
+        detail = f"32컷 생성 결과를 처리하지 못했습니다: {str(exc)[:220]}"
         record_compose_failure(team_id, version_id, detail)
         raise HTTPException(status_code=502, detail=detail) from exc
 
@@ -584,7 +584,7 @@ async def review_showcase_capture_atlas(team_id: int):
                 retry_after_seconds=3 if next_action == "wait" else None,
             )
     if not version.get("atlas_url"):
-        raise HTTPException(status_code=409, detail="저장된 25컷 결과가 없어 다시 생성해야 합니다")
+        raise HTTPException(status_code=409, detail="저장된 32컷 결과가 없어 다시 생성해야 합니다")
 
     timestamp = now_iso()
     with connect_db() as db:
@@ -643,10 +643,10 @@ async def review_showcase_capture_atlas(team_id: int):
             version_id,
             version_status="generated",
             team_status="reviewing",
-            detail=f"25컷 QA 자료를 불러오지 못했습니다: {str(exc)[:160]}",
+            detail=f"32컷 QA 자료를 불러오지 못했습니다: {str(exc)[:160]}",
         )
     except Exception as exc:  # noqa: BLE001 - persist a terminal stage instead of stranding the lease
-        detail = f"25컷 QA를 완료하지 못했습니다: {str(exc)[:220]}"
+        detail = f"32컷 QA를 완료하지 못했습니다: {str(exc)[:220]}"
         record_compose_failure(team_id, version_id, detail)
         raise HTTPException(status_code=502, detail=detail) from exc
 

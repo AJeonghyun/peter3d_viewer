@@ -200,18 +200,72 @@ def analyze_showcase_sprite_pixels(sprite: bytes) -> dict:
     }
 
 
+def load_garment_master_atlas() -> Image.Image:
+    """Load the v6 32-frame master, or build a read-only fallback from source masters."""
+    target_size = (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT)
+    if config.SHOWCASE_EXPANDED_MASTER_PATH.is_file():
+        with Image.open(config.SHOWCASE_EXPANDED_MASTER_PATH) as source:
+            master = source.convert("RGBA")
+            master.load()
+        if master.size != target_size:
+            raise HTTPException(
+                status_code=500,
+                detail=f"고정 Peter v6 마스터는 {target_size[0]}x{target_size[1]}여야 합니다",
+            )
+        return master
+
+    legacy_path = (
+        config.SHOWCASE_SAFE_MASTER_PATH
+        if config.SHOWCASE_SAFE_MASTER_PATH.is_file()
+        else config.SHOWCASE_SOURCE_MASTER_PATH
+    )
+    if not legacy_path.is_file():
+        raise HTTPException(status_code=500, detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다")
+    if not config.SHOWCASE_RETREAT_MASTER_PATH.is_file():
+        raise HTTPException(status_code=500, detail="Peter retreat 확장 마스터를 찾지 못했습니다")
+
+    atlas = Image.new("RGBA", target_size, (0, 0, 0, 0))
+    with Image.open(legacy_path) as source:
+        legacy = source.convert("RGBA")
+        legacy.load()
+    with Image.open(config.SHOWCASE_RETREAT_MASTER_PATH) as source:
+        retreat = source.convert("RGBA")
+        retreat.load()
+
+    for frame in range(1, 26):
+        source_index = frame - 1
+        source_column = source_index % 5
+        source_row = source_index // 5
+        target_box = garment_atlas_frame_box(frame)
+        cell = legacy.crop((
+            source_column * config.GARMENT_ATLAS_CELL_SIZE,
+            source_row * config.GARMENT_ATLAS_CELL_SIZE,
+            (source_column + 1) * config.GARMENT_ATLAS_CELL_SIZE,
+            (source_row + 1) * config.GARMENT_ATLAS_CELL_SIZE,
+        ))
+        atlas.alpha_composite(cell, (target_box[0], target_box[1]))
+
+    for offset, frame in enumerate(range(26, config.GARMENT_FRAME_COUNT + 1)):
+        target_box = garment_atlas_frame_box(frame)
+        cell = retreat.crop((
+            offset * config.GARMENT_ATLAS_CELL_SIZE,
+            0,
+            (offset + 1) * config.GARMENT_ATLAS_CELL_SIZE,
+            config.GARMENT_ATLAS_CELL_SIZE,
+        ))
+        atlas.alpha_composite(cell, (target_box[0], target_box[1]))
+    return atlas
+
+
 def master_reference_for_ai() -> bytes:
     """Render the transparent canonical atlas on the key color requested from GPT Image."""
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise HTTPException(status_code=500, detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    with Image.open(config.SHOWCASE_MASTER_PATH) as source:
-        master = source.convert("RGBA").resize(
-            (config.GARMENT_AI_ATLAS_SIZE, config.GARMENT_AI_ATLAS_SIZE),
-            Image.Resampling.LANCZOS,
-        )
+    master = load_garment_master_atlas().resize(
+        (config.GARMENT_AI_ATLAS_WIDTH, config.GARMENT_AI_ATLAS_HEIGHT),
+        Image.Resampling.LANCZOS,
+    )
     reference = Image.new(
         "RGBA",
-        (config.GARMENT_AI_ATLAS_SIZE, config.GARMENT_AI_ATLAS_SIZE),
+        (config.GARMENT_AI_ATLAS_WIDTH, config.GARMENT_AI_ATLAS_HEIGHT),
         (*config.GARMENT_AI_BACKGROUND, 255),
     )
     reference.alpha_composite(master)
@@ -338,23 +392,17 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
         )
         candidate.load()
     except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise ValueError("AI 25컷 이미지를 읽을 수 없습니다") from exc
-    if candidate.width != candidate.height:
-        raise ValueError("AI 25컷 결과는 정사각형이어야 합니다")
-    if candidate.size != (config.GARMENT_AI_ATLAS_SIZE, config.GARMENT_AI_ATLAS_SIZE):
+        raise ValueError("AI 32컷 이미지를 읽을 수 없습니다") from exc
+    if candidate.size != (config.GARMENT_AI_ATLAS_WIDTH, config.GARMENT_AI_ATLAS_HEIGHT):
         candidate = candidate.resize(
-            (config.GARMENT_AI_ATLAS_SIZE, config.GARMENT_AI_ATLAS_SIZE),
+            (config.GARMENT_AI_ATLAS_WIDTH, config.GARMENT_AI_ATLAS_HEIGHT),
             Image.Resampling.LANCZOS,
         )
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    with Image.open(config.SHOWCASE_MASTER_PATH) as source:
-        master = source.convert("RGBA")
-        master.load()
+    master = load_garment_master_atlas()
     output = Image.new(
-        "RGBA", (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE), (0, 0, 0, 0)
+        "RGBA", (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT), (0, 0, 0, 0)
     )
-    for index in range(config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS):
+    for index in range(config.GARMENT_FRAME_COUNT):
         column = index % config.GARMENT_ATLAS_COLUMNS
         row = index // config.GARMENT_ATLAS_COLUMNS
         source_cell = candidate.crop((
@@ -415,8 +463,8 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
 def garment_atlas_frame_box(frame: int, *, cell_size: int = None) -> tuple[int, int, int, int]:
     if cell_size is None:
         cell_size = config.GARMENT_ATLAS_CELL_SIZE
-    if frame < 1 or frame > config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS:
-        raise ValueError("프레임 번호는 1부터 25까지여야 합니다")
+    if frame < 1 or frame > config.GARMENT_FRAME_COUNT:
+        raise ValueError(f"프레임 번호는 1부터 {config.GARMENT_FRAME_COUNT}까지여야 합니다")
     index = frame - 1
     column = index % config.GARMENT_ATLAS_COLUMNS
     row = index // config.GARMENT_ATLAS_COLUMNS
@@ -435,9 +483,9 @@ def frame_reference_for_ai(source: Union[bytes, Image.Image], frame: int) -> byt
         else source.convert("RGBA")
     )
     image.load()
-    if image.size != (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE):
+    if image.size != (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT):
         raise ValueError(
-            f"프레임 참조 아틀라스는 {config.GARMENT_ATLAS_SIZE}x{config.GARMENT_ATLAS_SIZE}여야 합니다"
+            f"프레임 참조 아틀라스는 {config.GARMENT_ATLAS_WIDTH}x{config.GARMENT_ATLAS_HEIGHT}여야 합니다"
         )
     cell = image.crop(garment_atlas_frame_box(frame))
     cell = cell.resize(
@@ -454,10 +502,7 @@ def frame_reference_for_ai(source: Union[bytes, Image.Image], frame: int) -> byt
 
 
 def master_frame_reference_for_ai(frame: int) -> bytes:
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    with Image.open(config.SHOWCASE_MASTER_PATH) as master:
-        return frame_reference_for_ai(master, frame)
+    return frame_reference_for_ai(load_garment_master_atlas(), frame)
 
 
 def normalize_master_locked_frame(generated: Union[bytes, Image.Image], frame: int) -> Image.Image:
@@ -481,11 +526,8 @@ def normalize_master_locked_frame(generated: Union[bytes, Image.Image], frame: i
     generated_bbox = cleaned.getchannel("A").getbbox()
     if generated_bbox is None:
         raise ValueError("AI 문제 컷 결과에 캐릭터가 없습니다")
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    with Image.open(config.SHOWCASE_MASTER_PATH) as source:
-        master_cell = source.convert("RGBA").crop(garment_atlas_frame_box(frame))
-        master_cell.load()
+    master_cell = load_garment_master_atlas().crop(garment_atlas_frame_box(frame))
+    master_cell.load()
     master_bbox = master_cell.getchannel("A").getbbox()
     if master_bbox is None:
         raise ValueError(f"고정 Peter 마스터의 {frame}컷을 찾지 못했습니다")
@@ -538,8 +580,8 @@ def replace_garment_atlas_frame(
         else atlas.convert("RGBA")
     )
     base.load()
-    if base.size != (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE):
-        raise ValueError(f"기존 25컷은 {config.GARMENT_ATLAS_SIZE}x{config.GARMENT_ATLAS_SIZE}여야 합니다")
+    if base.size != (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT):
+        raise ValueError(f"기존 32컷은 {config.GARMENT_ATLAS_WIDTH}x{config.GARMENT_ATLAS_HEIGHT}여야 합니다")
     cell = (
         Image.open(io.BytesIO(replacement)).convert("RGBA")
         if isinstance(replacement, bytes)
@@ -582,21 +624,19 @@ def count_chroma_spill_pixels(image: Image.Image) -> int:
 
 def analyze_garment_atlas_pixels(atlas: Any) -> dict:
     image = Image.open(io.BytesIO(atlas)).convert("RGBA") if isinstance(atlas, bytes) else atlas.convert("RGBA")
-    if image.size != (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE):
+    if image.size != (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT):
         return {
             "status": "failed",
             "can_approve": False,
-            "summary": f"Atlas must be {config.GARMENT_ATLAS_SIZE}x{config.GARMENT_ATLAS_SIZE}.",
+            "summary": f"Atlas must be {config.GARMENT_ATLAS_WIDTH}x{config.GARMENT_ATLAS_HEIGHT}.",
             "frames": [],
             "issues": ["invalid_size"],
         }
-    with Image.open(config.SHOWCASE_MASTER_PATH) as source:
-        master = source.convert("RGBA")
-        master.load()
+    master = load_garment_master_atlas()
     frames = []
     failed = 0
     atlas_issues: list[str] = []
-    for index in range(config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS):
+    for index in range(config.GARMENT_FRAME_COUNT):
         column = index % config.GARMENT_ATLAS_COLUMNS
         row = index // config.GARMENT_ATLAS_COLUMNS
         cell = image.crop((
@@ -679,7 +719,7 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
     return {
         "status": "failed" if failed else "passed",
         "can_approve": failed == 0,
-        "summary": "25-frame alpha bbox QA passed." if not failed else f"{failed} frames failed alpha bbox QA.",
+        "summary": "32-frame alpha bbox QA passed." if not failed else f"{failed} frames failed alpha bbox QA.",
         "contract": config.GARMENT_TRANSFER_CONTRACT,
         "safe_margin_px": 8,
         "frames": frames,

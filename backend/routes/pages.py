@@ -72,7 +72,7 @@ async def health():
         "openai_image_quality": config.OPENAI_IMAGE_QUALITY,
         "fixed_peter_master_available": config.SHOWCASE_MASTER_PATH.is_file(),
         "fixed_peter_master_frames": (
-            config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS
+            config.GARMENT_FRAME_COUNT
             if config.SHOWCASE_MASTER_PATH.is_file()
             else 0
         ),

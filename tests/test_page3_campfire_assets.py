@@ -71,6 +71,38 @@ class Page3CampfireAssetTests(unittest.TestCase):
                 self.assertIsNotNone(rgba.getchannel("A").getbbox())
                 self.assertEqual(rgba.getpixel((0, 0))[3], 0)
 
+    def test_expanded_master_appends_all_seven_editor_poses_to_the_legacy_25(self):
+        runtime_dir = ROOT / "runtime-assets"
+        manifest = json.loads(
+            (runtime_dir / "peter-retreat-master-expanded-v6.json").read_text()
+        )
+        self.assertEqual(manifest["id"], "fixed-peter-master-edit-v6")
+        self.assertEqual(manifest["layout"], "8x4")
+        self.assertEqual(manifest["frame_count"], 32)
+        self.assertEqual(
+            [frame["id"] for frame in manifest["frames"][25:]],
+            [
+                "idle-a",
+                "idle-b",
+                "wave",
+                "listen-front",
+                "listen-rear",
+                "listen-side",
+                "back",
+            ],
+        )
+        with Image.open(runtime_dir / "peter-retreat-master-expanded-v6.png") as source:
+            master = source.convert("RGBA")
+            self.assertEqual(master.size, (CELL_SIZE * 8, CELL_SIZE * 4))
+            for index in range(32):
+                cell = master.crop((
+                    (index % 8) * CELL_SIZE,
+                    (index // 8) * CELL_SIZE,
+                    (index % 8 + 1) * CELL_SIZE,
+                    (index // 8 + 1) * CELL_SIZE,
+                ))
+                self.assertIsNotNone(cell.getchannel("A").getbbox())
+
     def test_campfire_sheet_has_eight_transparent_nonempty_frames(self):
         path = FRONTEND / "public" / "assets" / "campfire" / "campfire-sheet.png"
         with Image.open(path) as sheet:
@@ -192,13 +224,15 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("group.groupNumber <= lastGroupNumber", source)
         self.assertIn("(groupNumber - 1) % GROUPS_PER_SCENE", source)
 
-    def test_legacy_custom_atlas_falls_back_to_the_new_campfire_master(self):
+    def test_legacy_atlas_falls_back_but_v6_uses_every_team_pose(self):
         source = (FRONTEND / "src" / "retreat" / "RetreatCharacter.tsx").read_text()
         self.assertIn("fixed-peter-master-edit-v5", source)
+        self.assertIn("fixed-peter-master-edit-v6", source)
         self.assertIn("supportsCampfirePoses", source)
+        self.assertIn("supportsExpandedMaster", source)
         self.assertIn("needsCampfireFrames", source)
-        self.assertIn("RETREAT_MASTER_URL", source)
-        self.assertIn("retreat-live-master-v1", source)
+        self.assertIn("EXPANDED_MASTER_URL", source)
+        self.assertIn("pose.expandedFrames", source)
 
 
 if __name__ == "__main__":

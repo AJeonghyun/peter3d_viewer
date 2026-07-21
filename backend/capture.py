@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from PIL import Image, ImageOps
 
 from backend import config
-from backend.sprite_pixels import median
+from backend.sprite_pixels import garment_atlas_frame_box, load_garment_master_atlas, median
 
 
 def default_capture_quality() -> dict:
@@ -215,23 +215,19 @@ def normalize_garment_atlas_cell(cell: Image.Image, *, margin: int = 18) -> Imag
 
 
 def compose_garment_atlas(parts: dict[str, Image.Image]) -> Image.Image:
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise HTTPException(status_code=500, detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    master = Image.open(config.SHOWCASE_MASTER_PATH).convert("RGBA")
+    try:
+        master = load_garment_master_atlas()
+    except HTTPException:
+        raise
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다") from exc
     atlas = Image.new(
-        "RGBA", (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE), (0, 0, 0, 0)
+        "RGBA", (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT), (0, 0, 0, 0)
     )
-    for row in range(config.GARMENT_ATLAS_ROWS):
-        for column in range(config.GARMENT_ATLAS_COLUMNS):
-            left = round(master.width * column / config.GARMENT_ATLAS_COLUMNS)
-            top = round(master.height * row / config.GARMENT_ATLAS_ROWS)
-            right = round(master.width * (column + 1) / config.GARMENT_ATLAS_COLUMNS)
-            bottom = round(master.height * (row + 1) / config.GARMENT_ATLAS_ROWS)
-            cell = master.crop((left, top, right, bottom))
-            themed = apply_garment_parts_to_cell(cell, parts)
-            themed = normalize_garment_atlas_cell(themed)
-            atlas.alpha_composite(
-                themed,
-                (column * config.GARMENT_ATLAS_CELL_SIZE, row * config.GARMENT_ATLAS_CELL_SIZE),
-            )
+    for frame in range(1, config.GARMENT_FRAME_COUNT + 1):
+        left, top, right, bottom = garment_atlas_frame_box(frame)
+        cell = master.crop((left, top, right, bottom))
+        themed = apply_garment_parts_to_cell(cell, parts)
+        themed = normalize_garment_atlas_cell(themed)
+        atlas.alpha_composite(themed, (left, top))
     return atlas

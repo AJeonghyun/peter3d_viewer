@@ -157,7 +157,7 @@ async def request_master_locked_garment_atlas(
     files = [
         (
             "image[]",
-            ("fixed-peter-master-5x5.png", master_reference_for_ai(), "image/png"),
+            ("fixed-peter-master-8x4-v6.png", master_reference_for_ai(), "image/png"),
         ),
         ("image[]", (filename, student_reference, "image/png")),
     ]
@@ -185,7 +185,7 @@ async def request_master_locked_garment_atlas(
     except httpx.TimeoutException as exc:
         raise HTTPException(
             status_code=504,
-            detail="AI 25컷 생성 시간이 초과되었습니다. 다시 시도해주세요.",
+            detail="AI 32컷 생성 시간이 초과되었습니다. 다시 시도해주세요.",
         ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(
@@ -209,9 +209,9 @@ async def request_master_locked_garment_atlas(
         json.JSONDecodeError,
         base64.binascii.Error,
     ) as exc:
-        raise HTTPException(status_code=502, detail=f"AI 25컷 응답을 처리하지 못했습니다: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"AI 32컷 응답을 처리하지 못했습니다: {exc}") from exc
     if len(atlas_bytes) > config.MAX_SPRITE_BYTES:
-        raise HTTPException(status_code=502, detail="AI 25컷 파일이 너무 큽니다")
+        raise HTTPException(status_code=502, detail="AI 32컷 파일이 너무 큽니다")
     return atlas_bytes
 
 
@@ -233,7 +233,10 @@ async def request_master_locked_garment_frame(
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    prompt = config.GARMENT_FRAME_EDIT_PROMPT + f"\n\nTARGET FRAME NUMBER: {frame} of 25."
+    prompt = (
+        config.GARMENT_FRAME_EDIT_PROMPT
+        + f"\n\nTARGET FRAME NUMBER: {frame} of {config.GARMENT_FRAME_COUNT}."
+    )
     if correction:
         prompt += (
             "\nREPORTED QA DEFECTS TO FIX IN THIS FRAME:\n"

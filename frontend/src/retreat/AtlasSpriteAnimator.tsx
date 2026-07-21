@@ -14,7 +14,7 @@ interface AtlasSpriteAnimatorProps {
   className?: string;
   prepared?: boolean;
   contract?: ShowcaseSpriteContract | null;
-  layout?: 'legacy-4x3' | 'fixed-5x5' | 'retreat-7x1';
+  layout?: 'legacy-4x3' | 'fixed-grid' | 'fixed-5x5' | 'retreat-7x1';
 }
 
 const FIXED_MASTER_SEQUENCES: Record<AnimationName, number[]> = {
@@ -28,13 +28,30 @@ const FIXED_MASTER_SEQUENCES: Record<AnimationName, number[]> = {
   point: [24],
 };
 
+const EXPANDED_MASTER_SEQUENCES: Record<AnimationName, number[]> = {
+  ...FIXED_MASTER_SEQUENCES,
+  idle: [25, 26],
+  wave: [27],
+  kneel: [28],
+};
+
 function isFixedMasterContract(contract?: ShowcaseSpriteContract | null) {
   if (!contract) return false;
   return contract.version === 2
     || contract.version === '2'
     || contract.layout === '5x5'
+    || contract.layout === '8x4'
     || (contract.rows === 5 && contract.columns === 5)
-    || contract.frame_count === 25;
+    || (contract.rows === 4 && contract.columns === 8)
+    || contract.frame_count === 25
+    || contract.frame_count === 32;
+}
+
+function isExpandedMasterContract(contract?: ShowcaseSpriteContract | null) {
+  return contract?.id === 'fixed-peter-master-edit-v6'
+    || contract?.layout === '8x4'
+    || (contract?.rows === 4 && contract?.columns === 8)
+    || contract?.frame_count === 32;
 }
 
 function isRetreatMasterContract(contract?: ShowcaseSpriteContract | null) {
@@ -72,7 +89,10 @@ function AtlasSpriteAnimatorComponent({
   const [preparedUrl, setPreparedUrl] = useState('');
   const [failed, setFailed] = useState(false);
   const [frameOffset, setFrameOffset] = useState(0);
-  const fixedMaster = layout === 'fixed-5x5' || isFixedMasterContract(contract);
+  const fixedMaster = layout === 'fixed-grid'
+    || layout === 'fixed-5x5'
+    || isFixedMasterContract(contract);
+  const expandedMaster = isExpandedMasterContract(contract);
   const retreatMaster = layout === 'retreat-7x1' || isRetreatMasterContract(contract);
   const gridAtlas = fixedMaster || retreatMaster;
   const columns = gridAtlas ? Number(contract?.columns ?? (retreatMaster ? 7 : 5)) : 4;
@@ -84,7 +104,8 @@ function AtlasSpriteAnimatorComponent({
       ? [Math.max(0, Math.min(maxFrame, Math.round(fixedFrame)))]
       : retreatMaster
         ? animation === 'idle' ? [0, 1] : animation === 'wave' ? [2] : [0]
-        : FIXED_MASTER_SEQUENCES[animation] ?? FIXED_MASTER_SEQUENCES.idle;
+        : (expandedMaster ? EXPANDED_MASTER_SEQUENCES : FIXED_MASTER_SEQUENCES)[animation]
+          ?? FIXED_MASTER_SEQUENCES.idle;
   const sequenceKey = sequence.join(',');
   const frame = sequence[frameOffset % sequence.length] ?? 0;
   const column = frame % columns;
@@ -143,7 +164,7 @@ function AtlasSpriteAnimatorComponent({
       className={`atlas-sprite-animator ${className}`.trim()}
       data-animation={animation}
       data-fixed-frame={fixedFrame}
-      data-layout={retreatMaster ? 'retreat-7x1' : fixedMaster ? 'fixed-5x5' : 'legacy-4x3'}
+      data-layout={retreatMaster ? 'retreat-7x1' : fixedMaster ? 'fixed-grid' : 'legacy-4x3'}
       data-playing={playing ? 'true' : 'false'}
       data-ready={preparedUrl ? 'true' : 'false'}
       style={style}

@@ -39,14 +39,20 @@ SHOWCASE_SPRITE_SIZE = f"{SHOWCASE_SPRITE_WIDTH}x{SHOWCASE_SPRITE_HEIGHT}"
 LEGACY_GARMENT_TRANSFER_CONTRACT = "fixed-peter-garment-transfer-v2"
 PREVIOUS_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v3"
 PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v4"
-GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v5"
-GARMENT_ATLAS_COLUMNS = 5
-GARMENT_ATLAS_ROWS = 5
+V5_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v5"
+GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v6"
+GARMENT_ATLAS_COLUMNS = 8
+GARMENT_ATLAS_ROWS = 4
+GARMENT_FRAME_COUNT = 32
 GARMENT_ATLAS_CELL_SIZE = 360
-GARMENT_ATLAS_SIZE = GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_CELL_SIZE
+GARMENT_ATLAS_WIDTH = GARMENT_ATLAS_COLUMNS * GARMENT_ATLAS_CELL_SIZE
+GARMENT_ATLAS_HEIGHT = GARMENT_ATLAS_ROWS * GARMENT_ATLAS_CELL_SIZE
+GARMENT_ATLAS_SIZE = GARMENT_ATLAS_WIDTH
 GARMENT_AI_CELL_SIZE = 384
-GARMENT_AI_ATLAS_SIZE = GARMENT_ATLAS_COLUMNS * GARMENT_AI_CELL_SIZE
-GARMENT_AI_IMAGE_SIZE = f"{GARMENT_AI_ATLAS_SIZE}x{GARMENT_AI_ATLAS_SIZE}"
+GARMENT_AI_ATLAS_WIDTH = GARMENT_ATLAS_COLUMNS * GARMENT_AI_CELL_SIZE
+GARMENT_AI_ATLAS_HEIGHT = GARMENT_ATLAS_ROWS * GARMENT_AI_CELL_SIZE
+GARMENT_AI_ATLAS_SIZE = GARMENT_AI_ATLAS_WIDTH
+GARMENT_AI_IMAGE_SIZE = f"{GARMENT_AI_ATLAS_WIDTH}x{GARMENT_AI_ATLAS_HEIGHT}"
 GARMENT_AI_FRAME_SIZE = 1024
 GARMENT_AI_FRAME_IMAGE_SIZE = f"{GARMENT_AI_FRAME_SIZE}x{GARMENT_AI_FRAME_SIZE}"
 GARMENT_AI_BACKGROUND = (0, 255, 0)
@@ -67,8 +73,16 @@ SHOWCASE_SOURCE_MASTER_PATH = (
 SHOWCASE_SAFE_MASTER_PATH = (
     ROOT / "runtime-assets" / "peter-sober-master-safe.png"
 )
+SHOWCASE_EXPANDED_MASTER_PATH = (
+    ROOT / "runtime-assets" / "peter-retreat-master-expanded-v6.png"
+)
+SHOWCASE_RETREAT_MASTER_PATH = (
+    ROOT / "frontend" / "public" / "assets" / "retreat" / "peter-retreat-master.png"
+)
 SHOWCASE_MASTER_PATH = (
-    SHOWCASE_SAFE_MASTER_PATH
+    SHOWCASE_EXPANDED_MASTER_PATH
+    if SHOWCASE_EXPANDED_MASTER_PATH.is_file()
+    else SHOWCASE_SAFE_MASTER_PATH
     if SHOWCASE_SAFE_MASTER_PATH.is_file()
     else SHOWCASE_SOURCE_MASTER_PATH
 )
@@ -77,18 +91,20 @@ STAT_KEYS = ("courage", "wisdom", "faith", "love")
 
 GARMENT_MASTER_EDIT_PROMPT = """
 You receive exactly two reference images in this order:
-1. FIXED MASTER: the canonical Peter 25-frame animation sheet in a strict 5x5 grid
+1. FIXED MASTER: the canonical Peter 32-frame animation sheet in a strict 8x4 grid
 2. STUDENT DESIGN: one corrected full-body photo of Peter decorated by students
 
-Create a NEW production-ready 25-frame Peter sheet by editing the fixed master.
-The fixed master is an immutable template for every team. Copy its exact 5x5
+Create a NEW production-ready 32-frame Peter sheet by editing the fixed master.
+The fixed master is an immutable template for every team. Copy its exact 8x4
 frame order, poses, direction, face, hair, beard, skin, hands, body proportions,
 outline style, character size, bottom-center anchors, and safe padding. Do not
 redesign, redraw, simplify, enlarge, shrink, rotate, reorder, or replace Peter.
-Frames 20, 22, and 24 (one-based) are intentional seated listening poses:
-three-quarter rear/profile listening, three-quarter hands-on-knees, and
-side-facing hands-on-knees. Peter's face must remain visible in all three. Preserve
-their seated direction and body language exactly; they are used around a fire.
+Frames 1-25 are the original Peter master frames and must preserve their old
+order unchanged. Frames 26-32 are the retreat extension frames in this exact
+order: idle-a, idle-b, wave, listen-front, listen-rear, listen-side, back.
+The seated listening frames must preserve their seated direction and body
+language exactly; they are used around a fire. The back frame must remain a
+standing rear view.
 
 Transfer from the student design only:
 - upper garment colors, patterns, writing, marks, and handmade texture
@@ -108,8 +124,8 @@ Ignore the paper, room, lighting, glare, shadows, wrinkles, perspective, printed
 guide marks, and everything outside the student's four decorated regions.
 
 OUTPUT CONTRACT:
-- exactly 1920 by 1920 pixels
-- exactly 25 complete characters in a strict 5-column by 5-row grid
+- exactly 3072 by 1536 pixels
+- exactly 32 complete characters in a strict 8-column by 4-row grid
 - every cell is exactly 384 by 384 pixels
 - one complete Peter per cell, matching the corresponding master cell
 - same character scale and same bottom-center anchor as the fixed master

@@ -45,5 +45,5 @@ class SpriteApprovalPayload(BaseModel):
 class SpriteFramePatchPayload(BaseModel):
     frames: List[int] = Field(
         min_length=1,
-        max_length=config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS,
+        max_length=config.GARMENT_FRAME_COUNT,
     )

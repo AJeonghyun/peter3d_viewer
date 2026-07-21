@@ -229,7 +229,7 @@ async def retry_showcase_capture_part(
     if version.get("contract") == config.GARMENT_TRANSFER_CONTRACT:
         raise HTTPException(
             status_code=410,
-            detail="마스터 고정 생성에서는 영역별 재추출을 사용하지 않습니다. 전체 사진을 다시 올리거나 25컷을 다시 생성해주세요.",
+            detail="마스터 고정 생성에서는 영역별 재추출을 사용하지 않습니다. 전체 사진을 다시 올리거나 32컷을 다시 생성해주세요.",
         )
     if reference is not None:
         contents, content_type, _ = await validated_image_upload(reference)

@@ -43,8 +43,11 @@ function isFixedMasterContract(team: Team) {
   return contract?.version === 2
     || contract?.version === '2'
     || contract?.layout === '5x5'
+    || contract?.layout === '8x4'
     || (contract?.rows === 5 && contract?.columns === 5)
-    || contract?.frame_count === 25;
+    || (contract?.rows === 4 && contract?.columns === 8)
+    || contract?.frame_count === 25
+    || contract?.frame_count === 32;
 }
 
 function PaperPeterComponent({
