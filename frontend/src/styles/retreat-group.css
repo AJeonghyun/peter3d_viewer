@@ -26,6 +26,7 @@ body {
   display: grid;
   width: 100%;
   height: 100%;
+  min-height: 100vh;
   min-height: 100dvh;
   overflow: hidden;
   place-items: center;
@@ -34,6 +35,7 @@ body {
 
 .retreat-group-stage {
   position: relative;
+  width: min(100%, calc(100vh * 16 / 9));
   width: min(100%, calc(100dvh * 16 / 9));
   height: min(100%, calc(100vw * 9 / 16));
   overflow: hidden;
@@ -88,8 +90,11 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   z-index: 1;
   top: 8%;
   left: 14%;
+  width: 7vw;
   width: 7cqw;
+  height: 7vw;
   height: 7cqw;
+  border: max(2px, 0.18vw) solid rgb(255 255 255 / 54%);
   border: max(2px, 0.18cqw) solid rgb(255 255 255 / 54%);
   border-radius: 50%;
   background: #fff8bd;
@@ -107,6 +112,7 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 .retreat-group-stage__waves {
   z-index: 2;
   height: 8%;
+  background-size: 12vw 100%;
   background-size: 12cqw 100%;
   opacity: 0.9;
 }
@@ -122,6 +128,7 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   background-image:
     radial-gradient(ellipse at 50% 0%, rgb(250 254 255 / 92%) 0 19%, transparent 21%),
     radial-gradient(ellipse at 0 100%, transparent 44%, rgb(244 254 255 / 86%) 46% 56%, transparent 58%);
+  background-position: 0 0, 6vw 0;
   background-position: 0 0, 6cqw 0;
 }
 
@@ -133,6 +140,7 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
     radial-gradient(ellipse at 18% 18%, rgb(255 255 255 / 22%) 0 1%, transparent 1.4%),
     radial-gradient(ellipse at 72% 54%, rgb(183 137 63 / 10%) 0 0.7%, transparent 1.2%),
     linear-gradient(177deg, #ffe8ab 0%, #f7d994 100%);
+  background-size: 13vw 8vh, 17vw 9vh, auto;
   background-size: 13cqw 8cqh, 17cqw 9cqh, auto;
 }
 
@@ -141,13 +149,16 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   z-index: 6;
   display: grid;
   justify-items: center;
+  padding-top: 1.9vh;
   padding-top: 1.9cqh;
   text-align: center;
 }
 
 .retreat-group-stage__header p {
+  margin: 0 0 0.25vh;
   margin: 0 0 0.25cqh;
   color: #137998;
+  font-size: clamp(12px, 1.05vw, 18px);
   font-size: clamp(12px, 1.05cqw, 18px);
   font-weight: 900;
   letter-spacing: 0.16em;
@@ -159,6 +170,7 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   max-width: 82%;
   margin: 0;
   color: #123956;
+  font-size: clamp(34px, 4vw, 66px);
   font-size: clamp(34px, 4cqw, 66px);
   font-weight: 900;
   letter-spacing: -0.055em;
@@ -170,8 +182,10 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   position: relative;
   z-index: 5;
   display: grid;
+  gap: 0.72vh;
   gap: 0.72cqh;
   width: 88%;
+  margin: 1.55vh auto 0;
   margin: 1.55cqh auto 0;
 }
 
@@ -179,20 +193,24 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
+  gap: 0.78vw;
   gap: 0.78cqw;
   justify-content: center;
   margin-inline: auto;
 }
 
 .retreat-group-grid__row[data-row-size="4"] {
+  width: min(100%, 77vw);
   width: min(100%, 77cqw);
 }
 
 .retreat-group-grid__row[data-row-size="3"] {
+  width: min(100%, 58vw);
   width: min(100%, 58cqw);
 }
 
 .retreat-group-grid__row[data-row-size="2"] {
+  width: min(100%, 39vw);
   width: min(100%, 39cqw);
 }
 
@@ -201,10 +219,13 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 34%;
   min-width: 0;
+  height: 12.65vh;
   height: 12.65cqh;
   min-height: 0;
   overflow: hidden;
+  border: max(1px, 0.1vw) solid rgb(255 255 255 / 88%);
   border: max(1px, 0.1cqw) solid rgb(255 255 255 / 88%);
+  border-radius: clamp(8px, 0.7vw, 13px);
   border-radius: clamp(8px, 0.7cqw, 13px);
   color: #123956;
   background: rgb(250 254 255 / 91%);
@@ -217,12 +238,14 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   min-width: 0;
   align-content: center;
   justify-items: start;
+  padding: 0.7vh 0.35vw 0.7vh 1.12vw;
   padding: 0.7cqh 0.35cqw 0.7cqh 1.12cqw;
   text-align: left;
 }
 
 .retreat-group-card__number {
   color: #123956;
+  font-size: clamp(25px, 2.15vw, 40px);
   font-size: clamp(25px, 2.15cqw, 40px);
   font-variant-numeric: tabular-nums;
   font-weight: 900;
@@ -232,9 +255,11 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 
 .retreat-group-card__name {
   max-width: 100%;
+  margin-top: 0.48vh;
   margin-top: 0.48cqh;
   overflow: hidden;
   color: #2d6d82;
+  font-size: clamp(11px, 0.86vw, 16px);
   font-size: clamp(11px, 0.86cqw, 16px);
   font-weight: 750;
   line-height: 1.05;
@@ -244,9 +269,11 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 
 .retreat-group-card__details {
   max-width: 100%;
+  margin-top: 0.32vh;
   margin-top: 0.32cqh;
   overflow: hidden;
   color: #527584;
+  font-size: clamp(8px, 0.65vw, 12px);
   font-size: clamp(8px, 0.65cqw, 12px);
   font-weight: 650;
   line-height: 1.05;
@@ -300,7 +327,9 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 .retreat-group-plan {
   position: absolute;
   z-index: 12;
+  top: 1.55vh;
   top: 1.55cqh;
+  right: 1.45vw;
   right: 1.45cqw;
   display: grid;
   justify-items: end;
@@ -308,8 +337,11 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 }
 
 .retreat-group-plan__trigger {
+  max-width: 15vw;
   max-width: 15cqw;
+  min-height: 3.2vh;
   min-height: 3.2cqh;
+  padding: 0.48vh 0.78vw;
   padding: 0.48cqh 0.78cqw;
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 88%);
@@ -317,6 +349,7 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
   color: #123956;
   background: rgb(250 254 255 / 84%);
   cursor: pointer;
+  font-size: clamp(9px, 0.72vw, 13px);
   font-size: clamp(9px, 0.72cqw, 13px);
   font-weight: 850;
   text-overflow: ellipsis;
@@ -341,9 +374,13 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 
 .retreat-group-plan__menu {
   display: grid;
+  gap: 0.42vh;
   gap: 0.42cqh;
+  width: min(16vw, 280px);
   width: min(16cqw, 280px);
+  margin-top: 0.55vh;
   margin-top: 0.55cqh;
+  padding: 0.7vh 0.55vw;
   padding: 0.7cqh 0.55cqw;
   border: 1px solid rgb(255 255 255 / 92%);
   border-radius: 12px;
@@ -352,9 +389,11 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 
 .retreat-group-plan__option {
   display: grid;
+  gap: 0.18vh;
   gap: 0.18cqh;
   width: 100%;
   min-width: 0;
+  padding: 0.65vh 0.55vw;
   padding: 0.65cqh 0.55cqw;
   border: 0;
   border-radius: 8px;
@@ -370,6 +409,7 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 }
 
 .retreat-group-plan__option span {
+  font-size: clamp(9px, 0.7vw, 13px);
   font-size: clamp(9px, 0.7cqw, 13px);
   font-weight: 850;
 }
@@ -379,6 +419,7 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 .retreat-group-plan__admin {
   overflow: hidden;
   color: #527584;
+  font-size: clamp(8px, 0.58vw, 11px);
   font-size: clamp(8px, 0.58cqw, 11px);
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -386,12 +427,14 @@ html[data-background-mode="transparent"] .retreat-group-stage__shore {
 }
 
 .retreat-group-plan__message {
+  padding: 0.35vh 0.55vw;
   padding: 0.35cqh 0.55cqw;
   color: #b05748;
 }
 
 .retreat-group-plan__admin {
   justify-self: start;
+  padding: 0.45vh 0.55vw;
   padding: 0.45cqh 0.55cqw;
   color: #087f9f;
   font-weight: 850;

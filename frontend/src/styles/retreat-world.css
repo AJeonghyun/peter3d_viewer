@@ -26,6 +26,7 @@ body {
   position: relative;
   width: 100%;
   height: 100%;
+  min-height: 100vh;
   min-height: 100dvh;
   overflow: hidden;
   isolation: isolate;
@@ -82,30 +83,42 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 
 .retreat-parade__sun {
   position: absolute;
+  top: 9vh;
   top: 9cqh;
+  right: 13vw;
   right: 13cqw;
+  width: 12vw;
   width: 12cqw;
   max-width: 230px;
   aspect-ratio: 1;
+  border: 0.42vw solid rgb(255 255 255 / 38%);
   border: 0.42cqw solid rgb(255 255 255 / 38%);
   border-radius: 50%;
   background: #fff5b5;
+  box-shadow: 0 0 0 1.6vw rgb(255 249 197 / 24%);
   box-shadow: 0 0 0 1.6cqw rgb(255 249 197 / 24%);
   transition: all 800ms ease;
 }
 
 .retreat-parade[data-scene="campfire"] .retreat-parade__sun {
+  top: 7vh;
   top: 7cqh;
+  right: 10vw;
   right: 10cqw;
+  width: 6.2vw;
   width: 6.2cqw;
+  border-width: 0.2vw;
   border-width: 0.2cqw;
   background: #fff3c4;
+  box-shadow: 0 0 0 1.1vw rgb(255 240 179 / 8%);
   box-shadow: 0 0 0 1.1cqw rgb(255 240 179 / 8%);
 }
 
 .retreat-parade__cloud {
   position: absolute;
+  width: 13vw;
   width: 13cqw;
+  height: 4.3vh;
   height: 4.3cqh;
   border-radius: 999px;
   opacity: 0.72;
@@ -149,7 +162,9 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade__cloud--two {
   top: 25%;
   left: 38%;
+  width: 9vw;
   width: 9cqw;
+  height: 3.2vh;
   height: 3.2cqh;
   opacity: 0.48;
   animation-duration: 68s;
@@ -159,7 +174,9 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade__cloud--three {
   top: 15%;
   left: 74%;
+  width: 11vw;
   width: 11cqw;
+  height: 3.6vh;
   height: 3.6cqh;
   opacity: 0.56;
   animation-duration: 61s;
@@ -170,8 +187,11 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   position: absolute;
   top: 25%;
   left: 18%;
+  width: 1.5vw;
   width: 1.5cqw;
+  height: 0.8vw;
   height: 0.8cqw;
+  border-top: max(1px, 0.12vw) solid #39778b;
   border-top: max(1px, 0.12cqw) solid #39778b;
   border-radius: 50%;
   opacity: 0.54;
@@ -180,10 +200,15 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 
 .retreat-parade__birds::after {
   position: absolute;
+  top: -0.12vw;
   top: -0.12cqw;
+  left: 1.25vw;
   left: 1.25cqw;
+  width: 1.2vw;
   width: 1.2cqw;
+  height: 0.65vw;
   height: 0.65cqw;
+  border-top: max(1px, 0.1vw) solid #39778b;
   border-top: max(1px, 0.1cqw) solid #39778b;
   border-radius: 50%;
   content: "";
@@ -193,8 +218,8 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade__birds--two {
   top: 15%;
   left: 59%;
-  scale: 0.72;
   opacity: 0.38;
+  transform: rotate(13deg) scale(0.72);
 }
 
 .retreat-parade__sea {
@@ -220,6 +245,13 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   background:
     repeating-linear-gradient(
       176deg,
+      transparent 0 4.8vh,
+      rgb(255 255 255 / 20%) 4.95vh 5.18vh,
+      transparent 5.32vh 10vh
+    );
+  background:
+    repeating-linear-gradient(
+      176deg,
       transparent 0 4.8cqh,
       rgb(255 255 255 / 20%) 4.95cqh 5.18cqh,
       transparent 5.32cqh 10cqh
@@ -233,6 +265,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   z-index: 1;
   left: -20%;
   width: 46%;
+  height: 0.55vh;
   height: 0.55cqh;
   border-radius: 999px;
   background: rgb(226 254 255 / 58%);
@@ -255,7 +288,9 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   position: absolute;
   right: 8%;
   bottom: 0;
+  width: 19vw;
   width: 19cqw;
+  height: 5vh;
   height: 5cqh;
   border-radius: 80% 28% 0 0;
   opacity: 0.26;
@@ -265,8 +300,11 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade__island::before {
   position: absolute;
   right: 22%;
+  bottom: 3.4vh;
   bottom: 3.4cqh;
+  width: 0.65vw;
   width: 0.65cqw;
+  height: 5.4vh;
   height: 5.4cqh;
   border-radius: 999px;
   background: #297f85;
@@ -278,8 +316,11 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade__island::after {
   position: absolute;
   right: 10%;
+  bottom: 6.8vh;
   bottom: 6.8cqh;
+  width: 7vw;
   width: 7cqw;
+  height: 3.5vh;
   height: 3.5cqh;
   border-radius: 100% 0;
   background: #297f85;
@@ -318,6 +359,16 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   bottom: 0;
   overflow: hidden;
   background:
+    radial-gradient(circle at 13% 68%, rgb(255 255 255 / 36%) 0 0.22vw, transparent 0.26vw),
+    radial-gradient(circle at 84% 34%, rgb(201 151 70 / 17%) 0 0.18vw, transparent 0.22vw),
+    repeating-linear-gradient(
+      168deg,
+      transparent 0 6vh,
+      rgb(194 145 66 / 10%) 6.15vh 6.35vh,
+      transparent 6.5vh 12vh
+    ),
+    linear-gradient(180deg, #ffedb7 0%, #f6d88f 100%);
+  background:
     radial-gradient(circle at 13% 68%, rgb(255 255 255 / 36%) 0 0.22cqw, transparent 0.26cqw),
     radial-gradient(circle at 84% 34%, rgb(201 151 70 / 17%) 0 0.18cqw, transparent 0.22cqw),
     repeating-linear-gradient(
@@ -327,11 +378,23 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
       transparent 6.5cqh 12cqh
     ),
     linear-gradient(180deg, #ffedb7 0%, #f6d88f 100%);
+  background-size: 16vw 10vh, 19vw 13vh, auto, auto;
   background-size: 16cqw 10cqh, 19cqw 13cqh, auto, auto;
   transition: background 800ms ease;
 }
 
 .retreat-parade[data-scene="campfire"] .retreat-parade__sand {
+  background:
+    radial-gradient(ellipse at 50% 68%, rgb(242 132 60 / 30%) 0 8%, transparent 33%),
+    radial-gradient(circle at 13% 68%, rgb(213 176 128 / 16%) 0 0.22vw, transparent 0.26vw),
+    radial-gradient(circle at 84% 34%, rgb(30 26 32 / 24%) 0 0.18vw, transparent 0.22vw),
+    repeating-linear-gradient(
+      168deg,
+      transparent 0 6vh,
+      rgb(31 25 28 / 14%) 6.15vh 6.35vh,
+      transparent 6.5vh 12vh
+    ),
+    linear-gradient(180deg, #6b5a55 0%, #342d33 100%);
   background:
     radial-gradient(ellipse at 50% 68%, rgb(242 132 60 / 30%) 0 8%, transparent 33%),
     radial-gradient(circle at 13% 68%, rgb(213 176 128 / 16%) 0 0.22cqw, transparent 0.26cqw),
@@ -343,14 +406,17 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
       transparent 6.5cqh 12cqh
     ),
     linear-gradient(180deg, #6b5a55 0%, #342d33 100%);
+  background-size: auto, 16vw 10vh, 19vw 13vh, auto, auto;
   background-size: auto, 16cqw 10cqh, 19cqw 13cqh, auto, auto;
 }
 
 .retreat-parade__shell {
   position: absolute;
+  width: 1.2vw;
   width: 1.2cqw;
   min-width: 12px;
   aspect-ratio: 1.15;
+  border: max(1px, 0.08vw) solid rgb(160 110 58 / 38%);
   border: max(1px, 0.08cqw) solid rgb(160 110 58 / 38%);
   border-radius: 58% 42% 65% 35%;
   opacity: 0.55;
@@ -365,16 +431,25 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade__shell--two {
   left: 7%;
   bottom: 8%;
-  scale: 0.7;
-  transform: rotate(-18deg);
+  transform: rotate(-18deg) scale(0.7);
 }
 
 .retreat-parade__grass {
   position: absolute;
+  bottom: -0.5vh;
   bottom: -0.5cqh;
+  width: 5vw;
   width: 5cqw;
+  height: 3.5vh;
   height: 3.5cqh;
   opacity: 0.32;
+  background:
+    repeating-linear-gradient(
+      72deg,
+      transparent 0 0.6vw,
+      #6c9b5e 0.65vw 0.82vw,
+      transparent 0.87vw 1.3vw
+    );
   background:
     repeating-linear-gradient(
       72deg,
@@ -391,8 +466,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 
 .retreat-parade__grass--two {
   right: 19%;
-  scale: 0.72;
-  transform: scaleX(-1) skewX(-16deg);
+  transform: scaleX(-1) skewX(-16deg) scale(0.72);
 }
 
 .retreat-parade__walkers {
@@ -401,14 +475,17 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 }
 
 .retreat-parade__actor {
-  --actor-x: 0cqw;
+  --actor-x: 0vw;
   --actor-opacity: 1;
   --actor-lift: 0px;
   --actor-scale: 1;
   position: absolute;
   left: 0;
+  bottom: 7.2vh;
   bottom: 7.2cqh;
+  width: clamp(136px, 9.4vw, 180px);
   width: clamp(136px, 9.4cqw, 180px);
+  height: clamp(181px, 12.5vw, 240px);
   height: clamp(181px, 12.5cqw, 240px);
   opacity: var(--actor-opacity);
   transform:
@@ -456,17 +533,25 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   position: absolute;
   z-index: 4;
   left: 50%;
+  bottom: -1.25vh;
   bottom: -1.25cqh;
   display: grid;
+  min-width: clamp(78px, 5.4vw, 104px);
   min-width: clamp(78px, 5.4cqw, 104px);
+  max-width: clamp(118px, 8.4vw, 162px);
   max-width: clamp(118px, 8.4cqw, 162px);
+  min-height: clamp(24px, 2.45vh, 31px);
   min-height: clamp(24px, 2.45cqh, 31px);
   place-items: center;
+  padding: 0.32vh 0.75vw;
   padding: 0.32cqh 0.75cqw;
   overflow: hidden;
+  border: max(1px, 0.11vw) solid #fff0b8;
   border: max(1px, 0.11cqw) solid #fff0b8;
+  border-radius: clamp(7px, 0.55vw, 10px);
   border-radius: clamp(7px, 0.55cqw, 10px);
   color: #fffdf2;
+  font-size: clamp(12px, 0.8vw, 16px);
   font-size: clamp(12px, 0.8cqw, 16px);
   font-weight: 900;
   line-height: 1;
@@ -520,14 +605,17 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 }
 
 .retreat-parade__fire-glow {
-  --fire-x: 50cqw;
-  --fire-bottom: 18cqh;
+  --fire-x: 50vw;
+  --fire-bottom: 18vh;
   --fire-scale: 1;
   position: absolute;
   z-index: 3;
   left: var(--fire-x);
+  bottom: calc(var(--fire-bottom) - 12vh);
   bottom: calc(var(--fire-bottom) - 12cqh);
+  width: 42vw;
   width: 42cqw;
+  height: 42vh;
   height: 42cqh;
   border-radius: 50%;
   opacity: 0.75;
@@ -538,17 +626,20 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 }
 
 .retreat-parade__jesus {
-  --jesus-x: 50cqw;
-  --jesus-bottom: 31cqh;
+  --jesus-x: 50vw;
+  --jesus-bottom: 31vh;
   --jesus-scale: 1;
   position: absolute;
   z-index: 5;
   left: var(--jesus-x);
   bottom: var(--jesus-bottom);
+  width: clamp(215px, 16vw, 310px);
   width: clamp(215px, 16cqw, 310px);
+  height: clamp(250px, 25vh, 350px);
   height: clamp(250px, 25cqh, 350px);
   object-fit: contain;
   object-position: center bottom;
+  filter: drop-shadow(0 1vh 1.2vh rgb(7 12 23 / 34%));
   filter: drop-shadow(0 1cqh 1.2cqh rgb(7 12 23 / 34%));
   transform: translateX(-50%) scale(var(--jesus-scale));
   transform-origin: 50% 100%;
@@ -556,13 +647,15 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 }
 
 .retreat-parade__listener {
-  --listener-x: 50cqw;
-  --listener-bottom: 0cqh;
+  --listener-x: 50vw;
+  --listener-bottom: 0vh;
   --listener-scale: 1;
   position: absolute;
   left: 0;
   bottom: var(--listener-bottom);
+  width: clamp(172px, 13.2vw, 254px);
   width: clamp(172px, 13.2cqw, 254px);
+  height: clamp(188px, 15vw, 282px);
   height: clamp(188px, 15cqw, 282px);
   transform: translateX(calc(var(--listener-x) - 50%)) scale(var(--listener-scale));
   transform-origin: 50% 100%;
@@ -597,25 +690,32 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 }
 
 .retreat-parade__listener .retreat-parade__nameplate {
+  bottom: -0.3vh;
   bottom: -0.3cqh;
+  min-height: clamp(22px, 2.2vh, 29px);
   min-height: clamp(22px, 2.2cqh, 29px);
   border-color: rgb(255 226 168 / 78%);
   color: #fff8e7;
   background: linear-gradient(180deg, rgb(80 54 57 / 92%), rgb(40 34 47 / 96%));
+  box-shadow: 0 0.5vh 1.3vh rgb(5 9 22 / 24%);
   box-shadow: 0 0.5cqh 1.3cqh rgb(5 9 22 / 24%);
 }
 
 .retreat-parade__campfire {
-  --fire-x: 50cqw;
-  --fire-bottom: 18cqh;
+  --fire-x: 50vw;
+  --fire-bottom: 18vh;
   --fire-scale: 1;
   position: absolute;
   z-index: 8;
   left: var(--fire-x);
   bottom: var(--fire-bottom);
+  width: clamp(190px, 16vw, 305px);
   width: clamp(190px, 16cqw, 305px);
   aspect-ratio: 1;
   overflow: hidden;
+  filter:
+    drop-shadow(0 0 1.2vw rgb(255 129 39 / 76%))
+    drop-shadow(0 1vh 1.2vh rgb(8 10 19 / 32%));
   filter:
     drop-shadow(0 0 1.2cqw rgb(255 129 39 / 76%))
     drop-shadow(0 1cqh 1.2cqh rgb(8 10 19 / 32%));
@@ -636,7 +736,9 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 .retreat-parade__layout-panel {
   position: absolute;
   z-index: 30;
+  top: clamp(12px, 1.5vh, 24px);
   top: clamp(12px, 1.5cqh, 24px);
+  left: clamp(12px, 1.2vw, 24px);
   left: clamp(12px, 1.2cqw, 24px);
   width: min(680px, calc(100% - 24px));
   padding: 14px 16px 12px;
@@ -747,6 +849,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 }
 
 .retreat-parade[data-layout-edit="true"] [data-layout-selected="true"] {
+  outline: max(2px, 0.14vw) solid #ffd16f;
   outline: max(2px, 0.14cqw) solid #ffd16f;
   outline-offset: 5px;
   border-radius: 16px;
@@ -760,11 +863,13 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 
 @keyframes retreat-cloud-drift {
   from {
-    translate: 0 0;
+    transform: translate3d(0, 0, 0);
   }
 
   to {
-    translate: 132cqw 0;
+    transform: translate3d(132vw, 0, 0);
+    transform: translate3d(132vw, 0, 0);
+    transform: translate3d(132cqw, 0, 0);
   }
 }
 
@@ -774,6 +879,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   }
 
   to {
+    transform: translate3d(1.5%, 0.7vh, 0) scaleX(1);
     transform: translate3d(1.5%, 0.7cqh, 0) scaleX(1);
   }
 }
@@ -784,20 +890,24 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   }
 
   50% {
+    transform: translateX(130vw) scaleX(1.2);
     transform: translateX(130cqw) scaleX(1.2);
   }
 
   100% {
+    transform: translateX(270vw) scaleX(0.9);
     transform: translateX(270cqw) scaleX(0.9);
   }
 }
 
 @keyframes retreat-shore-breathe {
   from {
+    transform: translate3d(0, -0.7vh, 0) scaleX(1.02);
     transform: translate3d(0, -0.7cqh, 0) scaleX(1.02);
   }
 
   to {
+    transform: translate3d(0, 0.9vh, 0) scaleX(1);
     transform: translate3d(0, 0.9cqh, 0) scaleX(1);
   }
 }
@@ -855,6 +965,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 
 @media (max-width: 720px) {
   .retreat-parade__actor {
+    bottom: 8.5vh;
     bottom: 8.5cqh;
     width: 112px;
     height: 149px;

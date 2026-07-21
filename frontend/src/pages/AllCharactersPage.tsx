@@ -10,7 +10,7 @@ import {
 import type { AnimationName } from '../spriteLab/types';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
-import { getEffectiveDisplayMode } from '../retreat/displayMode';
+import { STAGE_UNIT_X, STAGE_UNIT_Y, getEffectiveDisplayMode } from '../retreat/displayMode';
 import type { RetreatGroup } from '../retreat/types';
 import '../styles/retreat-world.css';
 
@@ -560,9 +560,9 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
             className="retreat-parade__actor"
             data-action={actor.eventActive ? actor.event : 'walk'}
             style={{
-              '--actor-x': `${actor.x}cqw`,
+              '--actor-x': `${actor.x}${STAGE_UNIT_X}`,
               '--actor-opacity': actor.opacity,
-              '--actor-lift': actor.eventActive && actor.event === 'jump' ? '-4.6cqh' : '0px',
+              '--actor-lift': actor.eventActive && actor.event === 'jump' ? `-4.6${STAGE_UNIT_Y}` : '0px',
               '--actor-scale': 0.96 + Math.min(actor.progress, 0.15) * 0.26,
             } as CSSProperties}
           >
@@ -585,8 +585,8 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
           <div
             className="retreat-parade__fire-glow"
             style={{
-              '--fire-x': `${firePosition.x}cqw`,
-              '--fire-bottom': `${firePosition.bottom}cqh`,
+              '--fire-x': `${firePosition.x}${STAGE_UNIT_X}`,
+              '--fire-bottom': `${firePosition.bottom}${STAGE_UNIT_Y}`,
               '--fire-scale': firePosition.scale,
             } as CSSProperties}
             aria-hidden="true"
@@ -603,8 +603,8 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
             onPointerDown={(event) => handlePointerDown('jesus', event)}
             onKeyDown={(event) => handleEditableKeyDown('jesus', event)}
             style={{
-              '--jesus-x': `${jesusPosition.x}cqw`,
-              '--jesus-bottom': `${jesusPosition.bottom}cqh`,
+              '--jesus-x': `${jesusPosition.x}${STAGE_UNIT_X}`,
+              '--jesus-bottom': `${jesusPosition.bottom}${STAGE_UNIT_Y}`,
               '--jesus-scale': jesusPosition.scale,
             } as CSSProperties}
           />
@@ -629,8 +629,8 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
                 onPointerDown={(event) => handlePointerDown(layoutKey, event)}
                 onKeyDown={(event) => handleEditableKeyDown(layoutKey, event)}
                 style={{
-                  '--listener-x': `${position.x}cqw`,
-                  '--listener-bottom': `${position.bottom}cqh`,
+                  '--listener-x': `${position.x}${STAGE_UNIT_X}`,
+                  '--listener-bottom': `${position.bottom}${STAGE_UNIT_Y}`,
                   '--listener-scale': position.scale,
                 } as CSSProperties}
               >
@@ -657,8 +657,8 @@ export function AllCharactersWorld({ preview = false }: AllCharactersPageProps) 
             onPointerDown={(event) => handlePointerDown('fire', event)}
             onKeyDown={(event) => handleEditableKeyDown('fire', event)}
             style={{
-              '--fire-x': `${firePosition.x}cqw`,
-              '--fire-bottom': `${firePosition.bottom}cqh`,
+              '--fire-x': `${firePosition.x}${STAGE_UNIT_X}`,
+              '--fire-bottom': `${firePosition.bottom}${STAGE_UNIT_Y}`,
               '--fire-scale': firePosition.scale,
             } as CSSProperties}
           >

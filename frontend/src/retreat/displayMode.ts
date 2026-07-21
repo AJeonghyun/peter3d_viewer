@@ -47,3 +47,13 @@ export function buildObsDisplayUrl(path: string, origin = window.location.origin
   url.searchParams.set('obs', '1');
   return url.toString();
 }
+
+// OBS's embedded Chromium predates container-query units. The display stage
+// fills the whole viewport there, so vw/vh are exact substitutes for cqw/cqh.
+const supportsContainerUnits =
+  typeof CSS !== 'undefined'
+  && typeof CSS.supports === 'function'
+  && CSS.supports('width: 1cqw');
+
+export const STAGE_UNIT_X = supportsContainerUnits ? 'cqw' : 'vw';
+export const STAGE_UNIT_Y = supportsContainerUnits ? 'cqh' : 'vh';

@@ -102,7 +102,12 @@ html[data-background-mode="transparent"] .retreat-display-page {
 .atlas-sprite-animator__safe-frame {
   position: absolute;
   left: 50%;
+  /* percent + aspect-ratio duplicates keep OBS's older Chromium working
+     when container-query units are unsupported */
+  bottom: 4%;
   bottom: 4cqh;
+  aspect-ratio: 1 / 1;
+  width: 92%;
   width: min(92cqw, 92cqh);
   height: min(92cqw, 92cqh);
   background-image: var(--atlas-image);
@@ -111,15 +116,17 @@ html[data-background-mode="transparent"] .retreat-display-page {
   background-position-y: calc(var(--atlas-row, 0) * 100% / (var(--atlas-rows, 3) - 1));
   background-size: calc(var(--atlas-columns, 4) * 100%) calc(var(--atlas-rows, 3) * 100%);
   animation: retreat-atlas-frames 0.88s steps(1, end) infinite;
-  translate: -50% 0;
+  transform: translateX(-50%);
   transform-origin: 50% 100%;
 }
 
 .atlas-sprite-animator[data-layout="fixed-5x5"] .atlas-sprite-animator__safe-frame {
+  bottom: 2%;
   bottom: 2cqh;
+  width: 96%;
   width: min(96cqw, 96cqh);
   height: min(96cqw, 96cqh);
-  scale: var(--atlas-display-scale, 1);
+  transform: translateX(-50%) scale(var(--atlas-display-scale, 1));
   animation: none;
   image-rendering: auto;
 }
