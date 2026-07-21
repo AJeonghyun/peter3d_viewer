@@ -46,6 +46,7 @@ async def legacy_world_page():
 @router.get("/showcase")
 @router.get("/print-template")
 @router.get("/editor")
+@router.get("/editor/campfire")
 @router.get("/admin/seating")
 @router.get("/seating-admin")
 @router.get("/sprite-lab")

@@ -18,6 +18,9 @@ function resolvePage(pathname: string): PageName {
   if (pathname === '/admin/seating' || pathname.startsWith('/admin/seating/')) return 'admin-seating';
   if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin';
   if (pathname === '/world-3d' || pathname.startsWith('/world-3d/')) return 'world-3d';
+  if (pathname === '/editor/campfire' || pathname.startsWith('/editor/campfire/')) {
+    return 'campfire';
+  }
   if (pathname === '/editor' || pathname.startsWith('/editor/')) return 'editor';
   if (
     pathname === '/display/campfire'

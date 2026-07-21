@@ -631,6 +631,7 @@ class Peter3DBackendTests(unittest.TestCase):
                 "/campfire",
                 "/display/walk",
                 "/display/campfire",
+                "/editor/campfire",
                 "/page-3",
                 "/display/all-characters",
                 "/showcase",

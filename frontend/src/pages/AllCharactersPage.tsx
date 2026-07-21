@@ -129,6 +129,7 @@ function readDisplayMode(): DisplayMode {
   if (typeof window === 'undefined') return 'walk';
   const pathname = window.location.pathname;
   if (pathname === '/display/campfire' || pathname === '/campfire') return 'campfire';
+  if (pathname.startsWith('/editor/campfire')) return 'campfire';
   if (pathname === '/display/walk' || pathname === '/walk') return 'walk';
   const requested = new URLSearchParams(window.location.search).get('scene');
   if (requested === 'walk' || requested === 'campfire') return requested;
@@ -227,9 +228,11 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const backgroundDisplayMode = getEffectiveDisplayMode(settings.transparentBackground);
   const worldRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
-  const [layoutMode] = useState(
-    () => !preview && new URLSearchParams(window.location.search).get('layout') === '1',
-  );
+  const [layoutMode] = useState(() => {
+    if (preview || typeof window === 'undefined') return false;
+    if (window.location.pathname.startsWith('/editor/campfire')) return true;
+    return new URLSearchParams(window.location.search).get('layout') === '1';
+  });
   const [layoutGroupStart, setLayoutGroupStart] = useState(0);
   const [campfireLayout, setCampfireLayout] = useState(readCampfireLayout);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => scene ?? readDisplayMode());
@@ -473,9 +476,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       </div>
 
       {layoutMode ? (
-        <aside className="retreat-parade__layout-panel" aria-label="페이지 3 장면 및 배치 편집기">
+        <aside className="retreat-parade__layout-panel" aria-label="걷기·모닥불 장면 및 배치 편집기">
           <div className="retreat-parade__layout-heading">
-            <strong>페이지 3 출력 선택</strong>
+            <strong>장면 미리보기·배치 편집</strong>
             <span>{displayMode === 'campfire' ? '대상을 드래그 · 방향키로 미세 이동' : '걷기 장면 미리보기'}</span>
           </div>
           <div className="retreat-parade__layout-scenes" role="group" aria-label="출력할 장면 선택">
@@ -552,11 +555,11 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             </div>
           ) : null}
           <div className="retreat-parade__layout-footer">
-            <a href="/page-3">편집 끝내기</a>
+            <a href="/display/campfire">편집 끝내기</a>
           </div>
           <p>
-            장면 선택과 배치는 이 브라우저에 자동 저장됩니다.
-            직접 고정 URL: <code>?scene={displayMode}</code>
+            배치는 이 브라우저에 자동 저장됩니다.
+            송출 URL: <code>{displayMode === 'campfire' ? '/display/campfire' : '/display/walk'}</code>
           </p>
         </aside>
       ) : null}

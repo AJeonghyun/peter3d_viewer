@@ -208,14 +208,14 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 
 - 베드로 걷기 송출: `http://localhost:8000/display/walk`
 - 갈릴리 모닥불 송출: `http://localhost:8000/display/campfire`
-- 모닥불 배치 편집: `http://localhost:8000/display/campfire?layout=1`
+- 모닥불 배치 편집: `http://localhost:8000/editor/campfire`
 - 구 페이지 3 별칭(걷기로 연결): `http://localhost:8000/page-3`
 - 기존 3D 월드: `http://localhost:8000/world-3d`
 - 운영진 관리: `http://localhost:8000/admin`
 - 21프레임 애니메이션 실험실: `http://localhost:8000/sprite-lab`
 - 서버 상태: `http://localhost:8000/api/health`
 
-행사 운영 컴퓨터에서 먼저 `?layout=1` 화면의 버튼으로 걷기 또는 모닥불을
+행사 운영 컴퓨터에서 먼저 `/editor/campfire` 화면의 버튼으로 걷기 또는 모닥불을
 선택합니다. 선택값은 해당 브라우저에 저장됩니다. 장면이 바뀌지 않아야 하는
 송출 환경에서는 `?scene=walk` 또는 `?scene=campfire` 고정 주소를 크롬 전체
 화면으로 열고 프로젝터 또는 LED 화면에 출력합니다. 전시 화면에는 버튼이나
