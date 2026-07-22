@@ -167,7 +167,6 @@ from backend.routes.pages import (  # noqa: F401
     fixed_peter_master,
     frontend_index,
     health,
-    legacy_world_page,
     retreat_display_page,
     world_page,
 )
