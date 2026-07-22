@@ -97,6 +97,16 @@ interface ScenePosition {
   flipX: boolean;
   visible: boolean;
   poseId: RetreatPoseId;
+  // Seconds for one full turntable rotation. Only the trophy prop uses it.
+  spinSeconds?: number;
+}
+
+const TROPHY_MIN_SPIN_SECONDS = 1.5;
+const TROPHY_MAX_SPIN_SECONDS = 20;
+const TROPHY_DEFAULT_SPIN_SECONDS = 6;
+
+function clampSpinSeconds(value: number): number {
+  return Math.max(TROPHY_MIN_SPIN_SECONDS, Math.min(TROPHY_MAX_SPIN_SECONDS, value));
 }
 
 type SceneMediaAsset = SharedSceneMedia;
@@ -208,10 +218,28 @@ function defaultSeatingLayout(): SceneLayout {
   return layout;
 }
 
+// The rotating trophy is an optional prop available on every scene. It starts
+// hidden so existing scenes are untouched; operators add it from the editor.
+function defaultTrophyPosition(): ScenePosition {
+  return {
+    x: 50,
+    bottom: 6,
+    scale: 0.7,
+    rotation: 0,
+    flipX: false,
+    visible: false,
+    poseId: 'idle',
+    spinSeconds: TROPHY_DEFAULT_SPIN_SECONDS,
+  };
+}
+
 function defaultLayoutFor(mode: DisplayMode): SceneLayout {
-  if (mode === 'campfire') return defaultCampfireLayout();
-  if (mode === 'seating') return defaultSeatingLayout();
-  return defaultLineupLayout(mode);
+  const base = mode === 'campfire'
+    ? defaultCampfireLayout()
+    : mode === 'seating'
+      ? defaultSeatingLayout()
+      : defaultLineupLayout(mode);
+  return { ...base, trophy: defaultTrophyPosition() };
 }
 
 function layoutStorageKey(mode: DisplayMode): string {
@@ -255,6 +283,9 @@ function normalizeLayout(mode: DisplayMode, saved: unknown): SceneLayout {
           poseId: isRetreatPoseId(value.poseId)
             ? value.poseId
             : defaults[key]?.poseId ?? defaultPoseForPage(mode),
+          spinSeconds: Number.isFinite(value.spinSeconds)
+            ? clampSpinSeconds(value.spinSeconds as number)
+            : defaults[key]?.spinSeconds,
         };
       }
     }
@@ -325,9 +356,14 @@ function isLayoutRoute(): boolean {
   );
 }
 
+const PROP_META: Record<string, { thumb: string; label: string }> = {
+  jesus: { thumb: '예', label: '예수님' },
+  fire: { thumb: '불', label: '모닥불' },
+  trophy: { thumb: '트', label: '트로피' },
+};
+
 function editableLabel(key: string) {
-  if (key === 'jesus') return '예수님';
-  if (key === 'fire') return '모닥불';
+  if (key in PROP_META) return PROP_META[key].label;
   return `${key.replace('group-', '')}조 베드로`;
 }
 
@@ -817,6 +853,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
           flipX: next.flipX,
           visible: next.visible,
           poseId: next.poseId,
+          spinSeconds: next.spinSeconds === undefined
+            ? undefined
+            : clampSpinSeconds(next.spinSeconds),
         },
       };
     });
@@ -830,6 +869,14 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   function setElementPose(key: string, poseId: RetreatPoseId) {
     updateLayoutPosition(key, (current) => ({ ...current, poseId }));
     setSelectedLayoutKey(key);
+  }
+
+  function setTrophySpinSeconds(seconds: number) {
+    updateLayoutPosition('trophy', (current) => ({
+      ...current,
+      spinSeconds: clampSpinSeconds(seconds),
+    }));
+    setSelectedLayoutKey('trophy');
   }
 
   function handlePointerDown(key: string, event: ReactPointerEvent<HTMLElement>) {
@@ -1033,6 +1080,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         : '/display/stand';
   const lineupDirection = displayMode === 'back' ? '뒷모습' : '정면';
   const sidebarGroups = displayMode === 'seating' ? groups : activeSceneGroups;
+  const trophyPosition = activeLayout.trophy ?? defaultTrophyPosition();
   const poseOptions = poseOptionsForPage(displayMode);
   const xForCanvas = (x: number) => (
     displayMode === 'seating' && layoutMode
@@ -1228,12 +1276,14 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 </div>
               );
             })}
-            {(displayMode === 'seating'
-              ? []
-              : ['jesus', ...(displayMode === 'campfire' ? ['fire'] : [])] as const
-            ).map((key) => {
+            {([
+              ...(displayMode === 'seating' ? [] : ['jesus']),
+              ...(displayMode === 'campfire' ? ['fire'] : []),
+              'trophy',
+            ]).map((key) => {
               const item = activeLayout[key] ?? defaultLayoutFor(displayMode)[key];
               if (!item) return null;
+              const meta = PROP_META[key];
               return (
                 <div
                   className="retreat-parade__object-row retreat-parade__object-row--prop"
@@ -1247,10 +1297,10 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                     onClick={() => setSelectedLayoutKey(key)}
                   >
                     <span className="retreat-parade__object-thumb" data-kind={key} aria-hidden="true">
-                      {key === 'jesus' ? '예' : '불'}
+                      {meta.thumb}
                     </span>
                     <span>
-                      <strong>{key === 'jesus' ? '예수님' : '모닥불'}</strong>
+                      <strong>{meta.label}</strong>
                       <small>{item.visible ? '장면에 표시 중' : '장면에서 빠짐'}</small>
                     </span>
                   </button>
@@ -1276,6 +1326,26 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                           <option key={pose.id} value={pose.id}>{pose.label}</option>
                         ))}
                       </select>
+                    </label>
+                  ) : null}
+                  {key === 'trophy' ? (
+                    <label className="retreat-parade__object-speed">
+                      <span>회전 속도</span>
+                      <input
+                        type="range"
+                        min={TROPHY_MIN_SPIN_SECONDS}
+                        max={TROPHY_MAX_SPIN_SECONDS}
+                        step={0.5}
+                        aria-label="트로피 회전 속도"
+                        // Invert the slider so dragging right = faster.
+                        value={TROPHY_MAX_SPIN_SECONDS + TROPHY_MIN_SPIN_SECONDS
+                          - (item.spinSeconds ?? TROPHY_DEFAULT_SPIN_SECONDS)}
+                        onChange={(event) => setTrophySpinSeconds(
+                          TROPHY_MAX_SPIN_SECONDS + TROPHY_MIN_SPIN_SECONDS
+                            - Number(event.target.value),
+                        )}
+                      />
+                      <small>{(item.spinSeconds ?? TROPHY_DEFAULT_SPIN_SECONDS).toFixed(1)}초 / 바퀴</small>
                     </label>
                   ) : null}
                 </div>
@@ -1417,6 +1487,27 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             );
           })}
         </section>
+      ) : null}
+
+      {trophyPosition.visible ? (
+        <div
+          className="retreat-parade__trophy"
+          data-layout-selected={selectedLayoutKey === 'trophy' ? 'true' : 'false'}
+          role={layoutMode ? 'button' : undefined}
+          tabIndex={layoutMode ? 0 : undefined}
+          aria-label={layoutMode ? '트로피 위치 편집' : '회전하는 베드로 트로피'}
+          onPointerDown={(event) => handlePointerDown('trophy', event)}
+          onKeyDown={(event) => handleEditableKeyDown('trophy', event)}
+          style={{
+            '--trophy-x': `${xForCanvas(trophyPosition.x)}${STAGE_UNIT_X}`,
+            '--trophy-bottom': `${trophyPosition.bottom}${STAGE_UNIT_Y}`,
+            '--trophy-scale': trophyPosition.scale,
+            '--trophy-rotation': `${trophyPosition.rotation}deg`,
+            '--trophy-spin-duration': `${trophyPosition.spinSeconds ?? TROPHY_DEFAULT_SPIN_SECONDS}s`,
+          } as CSSProperties}
+        >
+          <img src="/assets/trophy/trophy-strip.png" alt="" draggable={false} />
+        </div>
       ) : null}
 
       {displayMode === 'seating' ? (

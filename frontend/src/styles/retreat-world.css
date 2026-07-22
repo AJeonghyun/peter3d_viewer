@@ -105,6 +105,37 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   user-select: none;
 }
 
+.retreat-parade__trophy {
+  --trophy-x: 50vw;
+  --trophy-x: 50cqw;
+  --trophy-bottom: 6vh;
+  --trophy-bottom: 6cqh;
+  --trophy-scale: 1;
+  --trophy-rotation: 0deg;
+  position: absolute;
+  z-index: 12;
+  left: var(--trophy-x);
+  bottom: var(--trophy-bottom);
+  height: clamp(180px, 34vh, 470px);
+  height: clamp(180px, 34cqh, 470px);
+  aspect-ratio: 136 / 333;
+  overflow: hidden;
+  transform: translateX(-50%) rotate(var(--trophy-rotation)) scale(var(--trophy-scale));
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 1.2vh 1.4vh rgb(8 10 19 / 34%));
+  filter: drop-shadow(0 1.2cqh 1.4cqh rgb(8 10 19 / 34%));
+}
+
+.retreat-parade__trophy img {
+  display: block;
+  height: 100%;
+  width: 1800%;
+  max-width: none;
+  object-fit: fill;
+  animation: retreat-trophy-spin var(--trophy-spin-duration, 6s) steps(18) infinite;
+  will-change: transform;
+}
+
 .retreat-parade__sky,
 .retreat-parade__sea,
 .retreat-parade__shoreline,
@@ -1303,10 +1334,38 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   background: #fff;
 }
 
+.retreat-parade__object-speed {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.retreat-parade__object-speed span {
+  color: #7a898b;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.retreat-parade__object-speed input[type="range"] {
+  min-width: 0;
+  width: 100%;
+  accent-color: #c79a3c;
+}
+
+.retreat-parade__object-speed small {
+  color: #304b54;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .retreat-parade[data-layout-edit="true"] .retreat-parade__jesus,
 .retreat-parade[data-layout-edit="true"] .retreat-parade__listener,
 .retreat-parade[data-layout-edit="true"] .retreat-parade__stander,
 .retreat-parade[data-layout-edit="true"] .retreat-parade__campfire,
+.retreat-parade[data-layout-edit="true"] .retreat-parade__trophy,
 .retreat-parade[data-layout-edit="true"] .retreat-parade__scene-media-object {
   pointer-events: auto;
   touch-action: none;
@@ -1419,6 +1478,11 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 @keyframes retreat-fire-frames {
   from { transform: translateX(0); }
   to { transform: translateX(-87.5%); }
+}
+
+@keyframes retreat-trophy-spin {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
 }
 
 @keyframes retreat-fire-glow {
