@@ -181,6 +181,71 @@ class Peter3DBackendTests(unittest.TestCase):
         stored = (config.UPLOADS_DIR / Path(media["asset_url"]).name).read_bytes()
         self.assertEqual(stored, stream.getvalue())
 
+    def test_seating_scene_persists_all_group_layout_and_rotation(self):
+        layout = {
+            f"group-{group_number}": {
+                "x": 8 + ((group_number - 1) % 7) * 14,
+                "bottom": 4 + (2 - ((group_number - 1) // 7)) * 31,
+                "scale": 0.72,
+                "rotation": -15 if group_number == 1 else 0,
+                "flipX": False,
+                "visible": True,
+                "poseId": "listen-front",
+            }
+            for group_number in range(1, 22)
+        }
+        payload = backend_main.RetreatSceneLayoutPayload(layout=layout)
+
+        saved = asyncio.run(backend_main.save_retreat_scene_layout("seating", payload))
+        loaded = asyncio.run(backend_main.get_retreat_scene("seating"))
+
+        self.assertEqual(len(saved["layout"]), 21)
+        self.assertEqual(loaded["layout"]["group-1"]["rotation"], -15.0)
+        self.assertEqual(loaded["layout"]["group-21"]["poseId"], "listen-front")
+
+    def test_existing_sqlite_scene_tables_are_migrated_for_seating(self):
+        with backend_main.connect_db() as db:
+            db.execute("DROP INDEX retreat_scene_media_scene_idx")
+            db.execute("DROP TABLE retreat_scene_media")
+            db.execute("DROP TABLE retreat_scenes")
+            db.execute(
+                """
+                CREATE TABLE retreat_scenes (
+                    scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire')),
+                    layout_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE retreat_scene_media (
+                    id TEXT PRIMARY KEY,
+                    scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire')),
+                    name TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    asset_url TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            db.execute(
+                "INSERT INTO retreat_scenes VALUES ('stand', '{}', 'before', 'before')"
+            )
+
+        backend_main.init_db()
+        with backend_main.connect_db() as db:
+            existing = db.execute(
+                "SELECT layout_json FROM retreat_scenes WHERE scene = 'stand'"
+            ).fetchone()
+            db.execute(
+                "INSERT INTO retreat_scenes VALUES ('seating', '{}', 'after', 'after')"
+            )
+
+        self.assertEqual(existing["layout_json"], "{}")
+
     def test_team_api_hides_legacy_teams_above_21(self):
         with backend_main.connect_db() as db:
             db.execute(
@@ -728,12 +793,15 @@ class Peter3DBackendTests(unittest.TestCase):
                 "/stand",
                 "/back",
                 "/campfire",
+                "/seating",
                 "/display/stand",
                 "/display/back",
                 "/display/campfire",
+                "/display/seating",
                 "/editor/stand",
                 "/editor/back",
                 "/editor/campfire",
+                "/editor/seating",
                 "/walk",
                 "/display/walk",
                 "/page-3",

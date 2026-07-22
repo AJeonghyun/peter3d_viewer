@@ -80,6 +80,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   --scene-media-bottom: 24vh;
   --scene-media-bottom: 24cqh;
   --scene-media-scale: 1;
+  --scene-media-rotation: 0deg;
   --scene-media-flip: 1;
   position: absolute;
   left: var(--scene-media-x);
@@ -91,7 +92,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   height: clamp(140px, 25cqh, 380px);
   margin: 0;
   place-items: center;
-  transform: translateX(-50%) scale(var(--scene-media-scale));
+  transform: translateX(-50%) rotate(var(--scene-media-rotation)) scale(var(--scene-media-scale));
   transform-origin: 50% 100%;
 }
 
@@ -651,6 +652,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   --jesus-x: 50vw;
   --jesus-bottom: 31vh;
   --jesus-scale: 1;
+  --jesus-rotation: 0deg;
   position: absolute;
   z-index: 5;
   left: var(--jesus-x);
@@ -661,7 +663,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   height: clamp(250px, 25cqh, 350px);
   filter: drop-shadow(0 1vh 1.2vh rgb(7 12 23 / 34%));
   filter: drop-shadow(0 1cqh 1.2cqh rgb(7 12 23 / 34%));
-  transform: translateX(-50%) scale(var(--jesus-scale));
+  transform: translateX(-50%) rotate(var(--jesus-rotation)) scale(var(--jesus-scale));
   transform-origin: 50% 100%;
   animation: retreat-jesus-breathe 3.2s ease-in-out infinite alternate;
 }
@@ -678,6 +680,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   --listener-x: 50vw;
   --listener-bottom: 0vh;
   --listener-scale: 1;
+  --listener-rotation: 0deg;
   position: absolute;
   left: 0;
   bottom: var(--listener-bottom);
@@ -685,7 +688,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   width: clamp(172px, 13.2cqw, 254px);
   height: clamp(188px, 15vw, 282px);
   height: clamp(188px, 15cqw, 282px);
-  transform: translateX(calc(var(--listener-x) - 50%)) scale(var(--listener-scale));
+  transform: translateX(calc(var(--listener-x) - 50%)) rotate(var(--listener-rotation)) scale(var(--listener-scale));
   transform-origin: 50% 100%;
 }
 
@@ -731,6 +734,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   --stander-bottom: 2.5vh;
   --stander-bottom: 2.5cqh;
   --stander-scale: 1;
+  --stander-rotation: 0deg;
   position: absolute;
   z-index: 6;
   left: 0;
@@ -739,7 +743,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   width: clamp(172px, 13.2cqw, 254px);
   height: clamp(188px, 15vw, 282px);
   height: clamp(188px, 15cqw, 282px);
-  transform: translateX(calc(var(--stander-x) - 50%)) scale(var(--stander-scale));
+  transform: translateX(calc(var(--stander-x) - 50%)) rotate(var(--stander-rotation)) scale(var(--stander-scale));
   transform-origin: 50% 100%;
 }
 
@@ -791,6 +795,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   --fire-x: 50vw;
   --fire-bottom: 18vh;
   --fire-scale: 1;
+  --fire-rotation: 0deg;
   position: absolute;
   z-index: 8;
   left: var(--fire-x);
@@ -805,7 +810,7 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   filter:
     drop-shadow(0 0 1.2cqw rgb(255 129 39 / 76%))
     drop-shadow(0 1cqh 1.2cqh rgb(8 10 19 / 32%));
-  transform: translateX(-50%) scale(var(--fire-scale));
+  transform: translateX(-50%) rotate(var(--fire-rotation)) scale(var(--fire-scale));
   transform-origin: 50% 100%;
 }
 
@@ -1427,8 +1432,8 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 }
 
 @keyframes retreat-jesus-breathe {
-  from { transform: translateX(-50%) translateY(0) rotate(-0.12deg) scale(var(--jesus-scale)); }
-  to { transform: translateX(-50%) translateY(-0.55%) rotate(0.12deg) scale(var(--jesus-scale)); }
+  from { transform: translateX(-50%) translateY(0) rotate(calc(var(--jesus-rotation) - 0.12deg)) scale(var(--jesus-scale)); }
+  to { transform: translateX(-50%) translateY(-0.55%) rotate(calc(var(--jesus-rotation) + 0.12deg)) scale(var(--jesus-scale)); }
 }
 
 @media (max-width: 720px) {

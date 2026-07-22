@@ -24,6 +24,7 @@ const PAGE_META: Array<{ id: RetreatPage; label: string; path: string; editPath:
   { id: 'stand', label: '정면 라인업', path: '/display/stand', editPath: '/editor/stand' },
   { id: 'back', label: '뒷모습 라인업', path: '/display/back', editPath: '/editor/back' },
   { id: 'campfire', label: '갈릴리 모닥불', path: '/display/campfire', editPath: '/editor/campfire' },
+  { id: 'seating', label: '전체 자리표', path: '/display/seating', editPath: '/editor/seating' },
 ];
 
 function downloadJson(settings: RetreatSettings) {

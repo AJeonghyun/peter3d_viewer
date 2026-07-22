@@ -182,6 +182,13 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("peter-page3-stand-layout-v3", source)
         self.assertIn("peter-page3-back-layout-v2", source)
         self.assertIn("peter-page3-campfire-layout-v1", source)
+        self.assertIn("peter-page3-seating-layout-v1", source)
+        self.assertIn("defaultSeatingLayout", source)
+        self.assertIn("retreat-parade__seating-chart", source)
+        self.assertIn("displayMode === 'seating' ? groups : activeSceneGroups", source)
+        self.assertIn("오른쪽 회전 ↻", source)
+        self.assertIn("왼쪽 회전 ↺", source)
+        self.assertIn("rotation: normalizeRotation(next.rotation)", source)
         self.assertIn("data-layout-edit", source)
         self.assertIn("group-${group.groupNumber}", source)
         self.assertIn("campfireLayout.jesus", source)
@@ -228,14 +235,17 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("'back',", poses)
         self.assertNotIn("POSES_BY_PAGE", poses)
 
-    def test_every_scene_uses_three_exact_seven_group_rounds(self):
+        provider = (FRONTEND / "src" / "retreat" / "RetreatProvider.tsx").read_text()
+        self.assertIn("candidate.currentPage === 'seating'", provider)
+
+    def test_performance_scenes_keep_rounds_while_seating_shows_all_groups(self):
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
         self.assertIn(
-            "const activeSceneGroups = groupsForScene(groups, activeGroupScene);",
+            "? groups\n    : groupsForScene(groups, activeGroupScene);",
             source,
         )
         self.assertIn(
-            "const lineupGroups = displayMode === 'campfire' ? [] : activeSceneGroups;",
+            "const lineupGroups = displayMode === 'stand' || displayMode === 'back' ? activeSceneGroups : [];",
             source,
         )
         self.assertIn(
@@ -246,6 +256,7 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("group.groupNumber >= firstGroupNumber", source)
         self.assertIn("group.groupNumber <= lastGroupNumber", source)
         self.assertIn("(groupNumber - 1) % GROUPS_PER_SCENE", source)
+        self.assertIn("const seatingGroups = displayMode === 'seating' ? groups : [];", source)
 
     def test_legacy_atlas_falls_back_while_v6_and_v7_keep_their_frame_maps(self):
         source = (FRONTEND / "src" / "retreat" / "RetreatCharacter.tsx").read_text()

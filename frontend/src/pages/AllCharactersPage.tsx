@@ -59,6 +59,8 @@ const GROUP_SCENE_DURATION = 14_000;
 const GROUPS_PER_SCENE = 7;
 const START_OFFSET = 2_400;
 const TEAM_COUNT = 21;
+const SEATING_EDITOR_X_OFFSET = 21;
+const SEATING_EDITOR_X_SCALE = 0.79;
 const REACTION_ACTIONS = ['wave'] as const satisfies readonly AnimationName[];
 const REACTION_HOLD_MS = 950;
 const REACTION_MIN_GAP_MS = 1_600;
@@ -66,6 +68,7 @@ const REACTION_MAX_GAP_MS = 3_400;
 const STAND_LAYOUT_STORAGE_KEY = 'peter-page3-stand-layout-v3';
 const BACK_LAYOUT_STORAGE_KEY = 'peter-page3-back-layout-v2';
 const CAMPFIRE_LAYOUT_STORAGE_KEY = 'peter-page3-campfire-layout-v1';
+const SEATING_LAYOUT_STORAGE_KEY = 'peter-page3-seating-layout-v1';
 const DISPLAY_MODE_STORAGE_KEY = 'peter-page3-display-mode-v1';
 const MAX_REFERENCE_BACKGROUND_BYTES = 30 * 1024 * 1024;
 const MAX_SCENE_MEDIA_BYTES = 30 * 1024 * 1024;
@@ -90,6 +93,7 @@ interface ScenePosition {
   x: number;
   bottom: number;
   scale: number;
+  rotation: number;
   flipX: boolean;
   visible: boolean;
   poseId: RetreatPoseId;
@@ -111,6 +115,11 @@ function clamp(value: number, min = 0, max = 1) {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizeRotation(value: number) {
+  const wrapped = ((value + 180) % 360 + 360) % 360 - 180;
+  return Object.is(wrapped, -0) ? 0 : wrapped;
+}
+
 // Stand/back scenes show one seven-group cohort at a time. Every cohort shares
 // the same eight slots so all three rounds have a balanced, readable lineup.
 function defaultLineupLayout(mode: 'stand' | 'back' = 'stand'): SceneLayout {
@@ -122,6 +131,7 @@ function defaultLineupLayout(mode: 'stand' | 'back' = 'stand'): SceneLayout {
       x: xForSlot(jesusSlot),
       bottom: 2.5,
       scale: 1,
+      rotation: 0,
       flipX: false,
       visible: true,
       poseId: defaultPoseForPage(mode),
@@ -134,6 +144,7 @@ function defaultLineupLayout(mode: 'stand' | 'back' = 'stand'): SceneLayout {
       x: xForSlot(slot),
       bottom: 2.5,
       scale: 1,
+      rotation: 0,
       flipX: false,
       visible: true,
       poseId: defaultPoseForPage(mode),
@@ -148,6 +159,7 @@ function defaultCampfireLayout(): SceneLayout {
       x: 50,
       bottom: 31,
       scale: 1,
+      rotation: 0,
       flipX: false,
       visible: true,
       poseId: 'listen-front',
@@ -156,6 +168,7 @@ function defaultCampfireLayout(): SceneLayout {
       x: 50,
       bottom: 18,
       scale: 1,
+      rotation: 0,
       flipX: false,
       visible: true,
       poseId: 'listen-front',
@@ -167,6 +180,7 @@ function defaultCampfireLayout(): SceneLayout {
       x: seat.x,
       bottom: seat.bottom,
       scale: seat.scale,
+      rotation: 0,
       flipX: seat.flipX,
       visible: true,
       poseId: poseForCampfireFrame(seat.fixedFrame),
@@ -175,12 +189,34 @@ function defaultCampfireLayout(): SceneLayout {
   return layout;
 }
 
+function defaultSeatingLayout(): SceneLayout {
+  const layout: SceneLayout = {};
+  for (let groupNumber = 1; groupNumber <= TEAM_COUNT; groupNumber += 1) {
+    const index = groupNumber - 1;
+    const column = index % GROUPS_PER_SCENE;
+    const rowFromTop = Math.floor(index / GROUPS_PER_SCENE);
+    layout[`group-${groupNumber}`] = {
+      x: 8 + (column / (GROUPS_PER_SCENE - 1)) * 84,
+      bottom: 4 + (2 - rowFromTop) * 31,
+      scale: 0.72,
+      rotation: 0,
+      flipX: false,
+      visible: true,
+      poseId: 'listen-front',
+    };
+  }
+  return layout;
+}
+
 function defaultLayoutFor(mode: DisplayMode): SceneLayout {
-  return mode === 'campfire' ? defaultCampfireLayout() : defaultLineupLayout(mode);
+  if (mode === 'campfire') return defaultCampfireLayout();
+  if (mode === 'seating') return defaultSeatingLayout();
+  return defaultLineupLayout(mode);
 }
 
 function layoutStorageKey(mode: DisplayMode): string {
   if (mode === 'campfire') return CAMPFIRE_LAYOUT_STORAGE_KEY;
+  if (mode === 'seating') return SEATING_LAYOUT_STORAGE_KEY;
   return mode === 'back' ? BACK_LAYOUT_STORAGE_KEY : STAND_LAYOUT_STORAGE_KEY;
 }
 
@@ -207,6 +243,9 @@ function normalizeLayout(mode: DisplayMode, saved: unknown): SceneLayout {
           x: clamp(value.x, 2, 98),
           bottom: clamp(value.bottom, -4, 70),
           scale: clamp(value.scale, 0.35, 1.8),
+          rotation: Number.isFinite(value.rotation)
+            ? normalizeRotation(value.rotation)
+            : defaults[key]?.rotation ?? 0,
           flipX: typeof value.flipX === 'boolean'
             ? value.flipX
             : defaults[key]?.flipX ?? false,
@@ -240,6 +279,11 @@ function readDisplayMode(): DisplayMode {
   if (typeof window === 'undefined') return 'stand';
   const pathname = window.location.pathname;
   if (
+    pathname === '/display/seating'
+    || pathname === '/seating'
+    || pathname.startsWith('/editor/seating')
+  ) return 'seating';
+  if (
     pathname === '/display/campfire'
     || pathname === '/campfire'
     || pathname.startsWith('/editor/campfire')
@@ -258,10 +302,15 @@ function readDisplayMode(): DisplayMode {
     || pathname === '/walk'
   ) return 'stand';
   const requested = new URLSearchParams(window.location.search).get('scene');
-  if (requested === 'stand' || requested === 'back' || requested === 'campfire') return requested;
+  if (
+    requested === 'stand'
+    || requested === 'back'
+    || requested === 'campfire'
+    || requested === 'seating'
+  ) return requested;
   if (requested === 'walk') return 'stand';
   const saved = window.localStorage.getItem(DISPLAY_MODE_STORAGE_KEY);
-  return saved === 'campfire' || saved === 'back' ? saved : 'stand';
+  return saved === 'campfire' || saved === 'back' || saved === 'seating' ? saved : 'stand';
 }
 
 function isLayoutRoute(): boolean {
@@ -271,6 +320,7 @@ function isLayoutRoute(): boolean {
     pathname.startsWith('/editor/stand')
     || pathname.startsWith('/editor/back')
     || pathname.startsWith('/editor/campfire')
+    || pathname.startsWith('/editor/seating')
     || new URLSearchParams(window.location.search).get('layout') === '1'
   );
 }
@@ -290,6 +340,7 @@ function defaultSceneMediaPosition(index = 0): ScenePosition {
     x: 50 + (index % 4) * 3,
     bottom: 24 + (index % 3) * 3,
     scale: 1,
+    rotation: 0,
     flipX: false,
     visible: true,
     poseId: 'idle',
@@ -361,17 +412,20 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     stand: false,
     back: false,
     campfire: false,
+    seating: false,
   });
   const sceneRevisionRef = useRef<Record<DisplayMode, string | null | undefined>>({
     stand: undefined,
     back: undefined,
     campfire: undefined,
+    seating: undefined,
   });
   const [layoutMode] = useState(() => !preview && isLayoutRoute());
   const [layoutGroupStart, setLayoutGroupStart] = useState(0);
   const [standLayout, setStandLayout] = useState(() => readLayout('stand'));
   const [backLayout, setBackLayout] = useState(() => readLayout('back'));
   const [campfireLayout, setCampfireLayout] = useState(() => readLayout('campfire'));
+  const [seatingLayout, setSeatingLayout] = useState(() => readLayout('seating'));
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => scene ?? readDisplayMode());
   const [selectedLayoutKey, setSelectedLayoutKey] = useState('group-1');
   const [localPaused, setLocalPaused] = useState(false);
@@ -384,7 +438,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const [sceneMediaError, setSceneMediaError] = useState('');
 
   const playing = settings.animationPlaying && !localPaused;
-  const groupsRotating = !layoutMode && playing;
+  const groupsRotating = displayMode !== 'seating' && !layoutMode && playing;
   const clock = useLoopClock(
     groupsRotating,
     GROUP_SCENES.length * GROUP_SCENE_DURATION,
@@ -402,12 +456,16 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     ? campfireLayout
     : displayMode === 'back'
       ? backLayout
-      : standLayout;
+      : displayMode === 'seating'
+        ? seatingLayout
+        : standLayout;
   const setActiveLayout = displayMode === 'campfire'
     ? setCampfireLayout
     : displayMode === 'back'
       ? setBackLayout
-      : setStandLayout;
+      : displayMode === 'seating'
+        ? setSeatingLayout
+        : setStandLayout;
 
   const activeGroupScene = layoutMode
     ? {
@@ -416,9 +474,12 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         groupCount: GROUPS_PER_SCENE,
       }
     : locateGroupScene(clock);
-  const activeSceneGroups = groupsForScene(groups, activeGroupScene);
+  const activeSceneGroups = displayMode === 'seating'
+    ? groups
+    : groupsForScene(groups, activeGroupScene);
   const campfireGroups = displayMode === 'campfire' ? activeSceneGroups : [];
-  const lineupGroups = displayMode === 'campfire' ? [] : activeSceneGroups;
+  const lineupGroups = displayMode === 'stand' || displayMode === 'back' ? activeSceneGroups : [];
+  const seatingGroups = displayMode === 'seating' ? groups : [];
 
   useEffect(() => {
     if (scene) setDisplayMode(scene);
@@ -427,9 +488,11 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   useEffect(() => {
     document.title = displayMode === 'campfire'
       ? '갈릴리 모닥불'
-      : displayMode === 'back'
-        ? '예수님과 베드로 뒷모습 라인업'
-        : '예수님과 베드로 정면 라인업';
+      : displayMode === 'seating'
+        ? '스물한 조 베드로 자리표'
+        : displayMode === 'back'
+          ? '예수님과 베드로 뒷모습 라인업'
+          : '예수님과 베드로 정면 라인업';
   }, [displayMode]);
 
   useEffect(() => {
@@ -476,6 +539,21 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     }, 400);
     return () => window.clearTimeout(timer);
   }, [campfireLayout, layoutMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(SEATING_LAYOUT_STORAGE_KEY, JSON.stringify(seatingLayout));
+    if (!layoutMode || !sceneSyncReadyRef.current.seating) return undefined;
+    const timer = window.setTimeout(() => {
+      void saveSharedSceneLayout('seating', seatingLayout).then((snapshot) => {
+        sceneRevisionRef.current.seating = snapshot.updatedAt;
+        setSceneMediaError('');
+      }).catch((error: unknown) => {
+        console.warn('자리표 장면 배치를 서버에 저장하지 못했습니다.', error);
+        setSceneMediaError('배치를 서버에 저장하지 못했습니다. 네트워크 연결을 확인하세요.');
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [layoutMode, seatingLayout]);
 
   useEffect(() => {
     window.localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, displayMode);
@@ -545,7 +623,8 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       const nextLayout = normalizeLayout(displayMode, snapshot.layout);
       if (displayMode === 'stand') setStandLayout(nextLayout);
       else if (displayMode === 'back') setBackLayout(nextLayout);
-      else setCampfireLayout(nextLayout);
+      else if (displayMode === 'campfire') setCampfireLayout(nextLayout);
+      else setSeatingLayout(nextLayout);
       setSceneMedia(snapshot.media);
       sceneRevisionRef.current[displayMode] = snapshot.updatedAt;
       sceneSyncReadyRef.current[displayMode] = true;
@@ -722,6 +801,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         x: 50,
         bottom: 0,
         scale: 1,
+        rotation: 0,
         flipX: false,
         visible: true,
         poseId: defaultPoseForPage(displayMode),
@@ -733,6 +813,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
           x: clamp(next.x, 2, 98),
           bottom: clamp(next.bottom, -4, 70),
           scale: clamp(next.scale, 0.35, 1.8),
+          rotation: normalizeRotation(next.rotation),
           flipX: next.flipX,
           visible: next.visible,
           poseId: next.poseId,
@@ -775,7 +856,10 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     const drag = dragRef.current;
     const bounds = worldRef.current?.getBoundingClientRect();
     if (!drag || !bounds || drag.pointerId !== event.pointerId) return;
-    const deltaX = ((event.clientX - drag.startClientX) / bounds.width) * 100;
+    const canvasDeltaX = ((event.clientX - drag.startClientX) / bounds.width) * 100;
+    const deltaX = displayMode === 'seating'
+      ? canvasDeltaX / SEATING_EDITOR_X_SCALE
+      : canvasDeltaX;
     const deltaY = ((event.clientY - drag.startClientY) / bounds.height) * 100;
     updateLayoutPosition(drag.key, (current) => ({
       ...current,
@@ -790,6 +874,14 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
 
   function handleEditableKeyDown(key: string, event: ReactKeyboardEvent<HTMLElement>) {
     if (!layoutMode) return;
+    if (event.key === '[' || event.key === ']') {
+      event.preventDefault();
+      updateLayoutPosition(key, (current) => ({
+        ...current,
+        rotation: current.rotation + (event.key === '[' ? -5 : 5),
+      }));
+      return;
+    }
     if (event.key.toLowerCase() === 'f' && (key.startsWith('group-') || isSceneMediaKey(key))) {
       event.preventDefault();
       updateLayoutPosition(key, (current) => ({ ...current, flipX: !current.flipX }));
@@ -821,6 +913,13 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     updateLayoutPosition(
       selectedLayoutKey,
       (current) => ({ ...current, flipX: !current.flipX }),
+    );
+  }
+
+  function rotateSelectedElement(delta: number) {
+    updateLayoutPosition(
+      selectedLayoutKey,
+      (current) => ({ ...current, rotation: current.rotation + delta }),
     );
   }
 
@@ -927,12 +1026,19 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   ).jesus;
   const displayPath = displayMode === 'campfire'
     ? '/display/campfire'
-    : displayMode === 'back'
-      ? '/display/back'
-      : '/display/stand';
+    : displayMode === 'seating'
+      ? '/display/seating'
+      : displayMode === 'back'
+        ? '/display/back'
+        : '/display/stand';
   const lineupDirection = displayMode === 'back' ? '뒷모습' : '정면';
-  const sidebarGroups = activeSceneGroups;
+  const sidebarGroups = displayMode === 'seating' ? groups : activeSceneGroups;
   const poseOptions = poseOptionsForPage(displayMode);
+  const xForCanvas = (x: number) => (
+    displayMode === 'seating' && layoutMode
+      ? SEATING_EDITOR_X_OFFSET + x * SEATING_EDITOR_X_SCALE
+      : x
+  );
   const selectedLayoutLabel = sceneMedia.find(
     (item) => sceneMediaLayoutKey(item.id) === selectedLayoutKey,
   )?.name ?? editableLabel(selectedLayoutKey);
@@ -948,13 +1054,17 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       data-paused={playing ? 'false' : 'true'}
       data-scene={displayMode}
       data-display-mode={displayMode}
-      data-group-range={`${activeGroupScene.groupStart + 1}-${activeGroupScene.groupStart + activeGroupScene.groupCount}`}
+      data-group-range={displayMode === 'seating'
+        ? `1-${TEAM_COUNT}`
+        : `${activeGroupScene.groupStart + 1}-${activeGroupScene.groupStart + activeGroupScene.groupCount}`}
       data-layout-edit={layoutMode ? 'true' : 'false'}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       aria-label={displayMode === 'campfire'
         ? '스물한 조 베드로가 나뉘어 예수님의 말씀을 듣는 모션그래픽'
+        : displayMode === 'seating'
+          ? '스물한 조 베드로가 한 화면에 모두 보이는 자리표'
         : `예수님과 스물한 조 베드로의 ${lineupDirection} 라인업 모션그래픽`}
     >
       {layoutMode && referenceBackgroundUrl && referenceBackgroundVisible ? (
@@ -966,12 +1076,20 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       {layoutMode ? (
         <aside
           className="retreat-parade__layout-panel"
-          aria-label={displayMode === 'campfire' ? '모닥불 배치 편집기' : `${lineupDirection} 라인업 배치 편집기`}
+          aria-label={displayMode === 'campfire'
+            ? '모닥불 배치 편집기'
+            : displayMode === 'seating'
+              ? '전체 자리표 배치 편집기'
+              : `${lineupDirection} 라인업 배치 편집기`}
         >
           <div className="retreat-parade__layout-heading">
             <div>
               <span>SCENE OBJECTS</span>
-              <strong>{displayMode === 'campfire' ? '모닥불 배치' : `${lineupDirection} 라인업`}</strong>
+              <strong>{displayMode === 'campfire'
+                ? '모닥불 배치'
+                : displayMode === 'seating'
+                  ? '전체 자리표'
+                  : `${lineupDirection} 라인업`}</strong>
             </div>
             <a href={displayPath}>완료</a>
           </div>
@@ -980,6 +1098,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
               ['stand', '정면', '/editor/stand'],
               ['back', '뒷면', '/editor/back'],
               ['campfire', '모닥불', '/editor/campfire'],
+              ['seating', '자리표', '/editor/seating'],
             ] as const).map(([mode, label, path]) => (
               <a
                 key={mode}
@@ -1048,21 +1167,23 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
               <p className="retreat-parade__reference-error" role="status">{sceneMediaError}</p>
             ) : null}
           </section>
-          <div className="retreat-parade__layout-groups" role="group" aria-label="편집할 조 회차 선택">
-            {GROUP_SCENES.map(({ groupStart, groupCount }) => (
-              <button
-                type="button"
-                key={groupStart}
-                className={layoutGroupStart === groupStart ? 'is-active' : undefined}
-                onClick={() => {
-                  setLayoutGroupStart(groupStart);
-                  setSelectedLayoutKey(`group-${groupStart + 1}`);
-                }}
-              >
-                {groupStart + 1}–{groupStart + groupCount}조
-              </button>
-            ))}
-          </div>
+          {displayMode !== 'seating' ? (
+            <div className="retreat-parade__layout-groups" role="group" aria-label="편집할 조 회차 선택">
+              {GROUP_SCENES.map(({ groupStart, groupCount }) => (
+                <button
+                  type="button"
+                  key={groupStart}
+                  className={layoutGroupStart === groupStart ? 'is-active' : undefined}
+                  onClick={() => {
+                    setLayoutGroupStart(groupStart);
+                    setSelectedLayoutKey(`group-${groupStart + 1}`);
+                  }}
+                >
+                  {groupStart + 1}–{groupStart + groupCount}조
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div className="retreat-parade__object-list" aria-label="장면 요소 목록">
             {sceneMedia.map((item, index) => {
@@ -1107,7 +1228,10 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 </div>
               );
             })}
-            {(['jesus', ...(displayMode === 'campfire' ? ['fire'] : [])] as const).map((key) => {
+            {(displayMode === 'seating'
+              ? []
+              : ['jesus', ...(displayMode === 'campfire' ? ['fire'] : [])] as const
+            ).map((key) => {
               const item = activeLayout[key] ?? defaultLayoutFor(displayMode)[key];
               if (!item) return null;
               return (
@@ -1234,6 +1358,20 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             >
               크게 +
             </button>
+            <button
+              type="button"
+              aria-label={`${selectedLayoutLabel} 왼쪽으로 회전`}
+              onClick={() => rotateSelectedElement(-5)}
+            >
+              왼쪽 회전 ↺
+            </button>
+            <button
+              type="button"
+              aria-label={`${selectedLayoutLabel} 오른쪽으로 회전`}
+              onClick={() => rotateSelectedElement(5)}
+            >
+              오른쪽 회전 ↻
+            </button>
             {selectedLayoutKey.startsWith('group-') || isSceneMediaKey(selectedLayoutKey) ? (
               <button
                 type="button"
@@ -1246,7 +1384,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             <button type="button" onClick={resetSelectedPosition}>선택 초기화</button>
             <button type="button" onClick={resetAllPositions}>전체 초기화</button>
           </div>
-          <p>요소를 선택하고 캔버스에서 드래그하세요. 모든 변경은 서버에 자동 저장됩니다.</p>
+          <p>요소를 선택해 드래그하고 회전하세요. 모든 변경은 서버에 자동 저장됩니다.</p>
         </aside>
       ) : null}
 
@@ -1267,9 +1405,10 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 onPointerDown={(event) => handlePointerDown(mediaKey, event)}
                 onKeyDown={(event) => handleEditableKeyDown(mediaKey, event)}
                 style={{
-                  '--scene-media-x': `${position.x}${STAGE_UNIT_X}`,
+                  '--scene-media-x': `${xForCanvas(position.x)}${STAGE_UNIT_X}`,
                   '--scene-media-bottom': `${position.bottom}${STAGE_UNIT_Y}`,
                   '--scene-media-scale': position.scale,
+                  '--scene-media-rotation': `${position.rotation}deg`,
                   '--scene-media-flip': position.flipX ? -1 : 1,
                 } as CSSProperties}
               >
@@ -1280,7 +1419,47 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         </section>
       ) : null}
 
-      {displayMode !== 'campfire' ? (
+      {displayMode === 'seating' ? (
+        <section
+          className="retreat-parade__lineup retreat-parade__seating-chart"
+          aria-label="스물한 조 베드로 전체 자리표"
+        >
+          {seatingGroups.map((group) => {
+            const layoutKey = `group-${group.groupNumber}`;
+            const position = seatingLayout[layoutKey] ?? defaultSeatingLayout()[layoutKey];
+            if (!position?.visible) return null;
+            return (
+              <article
+                className="retreat-parade__stander retreat-parade__seating-character"
+                data-layout-selected={selectedLayoutKey === layoutKey ? 'true' : 'false'}
+                key={group.id}
+                role={layoutMode ? 'button' : undefined}
+                tabIndex={layoutMode ? 0 : undefined}
+                aria-label={layoutMode ? `${nicknameFor(group)} 자리표 위치 편집` : undefined}
+                onPointerDown={(event) => handlePointerDown(layoutKey, event)}
+                onKeyDown={(event) => handleEditableKeyDown(layoutKey, event)}
+                style={{
+                  '--stander-x': `${xForCanvas(position.x)}${STAGE_UNIT_X}`,
+                  '--stander-bottom': `${position.bottom}${STAGE_UNIT_Y}`,
+                  '--stander-scale': position.scale,
+                  '--stander-rotation': `${position.rotation}deg`,
+                } as CSSProperties}
+              >
+                <RetreatCharacter
+                  group={group}
+                  poseId={position.poseId}
+                  playing={playing}
+                  flipX={position.flipX}
+                  respectReducedMotion={false}
+                  className="retreat-parade__stander-character"
+                />
+              </article>
+            );
+          })}
+        </section>
+      ) : null}
+
+      {displayMode === 'stand' || displayMode === 'back' ? (
         <section
           className="retreat-parade__lineup"
           aria-label={`해변에 나란히 선 예수님과 조 캐릭터 ${lineupDirection}`}
@@ -1310,6 +1489,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                   '--stander-x': `${position.x}${STAGE_UNIT_X}`,
                   '--stander-bottom': `${position.bottom}${STAGE_UNIT_Y}`,
                   '--stander-scale': position.scale,
+                  '--stander-rotation': `${position.rotation}deg`,
                 } as CSSProperties}
               >
                 <RetreatCharacter
@@ -1336,6 +1516,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 '--stander-x': `${lineupJesusPosition.x}${STAGE_UNIT_X}`,
                 '--stander-bottom': `${lineupJesusPosition.bottom}${STAGE_UNIT_Y}`,
                 '--stander-scale': lineupJesusPosition.scale,
+                '--stander-rotation': `${lineupJesusPosition.rotation}deg`,
               } as CSSProperties}
             >
               <JesusCharacter
@@ -1380,6 +1561,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 '--jesus-x': `${campfireJesusPosition.x}${STAGE_UNIT_X}`,
                 '--jesus-bottom': `${campfireJesusPosition.bottom}${STAGE_UNIT_Y}`,
                 '--jesus-scale': campfireJesusPosition.scale,
+                '--jesus-rotation': `${campfireJesusPosition.rotation}deg`,
               } as CSSProperties}
             />
           ) : null}
@@ -1403,6 +1585,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                   '--listener-x': `${position.x}${STAGE_UNIT_X}`,
                   '--listener-bottom': `${position.bottom}${STAGE_UNIT_Y}`,
                   '--listener-scale': position.scale,
+                  '--listener-rotation': `${position.rotation}deg`,
                 } as CSSProperties}
               >
                 <RetreatCharacter
@@ -1430,6 +1613,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 '--fire-x': `${firePosition.x}${STAGE_UNIT_X}`,
                 '--fire-bottom': `${firePosition.bottom}${STAGE_UNIT_Y}`,
                 '--fire-scale': firePosition.scale,
+                '--fire-rotation': `${firePosition.rotation}deg`,
               } as CSSProperties}
             >
               <img src="/assets/campfire/campfire-sheet.png" alt="" />

@@ -19,7 +19,7 @@ from backend.schemas import RetreatSceneLayoutPayload
 
 router = APIRouter()
 
-VALID_SCENES = frozenset({"stand", "back", "campfire"})
+VALID_SCENES = frozenset({"stand", "back", "campfire", "seating"})
 SCENE_MEDIA_TYPES = {
     "image/png": ".png",
     "image/jpeg": ".jpg",

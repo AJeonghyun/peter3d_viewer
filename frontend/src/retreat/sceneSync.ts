@@ -5,6 +5,7 @@ export interface SharedScenePosition {
   x: number;
   bottom: number;
   scale: number;
+  rotation: number;
   flipX: boolean;
   visible: boolean;
   poseId: string;

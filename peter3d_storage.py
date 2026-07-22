@@ -215,7 +215,7 @@ SQLITE_SCHEMA = (
     """,
     """
     CREATE TABLE IF NOT EXISTS retreat_scenes (
-        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire')),
+        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
         layout_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -224,7 +224,7 @@ SQLITE_SCHEMA = (
     """
     CREATE TABLE IF NOT EXISTS retreat_scene_media (
         id TEXT PRIMARY KEY,
-        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire')),
+        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
         name TEXT NOT NULL,
         mime_type TEXT NOT NULL,
         asset_url TEXT NOT NULL,
@@ -387,7 +387,7 @@ POSTGRES_SCHEMA = (
     """,
     """
     CREATE TABLE IF NOT EXISTS retreat_scenes (
-        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire')),
+        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
         layout_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -396,7 +396,7 @@ POSTGRES_SCHEMA = (
     """
     CREATE TABLE IF NOT EXISTS retreat_scene_media (
         id TEXT PRIMARY KEY,
-        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire')),
+        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
         name TEXT NOT NULL,
         mime_type TEXT NOT NULL,
         asset_url TEXT NOT NULL,
@@ -451,11 +451,84 @@ TEAM_COLUMN_MIGRATIONS = {
 }
 
 
+def _migrate_retreat_scene_checks(db: DatabaseConnection) -> None:
+    """Allow the all-groups seating scene in databases created before it existed."""
+    if db.postgres:
+        tables = ("retreat_scenes", "retreat_scene_media")
+        for table in tables:
+            rows = db.execute(
+                f"""
+                SELECT conname, pg_get_constraintdef(oid) AS definition
+                FROM pg_constraint
+                WHERE conrelid = '{table}'::regclass AND contype = 'c'
+                """
+            ).fetchall()
+            for row in rows:
+                if "seating" in row["definition"]:
+                    continue
+                constraint = row["conname"]
+                if not constraint.replace("_", "").isalnum():
+                    raise ValueError("Unexpected PostgreSQL constraint name")
+                db.execute(f'ALTER TABLE {table} DROP CONSTRAINT "{constraint}"')
+                db.execute(
+                    f"""
+                    ALTER TABLE {table}
+                    ADD CONSTRAINT {table}_scene_check
+                    CHECK (scene IN ('stand', 'back', 'campfire', 'seating'))
+                    """
+                )
+        return
+
+    table_row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'retreat_scenes'"
+    ).fetchone()
+    if table_row is None or "seating" in table_row["sql"]:
+        return
+
+    db.execute("DROP INDEX IF EXISTS retreat_scene_media_scene_idx")
+    db.execute("ALTER TABLE retreat_scenes RENAME TO retreat_scenes_legacy")
+    db.execute("ALTER TABLE retreat_scene_media RENAME TO retreat_scene_media_legacy")
+    db.execute(
+        """
+        CREATE TABLE retreat_scenes (
+            scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+            layout_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    db.execute(
+        """
+        CREATE TABLE retreat_scene_media (
+            id TEXT PRIMARY KEY,
+            scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+            name TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            asset_url TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    db.execute("INSERT INTO retreat_scenes SELECT * FROM retreat_scenes_legacy")
+    db.execute("INSERT INTO retreat_scene_media SELECT * FROM retreat_scene_media_legacy")
+    db.execute("DROP TABLE retreat_scenes_legacy")
+    db.execute("DROP TABLE retreat_scene_media_legacy")
+    db.execute(
+        """
+        CREATE INDEX retreat_scene_media_scene_idx
+        ON retreat_scene_media (scene, created_at, id)
+        """
+    )
+
+
 def initialize_database(sqlite_path: Path, timestamp: str, *, team_count: int = 21) -> None:
     with connect_database(sqlite_path) as db:
         schema = POSTGRES_SCHEMA if db.postgres else SQLITE_SCHEMA
         for statement in schema:
             db.execute(statement)
+        _migrate_retreat_scene_checks(db)
 
         if db.postgres:
             for column, definition in TEAM_COLUMN_MIGRATIONS.items():

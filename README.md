@@ -231,22 +231,25 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 - 정면 라인업 송출: `http://localhost:8000/display/stand`
 - 뒷모습 라인업 송출: `http://localhost:8000/display/back`
 - 갈릴리 모닥불 송출: `http://localhost:8000/display/campfire`
+- 전체 자리표 송출: `http://localhost:8000/display/seating`
 - 정면 라인업 배치 편집: `http://localhost:8000/editor/stand`
 - 뒷모습 라인업 배치 편집: `http://localhost:8000/editor/back`
 - 모닥불 배치 편집: `http://localhost:8000/editor/campfire`
+- 전체 자리표 배치 편집: `http://localhost:8000/editor/seating`
 - 구 걷기·페이지 3 별칭(라인업으로 연결): `http://localhost:8000/display/walk`, `http://localhost:8000/page-3`
 - 기존 3D 월드: `http://localhost:8000/world-3d`
 - 운영진 관리: `http://localhost:8000/admin`
 - 21프레임 애니메이션 실험실: `http://localhost:8000/sprite-lab`
 - 서버 상태: `http://localhost:8000/api/health`
 
-행사 운영 컴퓨터에서는 `/display/stand`, `/display/back`, `/display/campfire`를
+행사 운영 컴퓨터에서는 `/display/stand`, `/display/back`, `/display/campfire`,
+`/display/seating`을
 각각 크롬 전체 화면으로 열고 프로젝터 또는 LED 화면에 출력합니다. 전시 화면에는 버튼이나
 스탯 패널 및 화면 전환 효과가 없으며, 선택한 종류만 유지한 채 7개 조씩
-끊김 없이 이어서 재생됩니다.
-모닥불 배치에서는 베드로 한 명을 선택한 뒤 `좌우 반전 (F)` 버튼이나
-키보드 `F` 키로 바라보는 방향을 바꿀 수 있으며 방향도 위치·크기와 함께
-브라우저에 자동 저장됩니다.
+끊김 없이 이어서 재생됩니다. 전체 자리표만 예외로 21개 조를 3행 7열 한 화면에 표시합니다.
+모든 배치 편집기에서는 요소를 선택한 뒤 왼쪽·오른쪽 회전 버튼으로 5도씩 돌릴 수 있습니다.
+위치·크기·회전·포즈·표시 여부는 서버에 자동 저장되어 다른 브라우저의 송출 화면에도
+동기화됩니다.
 
 ### 프론트엔드 개발 모드
 
