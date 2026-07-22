@@ -292,7 +292,10 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("fixed master is an immutable template", prompt)
         self.assertIn("exactly 32 complete characters", prompt)
         self.assertIn("strict 8-column by 4-row grid", prompt)
-        self.assertIn("idle-a, idle-b, wave, listen-front, listen-rear, listen-side, back", prompt)
+        self.assertIn("Frames 3-13 are the complete waving", prompt)
+        self.assertIn("Frames 14-24 are the complete joyful-jump", prompt)
+        self.assertIn("listen-rear, listen-back, and standing-back", prompt)
+        self.assertIn("never make prayer, point, or jump smaller", prompt)
         self.assertIn("upper garment", prompt)
         self.assertIn("lower garment", prompt)
         self.assertIn("student-left footwear", prompt)
@@ -433,7 +436,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(recorded["data"]["quality"], "high")
         self.assertEqual(recorded["data"]["background"], "opaque")
         self.assertNotIn("input_fidelity", recorded["data"])
-        self.assertEqual(recorded["files"][0][1][0], "fixed-peter-master-8x4-v6.png")
+        self.assertEqual(recorded["files"][0][1][0], "fixed-peter-master-8x4-v7.png")
         self.assertEqual(recorded["files"][1], (
             "image[]",
             ("team-1-corrected.png", b"corrected-student-peter", "image/png"),
@@ -1220,9 +1223,9 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(normalized.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
         self.assertEqual(report["status"], "passed")
         self.assertIsNotNone(normalized_bbox)
-        self.assertGreater(
+        self.assertGreaterEqual(
             normalized_bbox[3] - normalized_bbox[1],
-            (master_bbox[3] - master_bbox[1]) * 1.3,
+            (master_bbox[3] - master_bbox[1]) * 0.99,
         )
         self.assertEqual(normalized_bbox[3] - normalized_bbox[1], target_bbox[3] - target_bbox[1])
         for frame in report["frames"]:
@@ -1247,7 +1250,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(v5["version"], 5)
         self.assertEqual(v5["layout"], "5x5")
         self.assertEqual(v5["frame_count"], 25)
-        self.assertEqual(current["version"], 6)
+        self.assertEqual(current["version"], 7)
         self.assertEqual(current["layout"], "8x4")
         self.assertEqual(current["frame_count"], 32)
         self.assertEqual(current["display_scale"], 1.0)

@@ -11,6 +11,7 @@ import {
 } from 'react';
 import type { AnimationName } from '../spriteLab/types';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
+import { JesusCharacter } from '../retreat/JesusCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
 import {
   RETREAT_POSES,
@@ -817,6 +818,23 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                   >
                     {item.visible ? '빼기' : '+ 추가'}
                   </button>
+                  {key === 'jesus' ? (
+                    <label className="retreat-parade__object-pose">
+                      <span>포즈</span>
+                      <select
+                        aria-label="예수님 포즈"
+                        value={item.poseId}
+                        onChange={(event) => setElementPose(
+                          key,
+                          event.target.value as RetreatPoseId,
+                        )}
+                      >
+                        {poseOptions.map((pose) => (
+                          <option key={pose.id} value={pose.id}>{pose.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
               );
             })}
@@ -971,13 +989,12 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 '--stander-scale': lineupJesusPosition.scale,
               } as CSSProperties}
             >
-              <img
+              <JesusCharacter
                 className="retreat-parade__standing-jesus"
-                src={displayMode === 'back'
-                  ? '/assets/campfire/jesus-standing-back.png'
-                  : '/assets/campfire/jesus-standing-front.png'}
-                alt={`예수님 ${lineupDirection}`}
-                draggable={false}
+                poseId={lineupJesusPosition.poseId}
+                playing={playing}
+                flipX={lineupJesusPosition.flipX}
+                label={`예수님 ${lineupDirection}`}
               />
             </article>
           ) : null}
@@ -998,11 +1015,12 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             />
           ) : null}
           {campfireJesusPosition.visible ? (
-            <img
+            <JesusCharacter
               className="retreat-parade__jesus"
-              src="/assets/campfire/jesus-seated.png"
-              alt="모닥불 곁에서 말씀을 전하는 예수님"
-              draggable={false}
+              poseId={campfireJesusPosition.poseId}
+              playing={playing}
+              flipX={campfireJesusPosition.flipX}
+              label="모닥불 곁의 예수님"
               data-layout-selected={selectedLayoutKey === 'jesus' ? 'true' : 'false'}
               role={layoutMode ? 'button' : undefined}
               tabIndex={layoutMode ? 0 : undefined}

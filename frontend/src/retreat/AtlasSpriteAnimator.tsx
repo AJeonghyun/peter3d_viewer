@@ -35,6 +35,18 @@ const EXPANDED_MASTER_SEQUENCES: Record<AnimationName, number[]> = {
   kneel: [28],
 };
 
+const CURRENT_MASTER_SEQUENCES: Record<AnimationName, number[]> = {
+  ...FIXED_MASTER_SEQUENCES,
+  idle: [0, 1],
+  walk: [0, 1],
+  run: [0, 1],
+  wave: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  jump: [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+  pray: [24, 25],
+  point: [26],
+  kneel: [27],
+};
+
 function isFixedMasterContract(contract?: ShowcaseSpriteContract | null) {
   if (!contract) return false;
   return contract.version === 2
@@ -49,9 +61,12 @@ function isFixedMasterContract(contract?: ShowcaseSpriteContract | null) {
 
 function isExpandedMasterContract(contract?: ShowcaseSpriteContract | null) {
   return contract?.id === 'fixed-peter-master-edit-v6'
-    || contract?.layout === '8x4'
-    || (contract?.rows === 4 && contract?.columns === 8)
-    || contract?.frame_count === 32;
+    || Number(contract?.version) === 6;
+}
+
+function isCurrentMasterContract(contract?: ShowcaseSpriteContract | null) {
+  return contract?.id === 'fixed-peter-master-edit-v7'
+    || Number(contract?.version) >= 7;
 }
 
 function isRetreatMasterContract(contract?: ShowcaseSpriteContract | null) {
@@ -69,6 +84,9 @@ function animationRow(animation: AnimationName) {
 function frameDurationMs(animation: AnimationName) {
   if (animation === 'run') return 86;
   if (animation === 'walk') return 112;
+  if (animation === 'wave') return 125;
+  if (animation === 'jump') return 115;
+  if (animation === 'pray') return 680;
   if (animation === 'idle') return 520;
   return 900;
 }
@@ -93,6 +111,7 @@ function AtlasSpriteAnimatorComponent({
     || layout === 'fixed-5x5'
     || isFixedMasterContract(contract);
   const expandedMaster = isExpandedMasterContract(contract);
+  const currentMaster = isCurrentMasterContract(contract);
   const retreatMaster = layout === 'retreat-7x1' || isRetreatMasterContract(contract);
   const gridAtlas = fixedMaster || retreatMaster;
   const columns = gridAtlas ? Number(contract?.columns ?? (retreatMaster ? 7 : 5)) : 4;
@@ -104,7 +123,11 @@ function AtlasSpriteAnimatorComponent({
       ? [Math.max(0, Math.min(maxFrame, Math.round(fixedFrame)))]
       : retreatMaster
         ? animation === 'idle' ? [0, 1] : animation === 'wave' ? [2] : [0]
-        : (expandedMaster ? EXPANDED_MASTER_SEQUENCES : FIXED_MASTER_SEQUENCES)[animation]
+        : (currentMaster
+          ? CURRENT_MASTER_SEQUENCES
+          : expandedMaster
+            ? EXPANDED_MASTER_SEQUENCES
+            : FIXED_MASTER_SEQUENCES)[animation]
           ?? FIXED_MASTER_SEQUENCES.idle;
   const sequenceKey = sequence.join(',');
   const frame = sequence[frameOffset % sequence.length] ?? 0;

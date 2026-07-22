@@ -212,9 +212,9 @@ async def request_garment_atlas_ai_review(
             "text": (
                 "The images are: (1) candidate 32-frame atlas, (2) immutable fixed master, "
                 "(3, when supplied) corrected student full-body design. Review all 32 cells. "
-                "The atlas is an 8-column by 4-row grid. Frames 1-25 keep the old master "
-                "order; frames 26-32 are idle-a, idle-b, wave, listen-front, listen-rear, "
-                "listen-side, and back. "
+                "The atlas is an 8-column by 4-row grid. Frames 1-2 are idle, 3-13 wave, "
+                "14-24 joyful jump, 25-26 pray, and 27-32 are point, listen-front, "
+                "listen-side, listen-rear, seated-back, and standing-back. "
                 "Fail any frame where the pose, direction, face, hair, beard, skin, hands, "
                 "body proportions, character size, baseline, or visual style drifts from the "
                 "corresponding master cell. Fail clipping or missing/extra body parts. "

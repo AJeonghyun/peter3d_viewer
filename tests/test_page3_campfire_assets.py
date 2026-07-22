@@ -71,27 +71,21 @@ class Page3CampfireAssetTests(unittest.TestCase):
                 self.assertIsNotNone(rgba.getchannel("A").getbbox())
                 self.assertEqual(rgba.getpixel((0, 0))[3], 0)
 
-    def test_expanded_master_appends_all_seven_editor_poses_to_the_legacy_25(self):
+    def test_v7_master_contains_only_editor_poses_and_animated_reactions(self):
         runtime_dir = ROOT / "runtime-assets"
         manifest = json.loads(
-            (runtime_dir / "peter-retreat-master-expanded-v6.json").read_text()
+            (runtime_dir / "peter-retreat-master-expanded-v7.json").read_text()
         )
-        self.assertEqual(manifest["id"], "fixed-peter-master-edit-v6")
+        self.assertEqual(manifest["id"], "fixed-peter-master-edit-v7")
         self.assertEqual(manifest["layout"], "8x4")
         self.assertEqual(manifest["frame_count"], 32)
-        self.assertEqual(
-            [frame["id"] for frame in manifest["frames"][25:]],
-            [
-                "idle-a",
-                "idle-b",
-                "wave",
-                "listen-front",
-                "listen-rear",
-                "listen-side",
-                "back",
-            ],
-        )
-        with Image.open(runtime_dir / "peter-retreat-master-expanded-v6.png") as source:
+        frame_ids = [frame["id"] for frame in manifest["frames"]]
+        self.assertEqual(frame_ids[:2], ["idle-a", "idle-b"])
+        self.assertEqual(frame_ids[2:13], [f"wave-{index}" for index in range(1, 12)])
+        self.assertEqual(frame_ids[13:24], [f"joy-jump-{index}" for index in range(1, 12)])
+        self.assertEqual(frame_ids[-2:], ["listen-back", "back"])
+        self.assertFalse(any("walk" in frame_id or "run" in frame_id for frame_id in frame_ids))
+        with Image.open(runtime_dir / "peter-retreat-master-expanded-v7.png") as source:
             master = source.convert("RGBA")
             self.assertEqual(master.size, (CELL_SIZE * 8, CELL_SIZE * 4))
             for index in range(32):
@@ -102,6 +96,16 @@ class Page3CampfireAssetTests(unittest.TestCase):
                     (index // 8 + 1) * CELL_SIZE,
                 ))
                 self.assertIsNotNone(cell.getchannel("A").getbbox())
+
+    def test_jesus_master_matches_the_same_32_pose_contract(self):
+        asset_dir = FRONTEND / "public" / "assets" / "retreat"
+        manifest = json.loads((asset_dir / "jesus-retreat-master-v1.json").read_text())
+        self.assertEqual(manifest["id"], "fixed-jesus-master-edit-v1")
+        self.assertEqual(manifest["frame_count"], 32)
+        self.assertEqual(manifest["editor_poses"]["listen-back"], 30)
+        with Image.open(asset_dir / "jesus-retreat-master-v1.png") as source:
+            self.assertEqual(source.size, (CELL_SIZE * 8, CELL_SIZE * 4))
+            self.assertEqual(source.getpixel((0, 0))[3], 0)
 
     def test_campfire_sheet_has_eight_transparent_nonempty_frames(self):
         path = FRONTEND / "public" / "assets" / "campfire" / "campfire-sheet.png"
@@ -165,8 +169,8 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("get('scene')", source)
         self.assertIn("CAMPFIRE_SEATS", source)
         self.assertIn("campfire-sheet.png", source)
-        self.assertIn("jesus-standing-front.png", source)
-        self.assertIn("jesus-standing-back.png", source)
+        self.assertIn("JesusCharacter", source)
+        self.assertIn("aria-label=\"예수님 포즈\"", source)
         self.assertIn("poseId={poseId}", source)
         self.assertNotIn("retreat-parade__nameplate", source)
         self.assertNotIn("retreat-parade__nameplate", styles)
@@ -224,14 +228,16 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("group.groupNumber <= lastGroupNumber", source)
         self.assertIn("(groupNumber - 1) % GROUPS_PER_SCENE", source)
 
-    def test_legacy_atlas_falls_back_but_v6_uses_every_team_pose(self):
+    def test_legacy_atlas_falls_back_while_v6_and_v7_keep_their_frame_maps(self):
         source = (FRONTEND / "src" / "retreat" / "RetreatCharacter.tsx").read_text()
         self.assertIn("fixed-peter-master-edit-v5", source)
         self.assertIn("fixed-peter-master-edit-v6", source)
+        self.assertIn("fixed-peter-master-edit-v7", source)
         self.assertIn("supportsCampfirePoses", source)
         self.assertIn("supportsExpandedMaster", source)
         self.assertIn("needsCampfireFrames", source)
         self.assertIn("EXPANDED_MASTER_URL", source)
+        self.assertIn("pose.currentFrames", source)
         self.assertIn("pose.expandedFrames", source)
 
 

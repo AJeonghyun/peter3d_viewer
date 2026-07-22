@@ -152,8 +152,10 @@ function PaperPeterComponent({
   }, [layout, phase, slot.roam, team.id]);
 
   const usePresetSprite = layout === 'tier' && !sprite;
+  const usesCurrentMaster = Number(team.showcase_sprite_contract?.version) >= 7
+    || team.showcase_sprite_contract?.id === 'fixed-peter-master-edit-v7';
   const presetAnimation: AnimationName = phase !== 'active' || gesture === 'step'
-    ? 'walk'
+    ? usesCurrentMaster ? 'idle' : 'walk'
     : gesture === 'wave' ? 'wave' : 'idle';
   const actorStyle = {
     '--actor-x': `${slot.x}%`,

@@ -40,7 +40,8 @@ LEGACY_GARMENT_TRANSFER_CONTRACT = "fixed-peter-garment-transfer-v2"
 PREVIOUS_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v3"
 PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v4"
 V5_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v5"
-GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v6"
+V6_GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v6"
+GARMENT_TRANSFER_CONTRACT = "fixed-peter-master-edit-v7"
 GARMENT_ATLAS_COLUMNS = 8
 GARMENT_ATLAS_ROWS = 4
 GARMENT_FRAME_COUNT = 32
@@ -74,7 +75,7 @@ SHOWCASE_SAFE_MASTER_PATH = (
     ROOT / "runtime-assets" / "peter-sober-master-safe.png"
 )
 SHOWCASE_EXPANDED_MASTER_PATH = (
-    ROOT / "runtime-assets" / "peter-retreat-master-expanded-v6.png"
+    ROOT / "runtime-assets" / "peter-retreat-master-expanded-v7.png"
 )
 SHOWCASE_RETREAT_MASTER_PATH = (
     ROOT / "frontend" / "public" / "assets" / "retreat" / "peter-retreat-master.png"
@@ -91,7 +92,7 @@ STAT_KEYS = ("courage", "wisdom", "faith", "love")
 
 GARMENT_MASTER_EDIT_PROMPT = """
 You receive exactly two reference images in this order:
-1. FIXED MASTER: the canonical Peter 32-frame animation sheet in a strict 8x4 grid
+1. FIXED MASTER: the canonical Peter v7 32-frame pose sheet in a strict 8x4 grid
 2. STUDENT DESIGN: one corrected full-body photo of Peter decorated by students
 
 Create a NEW production-ready 32-frame Peter sheet by editing the fixed master.
@@ -99,12 +100,13 @@ The fixed master is an immutable template for every team. Copy its exact 8x4
 frame order, poses, direction, face, hair, beard, skin, hands, body proportions,
 outline style, character size, bottom-center anchors, and safe padding. Do not
 redesign, redraw, simplify, enlarge, shrink, rotate, reorder, or replace Peter.
-Frames 1-25 are the original Peter master frames and must preserve their old
-order unchanged. Frames 26-32 are the retreat extension frames in this exact
-order: idle-a, idle-b, wave, listen-front, listen-rear, listen-side, back.
-The seated listening frames must preserve their seated direction and body
-language exactly; they are used around a fire. The back frame must remain a
-standing rear view.
+Frames 1-2 are front-facing idle breathing. Frames 3-13 are the complete waving
+animation. Frames 14-24 are the complete joyful-jump animation. Frames 25-26
+are praying breathing. Frames 27-32 are point, listen-front, listen-side,
+listen-rear, listen-back, and standing-back. Preserve this order exactly.
+The listening-back frame is a true fully seated rear view with no face visible.
+The final back frame is a true standing rear view. Every pose uses the same
+large visual scale as listen-front; never make prayer, point, or jump smaller.
 
 Transfer from the student design only:
 - upper garment colors, patterns, writing, marks, and handmade texture

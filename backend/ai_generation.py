@@ -157,7 +157,7 @@ async def request_master_locked_garment_atlas(
     files = [
         (
             "image[]",
-            ("fixed-peter-master-8x4-v6.png", master_reference_for_ai(), "image/png"),
+            ("fixed-peter-master-8x4-v7.png", master_reference_for_ai(), "image/png"),
         ),
         ("image[]", (filename, student_reference, "image/png")),
     ]

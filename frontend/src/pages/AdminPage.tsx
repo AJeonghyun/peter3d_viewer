@@ -104,17 +104,12 @@ function generationProgress(status: ShowcaseCaptureStatus, elapsedSeconds: numbe
 const SPRITE_REVIEW_PREVIEWS: Array<{
   label: string;
   animation: AnimationName;
-  flipped?: boolean;
 }> = [
   { label: '대기', animation: 'idle' },
-  { label: '왼쪽 걷기', animation: 'walk', flipped: true },
-  { label: '오른쪽 걷기', animation: 'walk' },
-  { label: '왼쪽 달리기', animation: 'run', flipped: true },
-  { label: '오른쪽 달리기', animation: 'run' },
-  { label: '점프', animation: 'jump' },
   { label: '손 흔들기', animation: 'wave' },
-  { label: '기도', animation: 'pray' },
-  { label: '무릎', animation: 'kneel' },
+  { label: '기뻐서 뛰기', animation: 'jump' },
+  { label: '기도하기', animation: 'pray' },
+  { label: '앉아서 듣기', animation: 'kneel' },
   { label: '가리키기', animation: 'point' },
 ];
 

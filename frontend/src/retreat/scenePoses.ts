@@ -3,13 +3,12 @@ import type { RetreatPage } from './types';
 
 export type RetreatPoseId =
   | 'idle'
-  | 'walk'
-  | 'run'
   | 'wave'
   | 'jump'
   | 'pray'
   | 'point'
   | 'listen-rear'
+  | 'listen-back'
   | 'listen-side'
   | 'listen-front'
   | 'back';
@@ -20,6 +19,7 @@ export interface RetreatPoseDefinition {
   shortLabel: string;
   kind: 'animation' | 'static';
   animation: AnimationName;
+  currentFrames: readonly number[];
   expandedFrames: readonly number[];
   legacyFrames: readonly number[];
   retreatFrames: readonly number[];
@@ -32,29 +32,10 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     shortLabel: '서 있기',
     kind: 'animation',
     animation: 'idle',
+    currentFrames: [0, 1],
     expandedFrames: [25, 26],
     legacyFrames: [0, 9],
     retreatFrames: [0, 1],
-  },
-  walk: {
-    id: 'walk',
-    label: '걷기 · 애니메이션',
-    shortLabel: '걷기',
-    kind: 'animation',
-    animation: 'walk',
-    expandedFrames: [1, 2, 3, 4, 5, 6, 7, 8],
-    legacyFrames: [1, 2, 3, 4, 5, 6, 7, 8],
-    retreatFrames: [0],
-  },
-  run: {
-    id: 'run',
-    label: '달리기 · 애니메이션',
-    shortLabel: '달리기',
-    kind: 'animation',
-    animation: 'run',
-    expandedFrames: [10, 11, 12, 13, 14, 15, 16, 17],
-    legacyFrames: [10, 11, 12, 13, 14, 15, 16, 17],
-    retreatFrames: [0],
   },
   wave: {
     id: 'wave',
@@ -62,16 +43,18 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     shortLabel: '손 흔들기',
     kind: 'animation',
     animation: 'wave',
+    currentFrames: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     expandedFrames: [27],
     legacyFrames: [18],
     retreatFrames: [2],
   },
   jump: {
     id: 'jump',
-    label: '기뻐서 뛰기',
-    shortLabel: '점프',
-    kind: 'static',
+    label: '기뻐서 뛰기 · 애니메이션',
+    shortLabel: '기뻐서 뛰기',
+    kind: 'animation',
     animation: 'jump',
+    currentFrames: [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
     expandedFrames: [20],
     legacyFrames: [20],
     retreatFrames: [0],
@@ -80,8 +63,9 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     id: 'pray',
     label: '기도하기',
     shortLabel: '기도',
-    kind: 'static',
+    kind: 'animation',
     animation: 'pray',
+    currentFrames: [24, 25],
     expandedFrames: [22],
     legacyFrames: [22],
     retreatFrames: [0],
@@ -92,6 +76,7 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     shortLabel: '가리키기',
     kind: 'static',
     animation: 'point',
+    currentFrames: [26],
     expandedFrames: [24],
     legacyFrames: [24],
     retreatFrames: [0],
@@ -102,6 +87,7 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     shortLabel: '앉기 뒤',
     kind: 'static',
     animation: 'kneel',
+    currentFrames: [29],
     expandedFrames: [29],
     legacyFrames: [21],
     retreatFrames: [4],
@@ -112,6 +98,7 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     shortLabel: '앉기 옆',
     kind: 'static',
     animation: 'pray',
+    currentFrames: [28],
     expandedFrames: [30],
     legacyFrames: [23],
     retreatFrames: [5],
@@ -122,9 +109,21 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     shortLabel: '앉기 앞',
     kind: 'static',
     animation: 'kneel',
+    currentFrames: [27],
     expandedFrames: [28],
     legacyFrames: [19],
     retreatFrames: [3],
+  },
+  'listen-back': {
+    id: 'listen-back',
+    label: '앉아서 듣기 · 완전 뒷모습',
+    shortLabel: '앉기 완전 뒤',
+    kind: 'static',
+    animation: 'kneel',
+    currentFrames: [30],
+    expandedFrames: [],
+    legacyFrames: [],
+    retreatFrames: [],
   },
   back: {
     id: 'back',
@@ -132,6 +131,7 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     shortLabel: '뒷모습',
     kind: 'static',
     animation: 'idle',
+    currentFrames: [31],
     expandedFrames: [31],
     legacyFrames: [],
     retreatFrames: [6],
@@ -140,8 +140,6 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
 
 const ALL_POSE_IDS: readonly RetreatPoseId[] = [
   'idle',
-  'walk',
-  'run',
   'wave',
   'jump',
   'pray',
@@ -149,6 +147,7 @@ const ALL_POSE_IDS: readonly RetreatPoseId[] = [
   'listen-front',
   'listen-side',
   'listen-rear',
+  'listen-back',
   'back',
 ];
 

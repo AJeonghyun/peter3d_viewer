@@ -201,7 +201,7 @@ def analyze_showcase_sprite_pixels(sprite: bytes) -> dict:
 
 
 def load_garment_master_atlas() -> Image.Image:
-    """Load the v6 32-frame master, or build a read-only fallback from source masters."""
+    """Load the canonical v7 32-frame editor master."""
     target_size = (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT)
     if config.SHOWCASE_EXPANDED_MASTER_PATH.is_file():
         with Image.open(config.SHOWCASE_EXPANDED_MASTER_PATH) as source:
@@ -210,51 +210,11 @@ def load_garment_master_atlas() -> Image.Image:
         if master.size != target_size:
             raise HTTPException(
                 status_code=500,
-                detail=f"고정 Peter v6 마스터는 {target_size[0]}x{target_size[1]}여야 합니다",
+                detail=f"고정 Peter v7 마스터는 {target_size[0]}x{target_size[1]}여야 합니다",
             )
         return master
 
-    legacy_path = (
-        config.SHOWCASE_SAFE_MASTER_PATH
-        if config.SHOWCASE_SAFE_MASTER_PATH.is_file()
-        else config.SHOWCASE_SOURCE_MASTER_PATH
-    )
-    if not legacy_path.is_file():
-        raise HTTPException(status_code=500, detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    if not config.SHOWCASE_RETREAT_MASTER_PATH.is_file():
-        raise HTTPException(status_code=500, detail="Peter retreat 확장 마스터를 찾지 못했습니다")
-
-    atlas = Image.new("RGBA", target_size, (0, 0, 0, 0))
-    with Image.open(legacy_path) as source:
-        legacy = source.convert("RGBA")
-        legacy.load()
-    with Image.open(config.SHOWCASE_RETREAT_MASTER_PATH) as source:
-        retreat = source.convert("RGBA")
-        retreat.load()
-
-    for frame in range(1, 26):
-        source_index = frame - 1
-        source_column = source_index % 5
-        source_row = source_index // 5
-        target_box = garment_atlas_frame_box(frame)
-        cell = legacy.crop((
-            source_column * config.GARMENT_ATLAS_CELL_SIZE,
-            source_row * config.GARMENT_ATLAS_CELL_SIZE,
-            (source_column + 1) * config.GARMENT_ATLAS_CELL_SIZE,
-            (source_row + 1) * config.GARMENT_ATLAS_CELL_SIZE,
-        ))
-        atlas.alpha_composite(cell, (target_box[0], target_box[1]))
-
-    for offset, frame in enumerate(range(26, config.GARMENT_FRAME_COUNT + 1)):
-        target_box = garment_atlas_frame_box(frame)
-        cell = retreat.crop((
-            offset * config.GARMENT_ATLAS_CELL_SIZE,
-            0,
-            (offset + 1) * config.GARMENT_ATLAS_CELL_SIZE,
-            config.GARMENT_ATLAS_CELL_SIZE,
-        ))
-        atlas.alpha_composite(cell, (target_box[0], target_box[1]))
-    return atlas
+    raise HTTPException(status_code=500, detail="고정 Peter v7 마스터 스프라이트를 찾지 못했습니다")
 
 
 def master_reference_for_ai() -> bytes:

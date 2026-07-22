@@ -50,15 +50,23 @@ def public_sprite_contract(value: Any) -> Any:
         config.PREVIOUS_GARMENT_TRANSFER_CONTRACT,
         config.PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT,
         config.V5_GARMENT_TRANSFER_CONTRACT,
+        config.V6_GARMENT_TRANSFER_CONTRACT,
         config.GARMENT_TRANSFER_CONTRACT,
     }:
         if value == config.GARMENT_TRANSFER_CONTRACT:
-            version = 6
+            version = 7
             display_scale = 1.0
             rows = config.GARMENT_ATLAS_ROWS
             columns = config.GARMENT_ATLAS_COLUMNS
             frame_count = config.GARMENT_FRAME_COUNT
             layout = f"{columns}x{rows}"
+        elif value == config.V6_GARMENT_TRANSFER_CONTRACT:
+            version = 6
+            display_scale = 1.0
+            rows = 4
+            columns = 8
+            frame_count = 32
+            layout = "8x4"
         elif value == config.V5_GARMENT_TRANSFER_CONTRACT:
             version = 5
             display_scale = 1.0
