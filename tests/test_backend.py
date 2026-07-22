@@ -181,6 +181,35 @@ class Peter3DBackendTests(unittest.TestCase):
         stored = (config.UPLOADS_DIR / Path(media["asset_url"]).name).read_bytes()
         self.assertEqual(stored, stream.getvalue())
 
+    def test_scene_layout_persists_the_builtin_trophy_and_spin_speed(self):
+        payload = backend_main.RetreatSceneLayoutPayload(layout={
+            "trophy": {
+                "x": 54,
+                "bottom": 8,
+                "scale": 0.85,
+                "rotation": 12,
+                "flipX": False,
+                "visible": True,
+                "poseId": "idle",
+                "spinSeconds": 4.5,
+            },
+        })
+
+        saved = asyncio.run(backend_main.save_retreat_scene_layout("stand", payload))
+        loaded = asyncio.run(backend_main.get_retreat_scene("stand"))
+
+        self.assertEqual(saved["layout"]["trophy"], {
+            "x": 54.0,
+            "bottom": 8.0,
+            "scale": 0.85,
+            "rotation": 12.0,
+            "flipX": False,
+            "visible": True,
+            "poseId": "idle",
+            "spinSeconds": 4.5,
+        })
+        self.assertEqual(loaded["layout"]["trophy"], saved["layout"]["trophy"])
+
     def test_seating_scene_persists_all_group_layout_and_rotation(self):
         layout = {
             f"group-{group_number}": {

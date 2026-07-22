@@ -9,6 +9,7 @@ export interface SharedScenePosition {
   flipX: boolean;
   visible: boolean;
   poseId: string;
+  spinSeconds?: number;
 }
 
 export interface SharedSceneMedia {

@@ -106,11 +106,11 @@ def validated_layout(payload: RetreatSceneLayoutPayload) -> dict:
     for key, position in payload.layout.items():
         valid_group = key.startswith("group-") and key.removeprefix("group-").isdigit()
         valid_media = key.startswith("media-") and len(key.removeprefix("media-")) == 32
-        if key not in {"jesus", "fire"} and not valid_group and not valid_media:
+        if key not in {"jesus", "fire", "trophy"} and not valid_group and not valid_media:
             raise HTTPException(status_code=422, detail=f"알 수 없는 장면 요소입니다: {key}")
         if valid_group and not 1 <= int(key.removeprefix("group-")) <= config.TEAM_COUNT:
             raise HTTPException(status_code=422, detail=f"알 수 없는 조입니다: {key}")
-        normalized[key] = position.model_dump()
+        normalized[key] = position.model_dump(exclude_none=True)
     return normalized
 
 

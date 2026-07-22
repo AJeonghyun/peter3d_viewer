@@ -57,6 +57,7 @@ class RetreatScenePositionPayload(BaseModel):
     flipX: bool = False
     visible: bool = True
     poseId: str = Field(default="idle", min_length=1, max_length=40)
+    spinSeconds: Optional[float] = Field(default=None, ge=1.5, le=20)
 
 
 class RetreatSceneLayoutPayload(BaseModel):
