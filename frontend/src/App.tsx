@@ -5,7 +5,6 @@ import './styles/retreat.css';
 type PageName =
   | 'admin'
   | 'admin-seating'
-  | 'world-3d'
   | 'sprite-lab'
   | 'showcase'
   | 'print-template'
@@ -19,7 +18,6 @@ type PageName =
 function resolvePage(pathname: string): PageName {
   if (pathname === '/admin/seating' || pathname.startsWith('/admin/seating/')) return 'admin-seating';
   if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin';
-  if (pathname === '/world-3d' || pathname.startsWith('/world-3d/')) return 'world-3d';
   if (pathname === '/editor/campfire' || pathname.startsWith('/editor/campfire/')) {
     return 'campfire';
   }
@@ -84,7 +82,6 @@ const Page = ({
   showcase: lazy(() => import('./pages/ShowcasePage')),
   'print-template': lazy(() => import('./pages/PrintTemplatePage')),
   'sprite-lab': lazy(() => import('./pages/SpriteLabPage')),
-  'world-3d': lazy(() => import('./pages/WorldPage')),
 } satisfies Record<PageName, ReturnType<typeof lazy>>)[page];
 
 export default function App() {

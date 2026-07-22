@@ -32,11 +32,6 @@ async def admin_page():
     return frontend_index()
 
 
-@router.get("/world-3d")
-async def legacy_world_page():
-    return frontend_index()
-
-
 @router.get("/stand")
 @router.get("/back")
 @router.get("/campfire")
