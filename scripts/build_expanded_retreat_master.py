@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the v7 Peter and Jesus editor atlases from generated pose sources."""
+"""Build the Peter and Jesus editor atlases from complete generated poses."""
 
 from __future__ import annotations
 
@@ -17,9 +17,12 @@ ROWS = 4
 SAFE_MARGIN = 20
 TARGET_HEIGHT = 318
 JUMP_HEIGHT = 300
+WAVE_ORDER = (0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0)
 
 PETER_SOURCE = ROOT / "runtime-assets" / "peter-v7-generated-transparent.png"
 JESUS_SOURCE = ROOT / "runtime-assets" / "jesus-v1-generated-transparent.png"
+PETER_WAVE_SOURCE = ROOT / "runtime-assets" / "peter-wave-one-hand-v9-14deg-transparent.png"
+JESUS_WAVE_SOURCE = ROOT / "runtime-assets" / "jesus-wave-one-hand-v5-14deg-transparent.png"
 PETER_OUTPUT = ROOT / "runtime-assets" / "peter-retreat-master-expanded-v7.png"
 PETER_MANIFEST = ROOT / "runtime-assets" / "peter-retreat-master-expanded-v7.json"
 JESUS_OUTPUT = (
@@ -108,7 +111,7 @@ def isolate_actor(source: Image.Image, bbox: tuple[int, int, int, int]) -> Actor
     return Actor(crop.crop(cleaned_bbox), bbox)
 
 
-def source_poses(path: Path, *, peter: bool) -> tuple[list[Actor], list[Actor], list[Actor]]:
+def source_poses(path: Path, *, peter: bool) -> tuple[list[Actor], list[Actor]]:
     source = Image.open(path).convert("RGBA")
     components = significant_components(source)
     rows: list[list[tuple[int, int, int, int]]] = [[], [], [], []]
@@ -123,16 +126,32 @@ def source_poses(path: Path, *, peter: bool) -> tuple[list[Actor], list[Actor], 
         raise ValueError(f"unexpected generated pose rows in {path.name}: {tuple(map(len, rows))}")
 
     idle = [isolate_actor(source, bbox) for bbox in rows[0][:2]]
-    wave_source = rows[0][2:6] + rows[1][:3]
     jump_source = rows[2]
     static_source = rows[3]
-    wave = [isolate_actor(source, bbox) for bbox in wave_source]
     jump = [isolate_actor(source, bbox) for bbox in jump_source]
     static = [isolate_actor(source, bbox) for bbox in static_source]
-    return idle + static, wave, jump
+    return idle + static, jump
 
 
-def fit_actor(actor: Actor, *, target_height: int, lift: int = 0) -> Image.Image:
+def wave_poses(path: Path) -> list[Actor]:
+    """Load the two endpoints of the constrained 14-degree hand wave."""
+    source = Image.open(path).convert("RGBA")
+    components = sorted(significant_components(source), key=lambda bbox: bbox[0])
+    if len(components) != 2:
+        raise ValueError(
+            f"expected two complete wave poses in {path.name}, got {len(components)}"
+        )
+    return [isolate_actor(source, bbox) for bbox in components]
+
+
+def fit_actor(
+    actor: Actor,
+    *,
+    target_height: int,
+    lift: int = 0,
+    align_lower_body: bool = False,
+    lower_body_target_x: int = CELL_SIZE // 2,
+) -> Image.Image:
     image = actor.image
     scale = min(
         target_height / max(1, image.height),
@@ -144,7 +163,17 @@ def fit_actor(actor: Actor, *, target_height: int, lift: int = 0) -> Image.Image
     )
     resized = clean_chroma_edges(resized)
     frame = Image.new("RGBA", (CELL_SIZE, CELL_SIZE), (0, 0, 0, 0))
-    x = round((CELL_SIZE - resized.width) / 2)
+    if align_lower_body:
+        lower_top = round(resized.height * 0.62)
+        lower_bounds = resized.getchannel("A").crop(
+            (0, lower_top, resized.width, resized.height)
+        ).getbbox()
+        if lower_bounds is None:
+            raise ValueError("generated wave pose has no lower-body anchor")
+        lower_center_x = (lower_bounds[0] + lower_bounds[2]) / 2
+        x = round(lower_body_target_x - lower_center_x)
+    else:
+        x = round((CELL_SIZE - resized.width) / 2)
     y = CELL_SIZE - SAFE_MARGIN - resized.height - lift
     if y < SAFE_MARGIN:
         y = SAFE_MARGIN
@@ -174,17 +203,22 @@ def clean_chroma_edges(image: Image.Image) -> Image.Image:
     return cleaned
 
 
-def build_frames(path: Path, *, peter: bool) -> list[Image.Image]:
-    static, wave_source, jump_source = source_poses(path, peter=peter)
+def build_frames(path: Path, wave_path: Path, *, peter: bool) -> list[Image.Image]:
+    static, jump_source = source_poses(path, peter=peter)
+    wave_source = wave_poses(wave_path)
     idle = static[:2]
     final_static = static[2:]
-    wave_order = (0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2)
     jump_order = (0, 0, 1, 2, 3, 3, 4, 5, 5, 6, 6)
     jump_lifts = (0, 5, 18, 30, 40, 40, 28, 12, 8, 0, 0)
     frames = [fit_actor(actor, target_height=TARGET_HEIGHT) for actor in idle]
     frames.extend(
-        fit_actor(wave_source[index], target_height=TARGET_HEIGHT)
-        for index in wave_order
+        fit_actor(
+            wave_source[index],
+            target_height=TARGET_HEIGHT,
+            align_lower_body=True,
+            lower_body_target_x=158 if peter else 148,
+        )
+        for index in WAVE_ORDER
     )
     frames.extend(
         fit_actor(jump_source[index], target_height=JUMP_HEIGHT, lift=lift)
@@ -221,7 +255,7 @@ def write_atlas(
         "frames": [{"index": index, "id": frame_id} for index, frame_id in enumerate(FRAME_IDS)],
         "animations": {
             "idle": [0, 1],
-            "wave": list(range(2, 13)),
+            "wave": [2, 3],
             "jump": list(range(13, 24)),
             "pray": [24, 25],
         },
@@ -239,14 +273,14 @@ def write_atlas(
 
 def main() -> None:
     write_atlas(
-        build_frames(PETER_SOURCE, peter=True),
+        build_frames(PETER_SOURCE, PETER_WAVE_SOURCE, peter=True),
         PETER_OUTPUT,
         PETER_MANIFEST,
         contract_id="fixed-peter-master-edit-v7",
         version=7,
     )
     write_atlas(
-        build_frames(JESUS_SOURCE, peter=False),
+        build_frames(JESUS_SOURCE, JESUS_WAVE_SOURCE, peter=False),
         JESUS_OUTPUT,
         JESUS_MANIFEST,
         contract_id="fixed-jesus-master-edit-v1",

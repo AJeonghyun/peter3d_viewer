@@ -43,7 +43,7 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
     shortLabel: '손 흔들기',
     kind: 'animation',
     animation: 'wave',
-    currentFrames: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    currentFrames: [2, 3],
     expandedFrames: [27],
     legacyFrames: [18],
     retreatFrames: [2],

@@ -40,7 +40,7 @@ const CURRENT_MASTER_SEQUENCES: Record<AnimationName, number[]> = {
   idle: [0, 1],
   walk: [0, 1],
   run: [0, 1],
-  wave: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  wave: [2, 3],
   jump: [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
   pray: [24, 25],
   point: [26],
@@ -84,7 +84,7 @@ function animationRow(animation: AnimationName) {
 function frameDurationMs(animation: AnimationName) {
   if (animation === 'run') return 86;
   if (animation === 'walk') return 112;
-  if (animation === 'wave') return 125;
+  if (animation === 'wave') return 340;
   if (animation === 'jump') return 115;
   if (animation === 'pray') return 680;
   if (animation === 'idle') return 520;

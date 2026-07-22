@@ -103,7 +103,9 @@ frame order, poses, direction, face, hair, beard, skin, hands, body proportions,
 outline style, character size, bottom-center anchors, and safe padding. Do not
 redesign, redraw, simplify, enlarge, shrink, rotate, reorder, or replace Peter.
 Frames 1-2 are front-facing idle breathing. Frames 3-13 are the complete waving
-animation. Frames 14-24 are the complete joyful-jump animation. Frames 25-26
+animation: keep the same single raised hand throughout and move only that hand
+side to side; never raise, alternate, or switch to the other hand.
+Frames 14-24 are the complete joyful-jump animation. Frames 25-26
 are praying breathing. Frames 27-32 are point, listen-front, listen-side,
 listen-rear, listen-back, and standing-back. Preserve this order exactly.
 The listening-back frame is a true fully seated rear view with no face visible.
