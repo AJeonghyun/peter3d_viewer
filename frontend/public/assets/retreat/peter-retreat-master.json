@@ -1,0 +1,55 @@
+{
+  "id": "retreat-live-master-v1",
+  "layout": "7x1",
+  "columns": 7,
+  "rows": 1,
+  "frame_count": 7,
+  "frame_width": 360,
+  "frame_height": 360,
+  "frames": [
+    {
+      "id": "idle-a",
+      "index": 0,
+      "kind": "animation"
+    },
+    {
+      "id": "idle-b",
+      "index": 1,
+      "kind": "animation"
+    },
+    {
+      "id": "wave",
+      "index": 2,
+      "kind": "animation"
+    },
+    {
+      "id": "listen-front",
+      "index": 3,
+      "kind": "static"
+    },
+    {
+      "id": "listen-rear",
+      "index": 4,
+      "kind": "static"
+    },
+    {
+      "id": "listen-side",
+      "index": 5,
+      "kind": "static"
+    },
+    {
+      "id": "back",
+      "index": 6,
+      "kind": "static"
+    }
+  ],
+  "animations": {
+    "idle": [
+      0,
+      1
+    ],
+    "wave": [
+      2
+    ]
+  }
+}

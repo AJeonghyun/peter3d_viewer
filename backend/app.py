@@ -12,6 +12,7 @@ from backend.db import init_db
 from backend.routes import (
     model_assets,
     pages,
+    retreat_scenes,
     seating,
     sprites_capture,
     sprites_compose,
@@ -35,7 +36,7 @@ def create_app() -> FastAPI:
             for origin in os.getenv("PETER3D_ALLOWED_ORIGINS", "http://localhost:8000").split(",")
             if origin
         ],
-        allow_methods=["GET", "POST", "PATCH"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )
     app.mount(
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.mount("/uploads", StaticFiles(directory=config.UPLOADS_DIR), name="uploads")
 
     app.include_router(pages.router)
+    app.include_router(retreat_scenes.router)
     app.include_router(teams.router)
     app.include_router(seating.router)
     app.include_router(sprites_capture.router)

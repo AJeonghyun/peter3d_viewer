@@ -1,7 +1,7 @@
 :root {
   font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
   color: #17324a;
-  background: #dcebf4;
+  background: transparent;
   font-synthesis: none;
 }
 
@@ -30,7 +30,14 @@ select {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: #dcebf4;
+  background: transparent;
+}
+
+html,
+body,
+#root,
+.retreat-display-page {
+  background: transparent;
 }
 
 .retreat-stage-shell[data-preview="true"] {
@@ -112,15 +119,27 @@ html[data-background-mode="transparent"] .retreat-display-page {
   height: min(92cqw, 92cqh);
   background-image: var(--atlas-image);
   background-repeat: no-repeat;
-  background-position-x: calc(var(--atlas-column, 0) * 100% / (var(--atlas-columns, 4) - 1));
-  background-position-y: calc(var(--atlas-row, 0) * 100% / (var(--atlas-rows, 3) - 1));
+  background-position-x: var(--atlas-position-x, 0%);
+  background-position-y: var(--atlas-position-y, 0%);
   background-size: calc(var(--atlas-columns, 4) * 100%) calc(var(--atlas-rows, 3) * 100%);
   animation: retreat-atlas-frames 0.88s steps(1, end) infinite;
   transform: translateX(-50%);
   transform-origin: 50% 100%;
 }
 
+.atlas-sprite-animator[data-layout="fixed-grid"] .atlas-sprite-animator__safe-frame,
 .atlas-sprite-animator[data-layout="fixed-5x5"] .atlas-sprite-animator__safe-frame {
+  bottom: 2%;
+  bottom: 2cqh;
+  width: 96%;
+  width: min(96cqw, 96cqh);
+  height: min(96cqw, 96cqh);
+  transform: translateX(-50%) scale(var(--atlas-display-scale, 1));
+  animation: none;
+  image-rendering: auto;
+}
+
+.atlas-sprite-animator[data-layout="retreat-7x1"] .atlas-sprite-animator__safe-frame {
   bottom: 2%;
   bottom: 2cqh;
   width: 96%;

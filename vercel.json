@@ -7,7 +7,7 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 300,
-      "includeFiles": "runtime-assets/peter-sober-master-safe.png",
+      "includeFiles": "runtime-assets/**",
       "excludeFiles": "{frontend/**,static/**,uploads/**,data/**,tests/**,.venv/**,.env*}"
     }
   },

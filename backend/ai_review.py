@@ -187,12 +187,16 @@ async def request_garment_atlas_ai_review(
             "issues": {"type": "array", "items": {"type": "string"}},
             "frames": {
                 "type": "array",
-                "maxItems": 25,
+                "maxItems": config.GARMENT_FRAME_COUNT,
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
                     "properties": {
-                        "frame": {"type": "integer", "minimum": 1, "maximum": 25},
+                        "frame": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": config.GARMENT_FRAME_COUNT,
+                        },
                         "severity": {"type": "string", "enum": ["warning", "failed"]},
                         "issue": {"type": "string"},
                     },
@@ -206,8 +210,11 @@ async def request_garment_atlas_ai_review(
         {
             "type": "input_text",
             "text": (
-                "The images are: (1) candidate 25-frame atlas, (2) immutable fixed master, "
-                "(3, when supplied) corrected student full-body design. Review all 25 cells. "
+                "The images are: (1) candidate 32-frame atlas, (2) immutable fixed master, "
+                "(3, when supplied) corrected student full-body design. Review all 32 cells. "
+                "The atlas is an 8-column by 4-row grid. Frames 1-2 are idle, 3-13 wave, "
+                "14-24 joyful jump, 25-26 pray, and 27-32 are point, listen-front, "
+                "listen-side, listen-rear, seated-back, and standing-back. "
                 "Fail any frame where the pose, direction, face, hair, beard, skin, hands, "
                 "body proportions, character size, baseline, or visual style drifts from the "
                 "corresponding master cell. Fail clipping or missing/extra body parts. "
@@ -341,7 +348,7 @@ def garment_problem_frames(value: Any) -> list[int]:
     if not isinstance(qa, dict):
         return []
     frames: set[int] = set()
-    frame_count = config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS
+    frame_count = config.GARMENT_FRAME_COUNT
     deterministic = qa.get("deterministic")
     if isinstance(deterministic, dict):
         for candidate in deterministic.get("frames") or []:

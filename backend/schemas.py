@@ -45,5 +45,19 @@ class SpriteApprovalPayload(BaseModel):
 class SpriteFramePatchPayload(BaseModel):
     frames: List[int] = Field(
         min_length=1,
-        max_length=config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS,
+        max_length=config.GARMENT_FRAME_COUNT,
     )
+
+
+class RetreatScenePositionPayload(BaseModel):
+    x: float = Field(ge=2, le=98)
+    bottom: float = Field(ge=-4, le=70)
+    scale: float = Field(ge=0.35, le=1.8)
+    rotation: float = Field(default=0, ge=-180, le=180)
+    flipX: bool = False
+    visible: bool = True
+    poseId: str = Field(default="idle", min_length=1, max_length=40)
+
+
+class RetreatSceneLayoutPayload(BaseModel):
+    layout: Dict[str, RetreatScenePositionPayload]

@@ -40,9 +40,11 @@ async def legacy_world_page():
 @router.get("/stand")
 @router.get("/back")
 @router.get("/campfire")
+@router.get("/seating")
 @router.get("/display/stand")
 @router.get("/display/back")
 @router.get("/display/campfire")
+@router.get("/display/seating")
 @router.get("/walk")
 @router.get("/display/walk")
 @router.get("/page-3")
@@ -53,6 +55,7 @@ async def legacy_world_page():
 @router.get("/editor/stand")
 @router.get("/editor/back")
 @router.get("/editor/campfire")
+@router.get("/editor/seating")
 @router.get("/admin/seating")
 @router.get("/seating-admin")
 @router.get("/sprite-lab")
@@ -72,7 +75,7 @@ async def health():
         "openai_image_quality": config.OPENAI_IMAGE_QUALITY,
         "fixed_peter_master_available": config.SHOWCASE_MASTER_PATH.is_file(),
         "fixed_peter_master_frames": (
-            config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS
+            config.GARMENT_FRAME_COUNT
             if config.SHOWCASE_MASTER_PATH.is_file()
             else 0
         ),

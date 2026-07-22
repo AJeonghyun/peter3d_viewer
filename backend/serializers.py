@@ -49,27 +49,59 @@ def public_sprite_contract(value: Any) -> Any:
         config.LEGACY_GARMENT_TRANSFER_CONTRACT,
         config.PREVIOUS_GARMENT_TRANSFER_CONTRACT,
         config.PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT,
+        config.V5_GARMENT_TRANSFER_CONTRACT,
+        config.V6_GARMENT_TRANSFER_CONTRACT,
         config.GARMENT_TRANSFER_CONTRACT,
     }:
         if value == config.GARMENT_TRANSFER_CONTRACT:
+            version = 7
+            display_scale = 1.0
+            rows = config.GARMENT_ATLAS_ROWS
+            columns = config.GARMENT_ATLAS_COLUMNS
+            frame_count = config.GARMENT_FRAME_COUNT
+            layout = f"{columns}x{rows}"
+        elif value == config.V6_GARMENT_TRANSFER_CONTRACT:
+            version = 6
+            display_scale = 1.0
+            rows = 4
+            columns = 8
+            frame_count = 32
+            layout = "8x4"
+        elif value == config.V5_GARMENT_TRANSFER_CONTRACT:
             version = 5
             display_scale = 1.0
+            rows = 5
+            columns = 5
+            frame_count = 25
+            layout = "5x5"
         elif value == config.PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT:
             version = 4
             display_scale = 1.0
+            rows = 5
+            columns = 5
+            frame_count = 25
+            layout = "5x5"
         elif value == config.PREVIOUS_GARMENT_TRANSFER_CONTRACT:
             version = 3
             display_scale = config.GARMENT_DISPLAY_SCALE
+            rows = 5
+            columns = 5
+            frame_count = 25
+            layout = "5x5"
         else:
             version = 2
             display_scale = config.GARMENT_DISPLAY_SCALE
+            rows = 5
+            columns = 5
+            frame_count = 25
+            layout = "5x5"
         return {
             "id": str(value),
             "version": version,
-            "layout": "5x5",
-            "rows": config.GARMENT_ATLAS_ROWS,
-            "columns": config.GARMENT_ATLAS_COLUMNS,
-            "frame_count": config.GARMENT_ATLAS_ROWS * config.GARMENT_ATLAS_COLUMNS,
+            "layout": layout,
+            "rows": rows,
+            "columns": columns,
+            "frame_count": frame_count,
             "frame_width": config.GARMENT_ATLAS_CELL_SIZE,
             "frame_height": config.GARMENT_ATLAS_CELL_SIZE,
             "safe_frame": "square",

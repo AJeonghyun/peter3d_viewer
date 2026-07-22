@@ -5,10 +5,10 @@ Everything here is pure image processing: no network calls, no database access.
 
 import io
 import struct
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from fastapi import HTTPException
-from PIL import Image, ImageDraw, ImageFilter, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, UnidentifiedImageError
 
 from backend import config
 from backend.media import image_to_png_bytes
@@ -200,18 +200,32 @@ def analyze_showcase_sprite_pixels(sprite: bytes) -> dict:
     }
 
 
+def load_garment_master_atlas() -> Image.Image:
+    """Load the canonical v7 32-frame editor master."""
+    target_size = (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT)
+    if config.SHOWCASE_EXPANDED_MASTER_PATH.is_file():
+        with Image.open(config.SHOWCASE_EXPANDED_MASTER_PATH) as source:
+            master = source.convert("RGBA")
+            master.load()
+        if master.size != target_size:
+            raise HTTPException(
+                status_code=500,
+                detail=f"고정 Peter v7 마스터는 {target_size[0]}x{target_size[1]}여야 합니다",
+            )
+        return master
+
+    raise HTTPException(status_code=500, detail="고정 Peter v7 마스터 스프라이트를 찾지 못했습니다")
+
+
 def master_reference_for_ai() -> bytes:
     """Render the transparent canonical atlas on the key color requested from GPT Image."""
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise HTTPException(status_code=500, detail="고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    with Image.open(config.SHOWCASE_MASTER_PATH) as source:
-        master = source.convert("RGBA").resize(
-            (config.GARMENT_AI_ATLAS_SIZE, config.GARMENT_AI_ATLAS_SIZE),
-            Image.Resampling.LANCZOS,
-        )
+    master = load_garment_master_atlas().resize(
+        (config.GARMENT_AI_ATLAS_WIDTH, config.GARMENT_AI_ATLAS_HEIGHT),
+        Image.Resampling.LANCZOS,
+    )
     reference = Image.new(
         "RGBA",
-        (config.GARMENT_AI_ATLAS_SIZE, config.GARMENT_AI_ATLAS_SIZE),
+        (config.GARMENT_AI_ATLAS_WIDTH, config.GARMENT_AI_ATLAS_HEIGHT),
         (*config.GARMENT_AI_BACKGROUND, 255),
     )
     reference.alpha_composite(master)
@@ -301,6 +315,50 @@ def remove_connected_cell_background(cell: Image.Image, *, threshold: int = 56) 
     return decontaminate_chroma_contour(rgba)
 
 
+def _nearest_visible_seed(mask: Image.Image) -> Optional[tuple[int, int]]:
+    """Find the actor component from the center of the fixed master cell."""
+    pixels = mask.load()
+    center_x = mask.width // 2
+    center_y = mask.height // 2
+    maximum_radius = max(mask.width, mask.height)
+    for radius in range(maximum_radius):
+        left = max(0, center_x - radius)
+        right = min(mask.width - 1, center_x + radius)
+        top = max(0, center_y - radius)
+        bottom = min(mask.height - 1, center_y + radius)
+        for x in range(left, right + 1):
+            if pixels[x, top]:
+                return x, top
+            if pixels[x, bottom]:
+                return x, bottom
+        for y in range(top + 1, bottom):
+            if pixels[left, y]:
+                return left, y
+            if pixels[right, y]:
+                return right, y
+    return None
+
+
+def _main_alpha_component_mask(image: Image.Image, *, threshold: int = 8) -> Image.Image:
+    """Build a fast 8-connected mask for the centered fixed-master actor."""
+    alpha = image.convert("RGBA").getchannel("A")
+    binary = alpha.point([0] * (threshold + 1) + [255] * (255 - threshold))
+    connected = binary.filter(ImageFilter.MaxFilter(3))
+    seed = _nearest_visible_seed(connected)
+    if seed is None:
+        return Image.new("L", image.size, 0)
+    ImageDraw.floodfill(connected, seed, 128, thresh=0)
+    return connected.point([255 if value == 128 else 0 for value in range(256)])
+
+
+def remove_detached_alpha_components(image: Image.Image) -> Image.Image:
+    """Keep the actor silhouette and discard detached model artifacts or shadows."""
+    rgba = image.convert("RGBA")
+    keep = _main_alpha_component_mask(rgba)
+    rgba.putalpha(ImageChops.multiply(rgba.getchannel("A"), keep))
+    return rgba
+
+
 def master_display_target_bbox(master_bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
     """Expand a master frame to the same visual envelope as the shared Peter actor."""
     left, top, right, bottom = master_bbox
@@ -338,23 +396,17 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
         )
         candidate.load()
     except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise ValueError("AI 25컷 이미지를 읽을 수 없습니다") from exc
-    if candidate.width != candidate.height:
-        raise ValueError("AI 25컷 결과는 정사각형이어야 합니다")
-    if candidate.size != (config.GARMENT_AI_ATLAS_SIZE, config.GARMENT_AI_ATLAS_SIZE):
+        raise ValueError("AI 32컷 이미지를 읽을 수 없습니다") from exc
+    if candidate.size != (config.GARMENT_AI_ATLAS_WIDTH, config.GARMENT_AI_ATLAS_HEIGHT):
         candidate = candidate.resize(
-            (config.GARMENT_AI_ATLAS_SIZE, config.GARMENT_AI_ATLAS_SIZE),
+            (config.GARMENT_AI_ATLAS_WIDTH, config.GARMENT_AI_ATLAS_HEIGHT),
             Image.Resampling.LANCZOS,
         )
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    with Image.open(config.SHOWCASE_MASTER_PATH) as source:
-        master = source.convert("RGBA")
-        master.load()
+    master = load_garment_master_atlas()
     output = Image.new(
-        "RGBA", (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE), (0, 0, 0, 0)
+        "RGBA", (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT), (0, 0, 0, 0)
     )
-    for index in range(config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS):
+    for index in range(config.GARMENT_FRAME_COUNT):
         column = index % config.GARMENT_ATLAS_COLUMNS
         row = index // config.GARMENT_ATLAS_COLUMNS
         source_cell = candidate.crop((
@@ -363,7 +415,9 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
             (column + 1) * config.GARMENT_AI_CELL_SIZE,
             (row + 1) * config.GARMENT_AI_CELL_SIZE,
         ))
-        cleaned = remove_connected_cell_background(source_cell)
+        cleaned = remove_detached_alpha_components(
+            remove_connected_cell_background(source_cell)
+        )
         generated_bbox = cleaned.getchannel("A").getbbox()
         master_cell = master.crop((
             column * config.GARMENT_ATLAS_CELL_SIZE,
@@ -415,8 +469,8 @@ def normalize_master_locked_atlas(generated: Union[bytes, Image.Image]) -> Image
 def garment_atlas_frame_box(frame: int, *, cell_size: int = None) -> tuple[int, int, int, int]:
     if cell_size is None:
         cell_size = config.GARMENT_ATLAS_CELL_SIZE
-    if frame < 1 or frame > config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS:
-        raise ValueError("프레임 번호는 1부터 25까지여야 합니다")
+    if frame < 1 or frame > config.GARMENT_FRAME_COUNT:
+        raise ValueError(f"프레임 번호는 1부터 {config.GARMENT_FRAME_COUNT}까지여야 합니다")
     index = frame - 1
     column = index % config.GARMENT_ATLAS_COLUMNS
     row = index // config.GARMENT_ATLAS_COLUMNS
@@ -435,9 +489,9 @@ def frame_reference_for_ai(source: Union[bytes, Image.Image], frame: int) -> byt
         else source.convert("RGBA")
     )
     image.load()
-    if image.size != (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE):
+    if image.size != (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT):
         raise ValueError(
-            f"프레임 참조 아틀라스는 {config.GARMENT_ATLAS_SIZE}x{config.GARMENT_ATLAS_SIZE}여야 합니다"
+            f"프레임 참조 아틀라스는 {config.GARMENT_ATLAS_WIDTH}x{config.GARMENT_ATLAS_HEIGHT}여야 합니다"
         )
     cell = image.crop(garment_atlas_frame_box(frame))
     cell = cell.resize(
@@ -454,10 +508,7 @@ def frame_reference_for_ai(source: Union[bytes, Image.Image], frame: int) -> byt
 
 
 def master_frame_reference_for_ai(frame: int) -> bytes:
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    with Image.open(config.SHOWCASE_MASTER_PATH) as master:
-        return frame_reference_for_ai(master, frame)
+    return frame_reference_for_ai(load_garment_master_atlas(), frame)
 
 
 def normalize_master_locked_frame(generated: Union[bytes, Image.Image], frame: int) -> Image.Image:
@@ -477,15 +528,14 @@ def normalize_master_locked_frame(generated: Union[bytes, Image.Image], frame: i
             (config.GARMENT_AI_FRAME_SIZE, config.GARMENT_AI_FRAME_SIZE),
             Image.Resampling.LANCZOS,
         )
-    cleaned = remove_connected_cell_background(candidate)
+    cleaned = remove_detached_alpha_components(
+        remove_connected_cell_background(candidate)
+    )
     generated_bbox = cleaned.getchannel("A").getbbox()
     if generated_bbox is None:
         raise ValueError("AI 문제 컷 결과에 캐릭터가 없습니다")
-    if not config.SHOWCASE_MASTER_PATH.is_file():
-        raise ValueError("고정 Peter 마스터 스프라이트를 찾지 못했습니다")
-    with Image.open(config.SHOWCASE_MASTER_PATH) as source:
-        master_cell = source.convert("RGBA").crop(garment_atlas_frame_box(frame))
-        master_cell.load()
+    master_cell = load_garment_master_atlas().crop(garment_atlas_frame_box(frame))
+    master_cell.load()
     master_bbox = master_cell.getchannel("A").getbbox()
     if master_bbox is None:
         raise ValueError(f"고정 Peter 마스터의 {frame}컷을 찾지 못했습니다")
@@ -538,8 +588,8 @@ def replace_garment_atlas_frame(
         else atlas.convert("RGBA")
     )
     base.load()
-    if base.size != (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE):
-        raise ValueError(f"기존 25컷은 {config.GARMENT_ATLAS_SIZE}x{config.GARMENT_ATLAS_SIZE}여야 합니다")
+    if base.size != (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT):
+        raise ValueError(f"기존 32컷은 {config.GARMENT_ATLAS_WIDTH}x{config.GARMENT_ATLAS_HEIGHT}여야 합니다")
     cell = (
         Image.open(io.BytesIO(replacement)).convert("RGBA")
         if isinstance(replacement, bytes)
@@ -582,21 +632,19 @@ def count_chroma_spill_pixels(image: Image.Image) -> int:
 
 def analyze_garment_atlas_pixels(atlas: Any) -> dict:
     image = Image.open(io.BytesIO(atlas)).convert("RGBA") if isinstance(atlas, bytes) else atlas.convert("RGBA")
-    if image.size != (config.GARMENT_ATLAS_SIZE, config.GARMENT_ATLAS_SIZE):
+    if image.size != (config.GARMENT_ATLAS_WIDTH, config.GARMENT_ATLAS_HEIGHT):
         return {
             "status": "failed",
             "can_approve": False,
-            "summary": f"Atlas must be {config.GARMENT_ATLAS_SIZE}x{config.GARMENT_ATLAS_SIZE}.",
+            "summary": f"Atlas must be {config.GARMENT_ATLAS_WIDTH}x{config.GARMENT_ATLAS_HEIGHT}.",
             "frames": [],
             "issues": ["invalid_size"],
         }
-    with Image.open(config.SHOWCASE_MASTER_PATH) as source:
-        master = source.convert("RGBA")
-        master.load()
+    master = load_garment_master_atlas()
     frames = []
     failed = 0
     atlas_issues: list[str] = []
-    for index in range(config.GARMENT_ATLAS_COLUMNS * config.GARMENT_ATLAS_ROWS):
+    for index in range(config.GARMENT_FRAME_COUNT):
         column = index % config.GARMENT_ATLAS_COLUMNS
         row = index // config.GARMENT_ATLAS_COLUMNS
         cell = image.crop((
@@ -611,6 +659,14 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
         size_ratio = None
         anchor_delta = None
         chroma_spill_pixels = count_chroma_spill_pixels(cell)
+        visible_alpha = cell.getchannel("A").point([0] * 9 + [255] * 247)
+        cleaned_alpha = remove_detached_alpha_components(cell).getchannel("A").point(
+            [0] * 9 + [255] * 247
+        )
+        detached_alpha_pixels = (
+            visible_alpha.histogram()[255] - cleaned_alpha.histogram()[255]
+        )
+        alpha_component_count = 2 if detached_alpha_pixels >= 8 else (1 if bbox else 0)
         if bbox is None:
             failed += 1
             issues.append("empty_frame")
@@ -660,6 +716,8 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
                     issues.append("master_anchor_mismatch")
             if chroma_spill_pixels:
                 issues.append("chroma_spill")
+            if detached_alpha_pixels >= 8:
+                issues.append("detached_alpha_component")
             if issues:
                 failed += 1
                 atlas_issues.append(f"{index + 1}컷: {', '.join(issues)}")
@@ -672,6 +730,8 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
             "size_ratio": size_ratio,
             "anchor_delta": anchor_delta,
             "chroma_spill_pixels": chroma_spill_pixels,
+            "alpha_component_count": alpha_component_count,
+            "detached_alpha_pixels": detached_alpha_pixels,
             "regions_checked": ["head", "hands", "feet", "shoes"],
             "issues": issues,
             "status": "failed" if issues else "passed",
@@ -679,7 +739,7 @@ def analyze_garment_atlas_pixels(atlas: Any) -> dict:
     return {
         "status": "failed" if failed else "passed",
         "can_approve": failed == 0,
-        "summary": "25-frame alpha bbox QA passed." if not failed else f"{failed} frames failed alpha bbox QA.",
+        "summary": "32-frame alpha bbox QA passed." if not failed else f"{failed} frames failed alpha bbox QA.",
         "contract": config.GARMENT_TRANSFER_CONTRACT,
         "safe_margin_px": 8,
         "frames": frames,

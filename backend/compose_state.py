@@ -1,4 +1,4 @@
-"""Shared state helpers for the 25-frame compose workflow."""
+"""Shared state helpers for the 32-frame compose workflow."""
 
 import json
 from datetime import datetime, timezone
@@ -69,7 +69,7 @@ def ensure_compose_not_active(team: dict) -> None:
     if team.get("showcase_sprite_status") in config.COMPOSE_ACTIVE_TEAM_STATUSES:
         raise HTTPException(
             status_code=409,
-            detail="25컷 생성이 진행 중입니다. 완료된 뒤 새 사진을 등록해주세요.",
+            detail="32컷 생성이 진행 중입니다. 완료된 뒤 새 사진을 등록해주세요.",
         )
 
 

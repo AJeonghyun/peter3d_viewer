@@ -99,18 +99,38 @@ python3 scripts/apply_garment_design.py \
 
 ### 정면·뒷모습 라인업 · 갈릴리 모닥불
 
-세 장면 모두 활성화된 최대 21개 조 캐릭터를 사용합니다. `/display/stand`는
-예수님과 21명의 베드로가 정면을 보고 서며 몇 초마다 무작위로 한 명이 손을
-흔듭니다. `/display/back`은 같은 크기와 배치로 예수님까지 모두 뒷모습을
-보여줍니다. 두 라인업은 모닥불 장면의 베드로와 같은 기본 표시 크기를 사용하고,
-캐릭터 아래 조 이름표는 표시하지 않습니다. `갈릴리 모닥불`은 7명씩 예수님과
-모닥불 둘레에 앉아 말씀을 듣는 장면을 14초 간격으로 순환합니다.
+세 장면 모두 활성화된 최대 21개 조를 `1–7조`, `8–14조`, `15–21조`로 나눠
+7개 조씩 14초 간격으로 순환합니다. `/display/stand`는 예수님과 해당 회차의
+베드로가 정면을 보고 서며 몇 초마다 무작위로 한 명이 손을 흔듭니다.
+`/display/back`은 같은 크기와 배치로 예수님까지 모두 뒷모습을 보여줍니다.
+`갈릴리 모닥불`도 해당 회차의 7개 조가 예수님과 모닥불 둘레에 앉습니다.
+캐릭터 아래 조 이름표는 표시하지 않습니다.
 
-각 장면의 캐릭터·예수님·모닥불 위치는 `/editor/stand`, `/editor/back`,
-`/editor/campfire`에서 드래그로 옮기고, `작게/크게` 버튼으로 크기를,
-`좌우 반전(F)`으로 방향을 조절합니다. 배치는 해당 브라우저의 localStorage에
-자동 저장됩니다. 기본 배치와 상수는 `frontend/src/pages/AllCharactersPage.tsx`에서
-수정합니다.
+각 장면의 캐릭터·예수님·모닥불은 `/editor/stand`, `/editor/back`,
+`/editor/campfire`의 왼쪽 오브젝트 패널에서 PPT 요소처럼 추가하거나 뺄 수
+있습니다. 세 편집 페이지 모두 정면·뒷면·착석 포즈와 `서 있기·숨쉬기`,
+`손 흔들기` 애니메이션 전체를 고를 수 있고, 캔버스에서는 드래그와 `작게/크게`,
+`좌우 반전(F)`으로 배치합니다. 각 편집 페이지에서 PNG/JPG/WEBP/GIF를 장면
+오브젝트로 여러 개 추가해 캐릭터와 똑같이 이동·확대·숨김·삭제할 수 있습니다.
+오브젝트 파일은 개발 환경에서는 `uploads/`, 배포 환경에서는 Vercel Blob에
+저장하고, 목록·표시 여부·포즈·배치는 SQLite 또는 Neon DB에 장면별로 자동
+저장합니다. 다른 기기의 송출 페이지는 2.5초마다 변경 상태를 받아오므로 열린
+화면에도 추가·이동·삭제가 자동 반영됩니다. 기존 브라우저 저장 데이터는 서버에
+장면 데이터가 아직 없을 때 편집 페이지 최초 접속 시 한 번 이전됩니다.
+기본 배치와 상수는 `frontend/src/pages/AllCharactersPage.tsx`, 포즈 목록은
+`frontend/src/retreat/scenePoses.ts`에서 수정합니다.
+
+세 송출·편집 장면의 자체 배경은 항상 투명합니다. 편집할 때만 왼쪽 패널의
+`참조 슬라이드`에서 PNG/JPG/WEBP/GIF를 첨부하거나 PowerPoint에서 슬라이드를
+복사한 뒤 `⌘V`로 붙여넣어 캐릭터 위치를 맞출 수 있습니다. 참조 이미지는
+장면별 IndexedDB에 저장되고 새로고침하면 기본적으로 숨겨집니다. `참조 보기`와
+`참조 숨기기`로 편집 중에만 전환할 수 있으며 실제 송출 화면에는 나타나지 않습니다.
+참조 슬라이드는 작업용이라 기기 간 공유하지 않고, 실제 장면에 추가한 이미지/GIF
+오브젝트만 서버를 통해 공유합니다.
+
+송출 장면은 `frontend/public/assets/retreat/peter-retreat-master.png`의 7개 포즈만
+사용합니다. 조별 의상 생성·검수 호환을 위한 25프레임 원본 계약은 백엔드에
+그대로 유지되므로 기존 승인 캐릭터도 계속 사용할 수 있습니다.
 
 ## 이미지 저장, 백업과 복구
 
@@ -211,22 +231,25 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 - 정면 라인업 송출: `http://localhost:8000/display/stand`
 - 뒷모습 라인업 송출: `http://localhost:8000/display/back`
 - 갈릴리 모닥불 송출: `http://localhost:8000/display/campfire`
+- 전체 자리표 송출: `http://localhost:8000/display/seating`
 - 정면 라인업 배치 편집: `http://localhost:8000/editor/stand`
 - 뒷모습 라인업 배치 편집: `http://localhost:8000/editor/back`
 - 모닥불 배치 편집: `http://localhost:8000/editor/campfire`
+- 전체 자리표 배치 편집: `http://localhost:8000/editor/seating`
 - 구 걷기·페이지 3 별칭(라인업으로 연결): `http://localhost:8000/display/walk`, `http://localhost:8000/page-3`
 - 기존 3D 월드: `http://localhost:8000/world-3d`
 - 운영진 관리: `http://localhost:8000/admin`
 - 21프레임 애니메이션 실험실: `http://localhost:8000/sprite-lab`
 - 서버 상태: `http://localhost:8000/api/health`
 
-행사 운영 컴퓨터에서는 `/display/stand`, `/display/back`, `/display/campfire`를
+행사 운영 컴퓨터에서는 `/display/stand`, `/display/back`, `/display/campfire`,
+`/display/seating`을
 각각 크롬 전체 화면으로 열고 프로젝터 또는 LED 화면에 출력합니다. 전시 화면에는 버튼이나
 스탯 패널 및 화면 전환 효과가 없으며, 선택한 종류만 유지한 채 7개 조씩
-끊김 없이 이어서 재생됩니다.
-모닥불 배치에서는 베드로 한 명을 선택한 뒤 `좌우 반전 (F)` 버튼이나
-키보드 `F` 키로 바라보는 방향을 바꿀 수 있으며 방향도 위치·크기와 함께
-브라우저에 자동 저장됩니다.
+끊김 없이 이어서 재생됩니다. 전체 자리표만 예외로 21개 조를 3행 7열 한 화면에 표시합니다.
+모든 배치 편집기에서는 요소를 선택한 뒤 왼쪽·오른쪽 회전 버튼으로 5도씩 돌릴 수 있습니다.
+위치·크기·회전·포즈·표시 여부는 서버에 자동 저장되어 다른 브라우저의 송출 화면에도
+동기화됩니다.
 
 ### 프론트엔드 개발 모드
 

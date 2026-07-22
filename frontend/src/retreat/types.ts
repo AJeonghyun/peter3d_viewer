@@ -1,7 +1,7 @@
 import type { AnimationName } from '../spriteLab/types';
 import type { ShowcaseSpriteContract } from '../types/api';
 
-export type RetreatPage = 'stand' | 'back' | 'campfire';
+export type RetreatPage = 'stand' | 'back' | 'campfire' | 'seating';
 export type MotionIntensity = 'low' | 'medium' | 'high';
 export type ExportFormat = 'png' | 'jpeg';
 export type CaptureMode = 'current' | 'paused' | 'balanced';

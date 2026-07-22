@@ -112,6 +112,140 @@ class Peter3DBackendTests(unittest.TestCase):
             count = db.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
         self.assertEqual(count, 21)
 
+    def test_scene_media_and_layout_are_shared_through_the_database(self):
+        stream = io.BytesIO()
+        Image.new("RGBA", (24, 24), (210, 48, 72, 255)).save(stream, format="PNG")
+        upload = backend_main.UploadFile(
+            filename="shared-object.png",
+            file=io.BytesIO(stream.getvalue()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        media = asyncio.run(backend_main.upload_retreat_scene_media("stand", upload))
+        media_key = f"media-{media['id']}"
+        payload = backend_main.RetreatSceneLayoutPayload(layout={
+            "group-1": {
+                "x": 14,
+                "bottom": 3,
+                "scale": 1.1,
+                "flipX": False,
+                "visible": True,
+                "poseId": "idle",
+            },
+            media_key: {
+                "x": 62,
+                "bottom": 26,
+                "scale": 0.8,
+                "flipX": True,
+                "visible": True,
+                "poseId": "idle",
+            },
+        })
+        saved = asyncio.run(backend_main.save_retreat_scene_layout("stand", payload))
+        loaded = asyncio.run(backend_main.get_retreat_scene("stand"))
+
+        self.assertEqual(saved["layout"][media_key]["x"], 62.0)
+        self.assertEqual(loaded["media"][0]["name"], "shared-object.png")
+        self.assertEqual(loaded["media"][0]["asset_url"], media["asset_url"])
+        self.assertTrue((config.UPLOADS_DIR / Path(media["asset_url"]).name).is_file())
+
+        asyncio.run(backend_main.delete_retreat_scene_media("stand", media["id"]))
+        deleted = asyncio.run(backend_main.get_retreat_scene("stand"))
+        self.assertEqual(deleted["media"], [])
+        self.assertNotIn(media_key, deleted["layout"])
+        self.assertFalse((config.UPLOADS_DIR / Path(media["asset_url"]).name).exists())
+
+    def test_scene_media_preserves_animated_gif_uploads(self):
+        stream = io.BytesIO()
+        frames = [
+            Image.new("RGBA", (16, 16), (255, 80, 40, 255)),
+            Image.new("RGBA", (16, 16), (40, 120, 255, 255)),
+        ]
+        frames[0].save(
+            stream,
+            format="GIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=80,
+            loop=0,
+        )
+        upload = backend_main.UploadFile(
+            filename="animated.gif",
+            file=io.BytesIO(stream.getvalue()),
+            headers=Headers({"content-type": "image/gif"}),
+        )
+
+        media = asyncio.run(backend_main.upload_retreat_scene_media("campfire", upload))
+
+        self.assertEqual(media["mime_type"], "image/gif")
+        stored = (config.UPLOADS_DIR / Path(media["asset_url"]).name).read_bytes()
+        self.assertEqual(stored, stream.getvalue())
+
+    def test_seating_scene_persists_all_group_layout_and_rotation(self):
+        layout = {
+            f"group-{group_number}": {
+                "x": 8 + ((group_number - 1) % 7) * 14,
+                "bottom": 4 + (2 - ((group_number - 1) // 7)) * 31,
+                "scale": 0.72,
+                "rotation": -15 if group_number == 1 else 0,
+                "flipX": False,
+                "visible": True,
+                "poseId": "listen-front",
+            }
+            for group_number in range(1, 22)
+        }
+        payload = backend_main.RetreatSceneLayoutPayload(layout=layout)
+
+        saved = asyncio.run(backend_main.save_retreat_scene_layout("seating", payload))
+        loaded = asyncio.run(backend_main.get_retreat_scene("seating"))
+
+        self.assertEqual(len(saved["layout"]), 21)
+        self.assertEqual(loaded["layout"]["group-1"]["rotation"], -15.0)
+        self.assertEqual(loaded["layout"]["group-21"]["poseId"], "listen-front")
+
+    def test_existing_sqlite_scene_tables_are_migrated_for_seating(self):
+        with backend_main.connect_db() as db:
+            db.execute("DROP INDEX retreat_scene_media_scene_idx")
+            db.execute("DROP TABLE retreat_scene_media")
+            db.execute("DROP TABLE retreat_scenes")
+            db.execute(
+                """
+                CREATE TABLE retreat_scenes (
+                    scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire')),
+                    layout_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE retreat_scene_media (
+                    id TEXT PRIMARY KEY,
+                    scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire')),
+                    name TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    asset_url TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            db.execute(
+                "INSERT INTO retreat_scenes VALUES ('stand', '{}', 'before', 'before')"
+            )
+
+        backend_main.init_db()
+        with backend_main.connect_db() as db:
+            existing = db.execute(
+                "SELECT layout_json FROM retreat_scenes WHERE scene = 'stand'"
+            ).fetchone()
+            db.execute(
+                "INSERT INTO retreat_scenes VALUES ('seating', '{}', 'after', 'after')"
+            )
+
+        self.assertEqual(existing["layout_json"], "{}")
+
     def test_team_api_hides_legacy_teams_above_21(self):
         with backend_main.connect_db() as db:
             db.execute(
@@ -287,10 +421,15 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("handmade texture", prompt)
         self.assertIn("strict 90-degree side-profile walking-right", prompt)
 
-    def test_master_edit_prompt_locks_all_25_poses_and_garment_boundaries(self):
+    def test_master_edit_prompt_locks_all_32_poses_and_garment_boundaries(self):
         prompt = backend_main.GARMENT_MASTER_EDIT_PROMPT
         self.assertIn("fixed master is an immutable template", prompt)
-        self.assertIn("exactly 25 complete characters", prompt)
+        self.assertIn("exactly 32 complete characters", prompt)
+        self.assertIn("strict 8-column by 4-row grid", prompt)
+        self.assertIn("Frames 3-13 are the complete waving", prompt)
+        self.assertIn("Frames 14-24 are the complete joyful-jump", prompt)
+        self.assertIn("listen-rear, listen-back, and standing-back", prompt)
+        self.assertIn("never make prayer, point, or jump smaller", prompt)
         self.assertIn("upper garment", prompt)
         self.assertIn("lower garment", prompt)
         self.assertIn("student-left footwear", prompt)
@@ -352,6 +491,30 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("chroma_spill", report["frames"][0]["issues"])
         self.assertGreater(report["frames"][0]["chroma_spill_pixels"], 0)
 
+    def test_normalizer_removes_a_detached_model_shadow(self):
+        generated = Image.open(io.BytesIO(backend_main.master_reference_for_ai())).convert("RGBA")
+        draw = ImageDraw.Draw(generated)
+        draw.ellipse((172, 366, 196, 376), fill=(92, 54, 30, 255))
+
+        normalized = backend_main.normalize_master_locked_atlas(generated)
+        report = backend_main.analyze_garment_atlas_pixels(normalized)
+
+        self.assertEqual(report["frames"][0]["alpha_component_count"], 1)
+        self.assertEqual(report["frames"][0]["detached_alpha_pixels"], 0)
+        self.assertNotIn("detached_alpha_component", report["frames"][0]["issues"])
+
+    def test_atlas_qa_rejects_a_detached_alpha_artifact(self):
+        atlas = backend_main.normalize_master_locked_atlas(
+            backend_main.master_reference_for_ai(),
+        )
+        ImageDraw.Draw(atlas).ellipse((170, 342, 188, 350), fill=(92, 54, 30, 255))
+
+        report = backend_main.analyze_garment_atlas_pixels(atlas)
+
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("detached_alpha_component", report["frames"][0]["issues"])
+        self.assertGreaterEqual(report["frames"][0]["detached_alpha_pixels"], 8)
+
     def test_master_locked_request_sends_master_first_and_omits_gpt_image_2_fidelity(self):
         generated = backend_main.master_reference_for_ai()
         expected = backend_main.SHOWCASE_MASTER_PATH.read_bytes()
@@ -400,14 +563,14 @@ class Peter3DBackendTests(unittest.TestCase):
             ))
 
         with Image.open(io.BytesIO(actual)) as atlas:
-            self.assertEqual(atlas.size, (1800, 1800))
+            self.assertEqual(atlas.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
         self.assertEqual(recorded["url"], backend_main.OPENAI_IMAGE_API_URL)
         self.assertEqual(recorded["data"]["model"], "gpt-image-2")
-        self.assertEqual(recorded["data"]["size"], "1920x1920")
+        self.assertEqual(recorded["data"]["size"], "3072x1536")
         self.assertEqual(recorded["data"]["quality"], "high")
         self.assertEqual(recorded["data"]["background"], "opaque")
         self.assertNotIn("input_fidelity", recorded["data"])
-        self.assertEqual(recorded["files"][0][1][0], "fixed-peter-master-5x5.png")
+        self.assertEqual(recorded["files"][0][1][0], "fixed-peter-master-8x4-v7.png")
         self.assertEqual(recorded["files"][1], (
             "image[]",
             ("team-1-corrected.png", b"corrected-student-peter", "image/png"),
@@ -630,12 +793,15 @@ class Peter3DBackendTests(unittest.TestCase):
                 "/stand",
                 "/back",
                 "/campfire",
+                "/seating",
                 "/display/stand",
                 "/display/back",
                 "/display/campfire",
+                "/display/seating",
                 "/editor/stand",
                 "/editor/back",
                 "/editor/campfire",
+                "/editor/seating",
                 "/walk",
                 "/display/walk",
                 "/page-3",
@@ -643,6 +809,10 @@ class Peter3DBackendTests(unittest.TestCase):
                 "/showcase",
                 "/print-template",
                 "/admin/seating",
+                "/api/retreat-scenes/{scene}",
+                "/api/retreat-scenes/{scene}/layout",
+                "/api/retreat-scenes/{scene}/media",
+                "/api/retreat-scenes/{scene}/media/{media_id}",
             }.issubset(registered_paths)
         )
 
@@ -793,7 +963,7 @@ class Peter3DBackendTests(unittest.TestCase):
         atlas_quality = {
             "status": "passed",
             "can_approve": True,
-            "summary": "마스터 고정 25컷 검수 통과",
+            "summary": "마스터 고정 32컷 검수 통과",
             "deterministic": backend_main.analyze_garment_atlas_pixels(atlas),
             "ai": {
                 "status": "passed",
@@ -838,7 +1008,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(composed["team"]["showcase_sprite_quality"]["deterministic"]["status"], "passed")
         atlas_path = config.UPLOADS_DIR / Path(composed["atlas_url"]).name
         with Image.open(atlas_path) as atlas:
-            self.assertEqual(atlas.size, (1800, 1800))
+            self.assertEqual(atlas.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
 
         approved = asyncio.run(backend_main.approve_showcase_sprite(1))
         self.assertEqual(approved["showcase_sprite_status"], "ready")
@@ -1002,7 +1172,7 @@ class Peter3DBackendTests(unittest.TestCase):
                 **deterministic,
                 "status": "passed",
                 "can_approve": True,
-                "summary": "25-frame alpha bbox QA passed.",
+                "summary": "32-frame alpha bbox QA passed.",
                 "issues": [],
                 "frames": [
                     {**frame, "status": "passed", "issues": []}
@@ -1088,7 +1258,7 @@ class Peter3DBackendTests(unittest.TestCase):
                 "backend.ai_generation.request_master_locked_garment_atlas",
                 new=AsyncMock(side_effect=HTTPException(
                     status_code=502,
-                    detail="AI 25컷 응답 형식이 올바르지 않습니다",
+                    detail="AI 32컷 응답 형식이 올바르지 않습니다",
                 )),
             ),
             self.assertRaises(HTTPException),
@@ -1179,8 +1349,8 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(first["atlas_url"], resumed["atlas_url"])
 
     def test_master_locked_normalization_matches_shared_actor_scale_and_baseline(self):
-        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as source:
-            master_cell = source.convert("RGBA").crop((0, 0, 360, 360))
+        source = backend_main.load_garment_master_atlas()
+        master_cell = source.crop((0, 0, 360, 360))
         master_bbox = master_cell.getchannel("A").getbbox()
         self.assertIsNotNone(master_bbox)
         target_bbox = backend_main.master_display_target_bbox(master_bbox)
@@ -1191,12 +1361,12 @@ class Peter3DBackendTests(unittest.TestCase):
         report = backend_main.analyze_garment_atlas_pixels(normalized)
         normalized_bbox = normalized.crop((0, 0, 360, 360)).getchannel("A").getbbox()
 
-        self.assertEqual(normalized.size, (1800, 1800))
+        self.assertEqual(normalized.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
         self.assertEqual(report["status"], "passed")
         self.assertIsNotNone(normalized_bbox)
-        self.assertGreater(
+        self.assertGreaterEqual(
             normalized_bbox[3] - normalized_bbox[1],
-            (master_bbox[3] - master_bbox[1]) * 1.3,
+            (master_bbox[3] - master_bbox[1]) * 0.99,
         )
         self.assertEqual(normalized_bbox[3] - normalized_bbox[1], target_bbox[3] - target_bbox[1])
         for frame in report["frames"]:
@@ -1212,17 +1382,22 @@ class Peter3DBackendTests(unittest.TestCase):
             backend_main.PRE_CAMPFIRE_GARMENT_TRANSFER_CONTRACT,
         )
         current = backend_main.public_sprite_contract(backend_main.GARMENT_TRANSFER_CONTRACT)
+        v5 = backend_main.public_sprite_contract(backend_main.V5_GARMENT_TRANSFER_CONTRACT)
 
         self.assertEqual(previous["version"], 3)
         self.assertEqual(previous["display_scale"], backend_main.GARMENT_DISPLAY_SCALE)
         self.assertEqual(pre_campfire["version"], 4)
         self.assertEqual(pre_campfire["display_scale"], 1.0)
-        self.assertEqual(current["version"], 5)
+        self.assertEqual(v5["version"], 5)
+        self.assertEqual(v5["layout"], "5x5")
+        self.assertEqual(v5["frame_count"], 25)
+        self.assertEqual(current["version"], 7)
+        self.assertEqual(current["layout"], "8x4")
+        self.assertEqual(current["frame_count"], 32)
         self.assertEqual(current["display_scale"], 1.0)
 
     def test_master_atlas_quality_rejects_a_character_shrunk_inside_its_cell(self):
-        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as source:
-            atlas = source.convert("RGBA")
+        atlas = backend_main.load_garment_master_atlas()
         cell = atlas.crop((0, 0, 360, 360))
         bbox = cell.getchannel("A").getbbox()
         self.assertIsNotNone(bbox)
@@ -1273,32 +1448,30 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertGreater(samples[3][0], samples[3][2])
         self.assertGreater(samples[3][1], samples[3][2])
 
-    def test_safe_master_keeps_all_25_poses_inside_cell_margins(self):
-        self.assertEqual(backend_main.SHOWCASE_MASTER_PATH, backend_main.SHOWCASE_SAFE_MASTER_PATH)
-        with Image.open(backend_main.SHOWCASE_MASTER_PATH) as master:
-            self.assertEqual(master.size, (1800, 1800))
-            for index in range(25):
-                column = index % 5
-                row = index // 5
-                bbox = master.crop((
-                    column * 360,
-                    row * 360,
-                    (column + 1) * 360,
-                    (row + 1) * 360,
-                )).getchannel("A").getbbox()
-                self.assertIsNotNone(bbox)
-                self.assertGreaterEqual(min(
-                    bbox[0],
-                    bbox[1],
-                    360 - bbox[2],
-                    360 - bbox[3],
-                ), 18)
+    def test_master_loader_keeps_all_32_poses_inside_cell_margins(self):
+        expected_path = (
+            backend_main.SHOWCASE_EXPANDED_MASTER_PATH
+            if backend_main.SHOWCASE_EXPANDED_MASTER_PATH.is_file()
+            else backend_main.SHOWCASE_SAFE_MASTER_PATH
+        )
+        self.assertEqual(backend_main.SHOWCASE_MASTER_PATH, expected_path)
+        master = backend_main.load_garment_master_atlas()
+        self.assertEqual(master.size, (backend_main.GARMENT_ATLAS_WIDTH, backend_main.GARMENT_ATLAS_HEIGHT))
+        for frame in range(1, backend_main.GARMENT_FRAME_COUNT + 1):
+            bbox = master.crop(backend_main.garment_atlas_frame_box(frame)).getchannel("A").getbbox()
+            self.assertIsNotNone(bbox)
+            self.assertGreaterEqual(min(
+                bbox[0],
+                bbox[1],
+                360 - bbox[2],
+                360 - bbox[3],
+            ), 18)
         normalized = backend_main.normalize_master_locked_atlas(
             backend_main.master_reference_for_ai(),
         )
         report = backend_main.analyze_garment_atlas_pixels(normalized)
         self.assertEqual(report["status"], "passed")
-        self.assertEqual(len(report["frames"]), 25)
+        self.assertEqual(len(report["frames"]), backend_main.GARMENT_FRAME_COUNT)
         for frame in report["frames"]:
             self.assertGreaterEqual(min(frame["margins"].values()), 14)
 
@@ -1392,21 +1565,18 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(result["openai_image_model"], backend_main.OPENAI_IMAGE_MODEL)
         self.assertEqual(result["openai_image_quality"], "high")
         self.assertTrue(result["fixed_peter_master_available"])
-        self.assertEqual(result["fixed_peter_master_frames"], 25)
+        self.assertEqual(result["fixed_peter_master_frames"], backend_main.GARMENT_FRAME_COUNT)
 
-    def test_fixed_peter_master_endpoint_serves_safe_25_frame_atlas(self):
+    def test_fixed_peter_master_endpoint_serves_configured_master_atlas(self):
         response = asyncio.run(backend_main.fixed_peter_master())
-        self.assertEqual(Path(response.path), backend_main.SHOWCASE_SAFE_MASTER_PATH)
+        self.assertEqual(Path(response.path), backend_main.SHOWCASE_MASTER_PATH)
         self.assertEqual(response.media_type, "image/png")
         self.assertEqual(response.headers["cache-control"], "public, max-age=3600")
 
     def test_vercel_function_bundle_includes_fixed_peter_master(self):
         config = json.loads((backend_main.ROOT / "vercel.json").read_text())
         function = config["functions"]["api/index.py"]
-        self.assertEqual(
-            function["includeFiles"],
-            "runtime-assets/peter-sober-master-safe.png",
-        )
+        self.assertEqual(function["includeFiles"], "runtime-assets/**")
         self.assertTrue(backend_main.SHOWCASE_SAFE_MASTER_PATH.is_file())
 
 

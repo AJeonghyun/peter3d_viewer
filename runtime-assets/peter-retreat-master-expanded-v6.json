@@ -1,0 +1,186 @@
+{
+  "id": "fixed-peter-master-edit-v6",
+  "layout": "8x4",
+  "columns": 8,
+  "rows": 4,
+  "frame_count": 32,
+  "frame_width": 360,
+  "frame_height": 360,
+  "frames": [
+    {
+      "index": 0,
+      "id": "legacy-1"
+    },
+    {
+      "index": 1,
+      "id": "legacy-2"
+    },
+    {
+      "index": 2,
+      "id": "legacy-3"
+    },
+    {
+      "index": 3,
+      "id": "legacy-4"
+    },
+    {
+      "index": 4,
+      "id": "legacy-5"
+    },
+    {
+      "index": 5,
+      "id": "legacy-6"
+    },
+    {
+      "index": 6,
+      "id": "legacy-7"
+    },
+    {
+      "index": 7,
+      "id": "legacy-8"
+    },
+    {
+      "index": 8,
+      "id": "legacy-9"
+    },
+    {
+      "index": 9,
+      "id": "legacy-10"
+    },
+    {
+      "index": 10,
+      "id": "legacy-11"
+    },
+    {
+      "index": 11,
+      "id": "legacy-12"
+    },
+    {
+      "index": 12,
+      "id": "legacy-13"
+    },
+    {
+      "index": 13,
+      "id": "legacy-14"
+    },
+    {
+      "index": 14,
+      "id": "legacy-15"
+    },
+    {
+      "index": 15,
+      "id": "legacy-16"
+    },
+    {
+      "index": 16,
+      "id": "legacy-17"
+    },
+    {
+      "index": 17,
+      "id": "legacy-18"
+    },
+    {
+      "index": 18,
+      "id": "legacy-19"
+    },
+    {
+      "index": 19,
+      "id": "legacy-20"
+    },
+    {
+      "index": 20,
+      "id": "legacy-21"
+    },
+    {
+      "index": 21,
+      "id": "legacy-22"
+    },
+    {
+      "index": 22,
+      "id": "legacy-23"
+    },
+    {
+      "index": 23,
+      "id": "legacy-24"
+    },
+    {
+      "index": 24,
+      "id": "legacy-25"
+    },
+    {
+      "index": 25,
+      "id": "idle-a"
+    },
+    {
+      "index": 26,
+      "id": "idle-b"
+    },
+    {
+      "index": 27,
+      "id": "wave"
+    },
+    {
+      "index": 28,
+      "id": "listen-front"
+    },
+    {
+      "index": 29,
+      "id": "listen-rear"
+    },
+    {
+      "index": 30,
+      "id": "listen-side"
+    },
+    {
+      "index": 31,
+      "id": "back"
+    }
+  ],
+  "animations": {
+    "idle": [
+      25,
+      26
+    ],
+    "walk": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "run": [
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ],
+    "wave": [
+      27
+    ],
+    "jump": [
+      20
+    ],
+    "pray": [
+      22
+    ],
+    "point": [
+      24
+    ]
+  },
+  "editor_poses": {
+    "idle-a": 25,
+    "idle-b": 26,
+    "wave": 27,
+    "listen-front": 28,
+    "listen-rear": 29,
+    "listen-side": 30,
+    "back": 31
+  }
+}
