@@ -780,12 +780,10 @@ class Peter3DBackendTests(unittest.TestCase):
     def test_world_and_admin_serve_the_react_index(self):
         world = asyncio.run(backend_main.world_page())
         admin = asyncio.run(backend_main.admin_page())
-        legacy_world = asyncio.run(backend_main.legacy_world_page())
         retreat_display = asyncio.run(backend_main.retreat_display_page())
         expected = config.FRONTEND_DIST / "index.html"
         self.assertEqual(world.path, expected)
         self.assertEqual(admin.path, expected)
-        self.assertEqual(legacy_world.path, expected)
         self.assertEqual(retreat_display.path, expected)
         registered_paths = {route.path for route in backend_main.app.routes}
         self.assertTrue(

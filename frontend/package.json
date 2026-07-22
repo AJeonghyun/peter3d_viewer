@@ -7,31 +7,22 @@
     "node": ">=20.17.0"
   },
   "scripts": {
-    "prepare:draco": "node scripts/prepare-draco.mjs",
-    "predev": "npm run prepare:draco",
     "dev": "vite",
-    "prebuild": "npm run prepare:draco",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview"
   },
   "dependencies": {
     "@ga1az/react-pixel-motion": "0.0.18",
-    "@react-three/drei": "10.7.7",
-    "@react-three/fiber": "9.6.1",
-    "@react-three/postprocessing": "3.0.4",
-    "@react-three/rapier": "2.2.0",
     "html-to-image": "^1.11.13",
     "matter-js": "^0.20.0",
     "react": "19.2.7",
-    "react-dom": "19.2.7",
-    "three": "0.170.0"
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@types/matter-js": "^0.20.2",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@types/three": "0.170.0",
     "@vitejs/plugin-react": "4.7.0",
     "typescript": "5.9.3",
     "vite": "6.4.3"

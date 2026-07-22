@@ -2,8 +2,8 @@
 
 개발자가 아닌 수련회 운영자가 21개 조 정보와 캐릭터를 직접 등록하고, 조 배치·
 안내·전체 캐릭터 화면을 실시간으로 편집해 1920×1080 프로젝터로 송출하는
-React + TypeScript 웹앱입니다. 기존 3D 월드는 호환 경로에 그대로 두고,
-수련회 디스플레이 기능은 브라우저 로컬 저장소만으로도 동작합니다.
+React + TypeScript 웹앱입니다. 수련회 디스플레이 기능은 브라우저 로컬
+저장소만으로도 동작합니다.
 
 ## 수련회 화면 빠른 시작
 
@@ -22,7 +22,6 @@ npm run dev
 | 예수님과 베드로 뒷모습 라인업 송출 | `/display/back` |
 | 갈릴리 모닥불 송출 | `/display/campfire` |
 | AI 캐릭터·조 정보 관리 | `/admin` |
-| 기존 3D 월드 | `/world-3d` |
 
 송출 경로에는 편집 버튼이 표시되지 않습니다. 운영자는 `/editor` 왼쪽 패널에서
 화면을 고르고 오른쪽 16:9 미리보기로 즉시 확인한 뒤 `송출 화면 열기`를 누르면
@@ -163,7 +162,7 @@ Web Worker 이전, 운영자 인증과 여러 운영 기기 간 실시간 동기
 수련회에서 21개 조가 꾸민 베드로를 촬영하고, 학생 그림의 색과 무늬를 유지한
 게임 캐릭터 스프라이트로 변환해 프로그램 사이마다 강당 메인 화면에 보여주는
 자동 전시 웹앱입니다. 기본 화면은 단순한 갈릴리 게임 무대 위에 5~6명만 크게
-보여주며, 기존 3D 월드는 별도 주소에 보존되어 있습니다.
+보여줍니다.
 
 ## 기존 베드로 키우기 기능
 
@@ -177,33 +176,18 @@ Web Worker 이전, 운영자 인증과 여러 운영 기기 간 실시간 동기
 - 관리자 화면에서 조별 촬영 사진 등록, AI 생성 상태 확인, 전체 시트와 동작별 검수
 - 검수를 승인한 AI 결과만 페이지 3 캐릭터에 적용
 - AI 결과가 아직 없거나 생성에 실패한 조는 기존 종이인형 표현으로 안전하게 대체
-- `/world-3d`에 보존된 갈릴리 호숫가 Three.js 월드
-- 21명의 베드로 배치 및 구역별 걷기
-- 베드로 터치 또는 `우리 조 찾기`를 통한 조 선택
-- 4축 성품 차트, 달란트, 레벨, 칭호, 성장 기록
-- 45초 미조작 시 키오스크 자동 초기화
 - 로컬 SQLite / 배포 Neon Postgres 기반 21개 조 데이터 영구 저장
 - 운영진용 조 정보·AI 캐릭터 등록·검수 화면
-- 기존에 보유한 애니메이션 GLB를 모델 보관함에 직접 등록
-- 완성된 GLB 하나를 선택한 여러 조에 재사용
-
-실제 GLB가 없는 조는 가벼운 데모 캐릭터로 표시됩니다.
 
 ## 기술 구성
 
 - 프론트엔드: React 19, TypeScript, Vite
 - 메인 전시: CSS GPU 변환, Canvas 전처리, 4×3 스프라이트 애니메이션
-- 3D 월드: Three.js 0.170.0, React Three Fiber, Drei
-- 물리: React Three Rapier
-- 화면 효과: React Three Postprocessing(Bloom, Vignette)
 - 백엔드: FastAPI, SQLite(로컬), Neon Postgres(Vercel)
 - 파일 저장: 로컬 디렉터리(개발), Vercel Blob(배포)
 - 배포 방식: Vite 빌드를 FastAPI가 같은 주소에서 제공
 
-Three.js와 R3F 관련 라이브러리는 프론트엔드 번들에 포함되므로 CDN 연결 없이
-로드됩니다. 조 데이터, 업로드 이미지, GLB 경로와 기존 API 형식은 React 전환
-전과 동일하게 유지합니다. Rapier가 캐릭터·모닥불·의자·배·돌·덤불과 섬 경계의
-충돌을 처리하고, 캐릭터의 배회 방향과 속도는 React 프레임 루프가 제어합니다.
+조 데이터, 업로드 이미지와 기존 API 형식은 React 전환 전과 동일하게 유지합니다.
 
 ## 설치 및 실행
 
@@ -237,7 +221,6 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 - 모닥불 배치 편집: `http://localhost:8000/editor/campfire`
 - 전체 자리표 배치 편집: `http://localhost:8000/editor/seating`
 - 구 걷기·페이지 3 별칭(라인업으로 연결): `http://localhost:8000/display/walk`, `http://localhost:8000/page-3`
-- 기존 3D 월드: `http://localhost:8000/world-3d`
 - 운영진 관리: `http://localhost:8000/admin`
 - 21프레임 애니메이션 실험실: `http://localhost:8000/sprite-lab`
 - 서버 상태: `http://localhost:8000/api/health`
@@ -261,8 +244,7 @@ npm run dev
 ```
 
 개발 전시 화면은 `http://localhost:5173/`, 관리 화면은
-`http://localhost:5173/admin`, 기존 3D 화면은
-`http://localhost:5173/world-3d`에서 확인합니다. Vite가 `/api`, `/static`,
+`http://localhost:5173/admin`에서 확인합니다. Vite가 `/api`, `/static`,
 `/uploads` 요청을 FastAPI로 전달합니다. 행사에서는 개발 서버 대신 미리
 `npm run build`한 뒤 FastAPI만 실행하세요.
 
@@ -408,21 +390,6 @@ python3 scripts/build_safe_master_atlas.py
 활성 시트는 `showcase_sprite_url`과 버전 기록에 저장되며
 `fixed-peter-garment-transfer-v2` 계약(5×5, 360×360px 셀)을 사용합니다.
 
-## 기존 3D 월드 성능 정책
-
-- iPad/터치 기기는 `balanced` 프로필을 자동 적용합니다.
-- GLB 다운로드·파싱은 iPad에서 2개, 고성능 기기에서 3개까지만 동시에 진행합니다.
-- 아직 대기 중인 조는 준비 화면 뒤에서 저비용 데모 캐릭터 상태를 유지합니다.
-- 선택한 조의 대기 모델을 우선 로드하고, 선택 중에는 이동을 멈춘 채 idle 애니메이션을 재생합니다.
-- 걷기 애니메이션은 iPad 15fps, 고성능 기기 30fps로 갱신합니다.
-- 배회 판단은 iPad 10fps, 고성능 기기 15fps로 낮추되 Rapier 이동은 계속 보간합니다.
-- iPad에서는 30Hz 고정 물리, 낮은 DPR, 그림자·후처리 비활성화로 발열을 줄입니다.
-- Draco 디코더는 빌드에 함께 복사되어 외부 CDN 없이 압축 GLB를 읽습니다.
-
-등록 GLB 목표는 조당 4~8MB, 40,000면 이하입니다. 서버의 10MB·100,000
-삼각형 제한은 비정상 결과의 배포를 막는 안전 상한이며, 이 상한에 가까운 모델
-21개를 동시에 쓰는 것을 권장한다는 의미는 아닙니다.
-
 ## 운영 흐름
 
 1. `/admin`에서 조 이름과 기본 정보를 입력
@@ -430,7 +397,6 @@ python3 scripts/build_safe_master_atlas.py
 3. 조를 선택해 `2D 캐릭터 사진`에 등록
 4. 메인 전시에서 실루엣·파츠 경계·닉네임창이 맞는지 확인
 5. 21개 조를 모두 등록한 뒤 크롬 전체 화면으로 10분 이상 리허설
-6. 필요한 경우에만 기존 3D 보관함에서 GLB 등록·배정
 
 ## 데이터와 생성 파일
 
