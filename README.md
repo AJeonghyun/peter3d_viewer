@@ -110,15 +110,23 @@ python3 scripts/apply_garment_design.py \
 `/editor/campfire`의 왼쪽 오브젝트 패널에서 PPT 요소처럼 추가하거나 뺄 수
 있습니다. 세 편집 페이지 모두 정면·뒷면·착석 포즈와 `서 있기·숨쉬기`,
 `손 흔들기` 애니메이션 전체를 고를 수 있고, 캔버스에서는 드래그와 `작게/크게`,
-`좌우 반전(F)`으로 배치합니다. 표시 여부·포즈·배치는 장면별 localStorage에
-자동 저장됩니다. 기본 배치와 상수는 `frontend/src/pages/AllCharactersPage.tsx`,
-포즈 목록은 `frontend/src/retreat/scenePoses.ts`에서 수정합니다.
+`좌우 반전(F)`으로 배치합니다. 각 편집 페이지에서 PNG/JPG/WEBP/GIF를 장면
+오브젝트로 여러 개 추가해 캐릭터와 똑같이 이동·확대·숨김·삭제할 수 있습니다.
+오브젝트 파일은 개발 환경에서는 `uploads/`, 배포 환경에서는 Vercel Blob에
+저장하고, 목록·표시 여부·포즈·배치는 SQLite 또는 Neon DB에 장면별로 자동
+저장합니다. 다른 기기의 송출 페이지는 2.5초마다 변경 상태를 받아오므로 열린
+화면에도 추가·이동·삭제가 자동 반영됩니다. 기존 브라우저 저장 데이터는 서버에
+장면 데이터가 아직 없을 때 편집 페이지 최초 접속 시 한 번 이전됩니다.
+기본 배치와 상수는 `frontend/src/pages/AllCharactersPage.tsx`, 포즈 목록은
+`frontend/src/retreat/scenePoses.ts`에서 수정합니다.
 
 세 송출·편집 장면의 자체 배경은 항상 투명합니다. 편집할 때만 왼쪽 패널의
 `참조 슬라이드`에서 PNG/JPG/WEBP/GIF를 첨부하거나 PowerPoint에서 슬라이드를
 복사한 뒤 `⌘V`로 붙여넣어 캐릭터 위치를 맞출 수 있습니다. 참조 이미지는
 장면별 IndexedDB에 저장되고 새로고침하면 기본적으로 숨겨집니다. `참조 보기`와
 `참조 숨기기`로 편집 중에만 전환할 수 있으며 실제 송출 화면에는 나타나지 않습니다.
+참조 슬라이드는 작업용이라 기기 간 공유하지 않고, 실제 장면에 추가한 이미지/GIF
+오브젝트만 서버를 통해 공유합니다.
 
 송출 장면은 `frontend/public/assets/retreat/peter-retreat-master.png`의 7개 포즈만
 사용합니다. 조별 의상 생성·검수 호환을 위한 25프레임 원본 계약은 백엔드에

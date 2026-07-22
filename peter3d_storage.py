@@ -213,6 +213,29 @@ SQLITE_SCHEMA = (
         updated_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS retreat_scenes (
+        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire')),
+        layout_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS retreat_scene_media (
+        id TEXT PRIMARY KEY,
+        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire')),
+        name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        asset_url TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS retreat_scene_media_scene_idx
+    ON retreat_scene_media (scene, created_at, id)
+    """,
 )
 
 
@@ -361,6 +384,29 @@ POSTGRES_SCHEMA = (
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS retreat_scenes (
+        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire')),
+        layout_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS retreat_scene_media (
+        id TEXT PRIMARY KEY,
+        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire')),
+        name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        asset_url TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS retreat_scene_media_scene_idx
+    ON retreat_scene_media (scene, created_at, id)
     """,
 )
 

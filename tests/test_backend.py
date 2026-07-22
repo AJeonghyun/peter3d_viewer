@@ -112,6 +112,75 @@ class Peter3DBackendTests(unittest.TestCase):
             count = db.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
         self.assertEqual(count, 21)
 
+    def test_scene_media_and_layout_are_shared_through_the_database(self):
+        stream = io.BytesIO()
+        Image.new("RGBA", (24, 24), (210, 48, 72, 255)).save(stream, format="PNG")
+        upload = backend_main.UploadFile(
+            filename="shared-object.png",
+            file=io.BytesIO(stream.getvalue()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        media = asyncio.run(backend_main.upload_retreat_scene_media("stand", upload))
+        media_key = f"media-{media['id']}"
+        payload = backend_main.RetreatSceneLayoutPayload(layout={
+            "group-1": {
+                "x": 14,
+                "bottom": 3,
+                "scale": 1.1,
+                "flipX": False,
+                "visible": True,
+                "poseId": "idle",
+            },
+            media_key: {
+                "x": 62,
+                "bottom": 26,
+                "scale": 0.8,
+                "flipX": True,
+                "visible": True,
+                "poseId": "idle",
+            },
+        })
+        saved = asyncio.run(backend_main.save_retreat_scene_layout("stand", payload))
+        loaded = asyncio.run(backend_main.get_retreat_scene("stand"))
+
+        self.assertEqual(saved["layout"][media_key]["x"], 62.0)
+        self.assertEqual(loaded["media"][0]["name"], "shared-object.png")
+        self.assertEqual(loaded["media"][0]["asset_url"], media["asset_url"])
+        self.assertTrue((config.UPLOADS_DIR / Path(media["asset_url"]).name).is_file())
+
+        asyncio.run(backend_main.delete_retreat_scene_media("stand", media["id"]))
+        deleted = asyncio.run(backend_main.get_retreat_scene("stand"))
+        self.assertEqual(deleted["media"], [])
+        self.assertNotIn(media_key, deleted["layout"])
+        self.assertFalse((config.UPLOADS_DIR / Path(media["asset_url"]).name).exists())
+
+    def test_scene_media_preserves_animated_gif_uploads(self):
+        stream = io.BytesIO()
+        frames = [
+            Image.new("RGBA", (16, 16), (255, 80, 40, 255)),
+            Image.new("RGBA", (16, 16), (40, 120, 255, 255)),
+        ]
+        frames[0].save(
+            stream,
+            format="GIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=80,
+            loop=0,
+        )
+        upload = backend_main.UploadFile(
+            filename="animated.gif",
+            file=io.BytesIO(stream.getvalue()),
+            headers=Headers({"content-type": "image/gif"}),
+        )
+
+        media = asyncio.run(backend_main.upload_retreat_scene_media("campfire", upload))
+
+        self.assertEqual(media["mime_type"], "image/gif")
+        stored = (config.UPLOADS_DIR / Path(media["asset_url"]).name).read_bytes()
+        self.assertEqual(stored, stream.getvalue())
+
     def test_team_api_hides_legacy_teams_above_21(self):
         with backend_main.connect_db() as db:
             db.execute(
@@ -672,6 +741,10 @@ class Peter3DBackendTests(unittest.TestCase):
                 "/showcase",
                 "/print-template",
                 "/admin/seating",
+                "/api/retreat-scenes/{scene}",
+                "/api/retreat-scenes/{scene}/layout",
+                "/api/retreat-scenes/{scene}/media",
+                "/api/retreat-scenes/{scene}/media/{media_id}",
             }.issubset(registered_paths)
         )
 

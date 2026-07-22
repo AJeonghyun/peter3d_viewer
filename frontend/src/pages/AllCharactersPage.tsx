@@ -23,10 +23,22 @@ import {
 } from '../retreat/scenePoses';
 import { STAGE_UNIT_X, STAGE_UNIT_Y } from '../retreat/displayMode';
 import {
+  deleteSceneMediaAsset,
   deleteReferenceBackground,
+  loadSceneMediaAsset,
+  loadSceneMediaMetadata,
   loadReferenceBackground,
+  saveSceneMediaMetadata,
   saveReferenceBackground,
 } from '../retreat/persistence';
+import {
+  deleteSharedSceneMedia,
+  loadSharedScene,
+  saveSharedSceneLayout,
+  uploadSharedSceneMedia,
+  type SharedSceneMedia,
+  type SharedSceneSnapshot,
+} from '../retreat/sceneSync';
 import type { RetreatGroup, RetreatPage } from '../retreat/types';
 import '../styles/retreat-world.css';
 
@@ -56,6 +68,7 @@ const BACK_LAYOUT_STORAGE_KEY = 'peter-page3-back-layout-v2';
 const CAMPFIRE_LAYOUT_STORAGE_KEY = 'peter-page3-campfire-layout-v1';
 const DISPLAY_MODE_STORAGE_KEY = 'peter-page3-display-mode-v1';
 const MAX_REFERENCE_BACKGROUND_BYTES = 30 * 1024 * 1024;
+const MAX_SCENE_MEDIA_BYTES = 30 * 1024 * 1024;
 
 const GROUP_SCENES: readonly GroupTimelineScene[] = [
   { duration: GROUP_SCENE_DURATION, groupStart: 0, groupCount: GROUPS_PER_SCENE },
@@ -81,6 +94,8 @@ interface ScenePosition {
   visible: boolean;
   poseId: RetreatPoseId;
 }
+
+type SceneMediaAsset = SharedSceneMedia;
 
 type SceneLayout = Record<string, ScenePosition>;
 
@@ -177,13 +192,10 @@ function isSupportedReferenceImage(file: File): boolean {
   return ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type);
 }
 
-function readLayout(mode: DisplayMode): SceneLayout {
+function normalizeLayout(mode: DisplayMode, saved: unknown): SceneLayout {
   const defaults = defaultLayoutFor(mode);
-  if (typeof window === 'undefined') return defaults;
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(layoutStorageKey(mode)) ?? '{}',
-    ) as SceneLayout;
+  if (saved && typeof saved === 'object') {
+    const parsed = saved as SceneLayout;
     for (const [key, value] of Object.entries(parsed)) {
       if (
         value
@@ -207,10 +219,21 @@ function readLayout(mode: DisplayMode): SceneLayout {
         };
       }
     }
-  } catch {
-    // Ignore malformed browser state and restore the safe defaults.
   }
   return defaults;
+}
+
+function readLayout(mode: DisplayMode): SceneLayout {
+  if (typeof window === 'undefined') return defaultLayoutFor(mode);
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(layoutStorageKey(mode)) ?? '{}',
+    ) as unknown;
+    return normalizeLayout(mode, parsed);
+  } catch {
+    // Ignore malformed browser state and restore the safe defaults.
+    return defaultLayoutFor(mode);
+  }
 }
 
 function readDisplayMode(): DisplayMode {
@@ -256,6 +279,25 @@ function editableLabel(key: string) {
   if (key === 'jesus') return '예수님';
   if (key === 'fire') return '모닥불';
   return `${key.replace('group-', '')}조 베드로`;
+}
+
+function sceneMediaLayoutKey(id: string) {
+  return `media-${id}`;
+}
+
+function defaultSceneMediaPosition(index = 0): ScenePosition {
+  return {
+    x: 50 + (index % 4) * 3,
+    bottom: 24 + (index % 3) * 3,
+    scale: 1,
+    flipX: false,
+    visible: true,
+    poseId: 'idle',
+  };
+}
+
+function isSceneMediaKey(key: string) {
+  return key.startsWith('media-');
 }
 
 function locateGroupScene(time: number): GroupTimelineScene {
@@ -315,6 +357,16 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const dragRef = useRef<DragState | null>(null);
   const referenceBackgroundUrlRef = useRef('');
   const referenceBackgroundRevisionRef = useRef(0);
+  const sceneSyncReadyRef = useRef<Record<DisplayMode, boolean>>({
+    stand: false,
+    back: false,
+    campfire: false,
+  });
+  const sceneRevisionRef = useRef<Record<DisplayMode, string | null | undefined>>({
+    stand: undefined,
+    back: undefined,
+    campfire: undefined,
+  });
   const [layoutMode] = useState(() => !preview && isLayoutRoute());
   const [layoutGroupStart, setLayoutGroupStart] = useState(0);
   const [standLayout, setStandLayout] = useState(() => readLayout('stand'));
@@ -328,6 +380,8 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const [referenceBackgroundName, setReferenceBackgroundName] = useState('');
   const [referenceBackgroundError, setReferenceBackgroundError] = useState('');
   const [referenceBackgroundVisible, setReferenceBackgroundVisible] = useState(false);
+  const [sceneMedia, setSceneMedia] = useState<SceneMediaAsset[]>([]);
+  const [sceneMediaError, setSceneMediaError] = useState('');
 
   const playing = settings.animationPlaying && !localPaused;
   const groupsRotating = !layoutMode && playing;
@@ -380,15 +434,48 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
 
   useEffect(() => {
     window.localStorage.setItem(STAND_LAYOUT_STORAGE_KEY, JSON.stringify(standLayout));
-  }, [standLayout]);
+    if (!layoutMode || !sceneSyncReadyRef.current.stand) return undefined;
+    const timer = window.setTimeout(() => {
+      void saveSharedSceneLayout('stand', standLayout).then((snapshot) => {
+        sceneRevisionRef.current.stand = snapshot.updatedAt;
+        setSceneMediaError('');
+      }).catch((error: unknown) => {
+        console.warn('정면 장면 배치를 서버에 저장하지 못했습니다.', error);
+        setSceneMediaError('배치를 서버에 저장하지 못했습니다. 네트워크 연결을 확인하세요.');
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [layoutMode, standLayout]);
 
   useEffect(() => {
     window.localStorage.setItem(BACK_LAYOUT_STORAGE_KEY, JSON.stringify(backLayout));
-  }, [backLayout]);
+    if (!layoutMode || !sceneSyncReadyRef.current.back) return undefined;
+    const timer = window.setTimeout(() => {
+      void saveSharedSceneLayout('back', backLayout).then((snapshot) => {
+        sceneRevisionRef.current.back = snapshot.updatedAt;
+        setSceneMediaError('');
+      }).catch((error: unknown) => {
+        console.warn('뒷면 장면 배치를 서버에 저장하지 못했습니다.', error);
+        setSceneMediaError('배치를 서버에 저장하지 못했습니다. 네트워크 연결을 확인하세요.');
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [backLayout, layoutMode]);
 
   useEffect(() => {
     window.localStorage.setItem(CAMPFIRE_LAYOUT_STORAGE_KEY, JSON.stringify(campfireLayout));
-  }, [campfireLayout]);
+    if (!layoutMode || !sceneSyncReadyRef.current.campfire) return undefined;
+    const timer = window.setTimeout(() => {
+      void saveSharedSceneLayout('campfire', campfireLayout).then((snapshot) => {
+        sceneRevisionRef.current.campfire = snapshot.updatedAt;
+        setSceneMediaError('');
+      }).catch((error: unknown) => {
+        console.warn('모닥불 장면 배치를 서버에 저장하지 못했습니다.', error);
+        setSceneMediaError('배치를 서버에 저장하지 못했습니다. 네트워크 연결을 확인하세요.');
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [campfireLayout, layoutMode]);
 
   useEffect(() => {
     window.localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, displayMode);
@@ -446,6 +533,97 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       active = false;
     };
   }, [displayMode, layoutMode, replaceReferenceBackgroundUrl]);
+
+  useEffect(() => {
+    let active = true;
+    let syncing = false;
+    sceneSyncReadyRef.current[displayMode] = false;
+    sceneRevisionRef.current[displayMode] = undefined;
+    setSceneMediaError('');
+
+    const applySnapshot = (snapshot: SharedSceneSnapshot) => {
+      const nextLayout = normalizeLayout(displayMode, snapshot.layout);
+      if (displayMode === 'stand') setStandLayout(nextLayout);
+      else if (displayMode === 'back') setBackLayout(nextLayout);
+      else setCampfireLayout(nextLayout);
+      setSceneMedia(snapshot.media);
+      sceneRevisionRef.current[displayMode] = snapshot.updatedAt;
+      sceneSyncReadyRef.current[displayMode] = true;
+    };
+
+    const migrateLegacyScene = async (): Promise<SharedSceneSnapshot> => {
+      const legacyLayout = readLayout(displayMode);
+      const legacyMetadata = loadSceneMediaMetadata(displayMode);
+      const migratedLayout = { ...legacyLayout };
+      Object.keys(migratedLayout).forEach((key) => {
+        if (isSceneMediaKey(key)) delete migratedLayout[key];
+      });
+      const uploaded: SharedSceneMedia[] = [];
+      try {
+        for (const item of legacyMetadata) {
+          const legacyKey = sceneMediaLayoutKey(item.id);
+          const position = legacyLayout[legacyKey];
+          const blob = await loadSceneMediaAsset(item.storageKey);
+          if (!blob) continue;
+          const file = blob instanceof File
+            ? blob
+            : new File([blob], item.name, {
+                type: item.mimeType
+                  || (item.name.toLowerCase().endsWith('.gif') ? 'image/gif' : 'image/png'),
+              });
+          const remote = await uploadSharedSceneMedia(displayMode, file);
+          uploaded.push(remote);
+          migratedLayout[sceneMediaLayoutKey(remote.id)] = position
+            ?? defaultSceneMediaPosition(uploaded.length - 1);
+        }
+        const snapshot = await saveSharedSceneLayout(displayMode, migratedLayout);
+        saveSceneMediaMetadata(displayMode, []);
+        await Promise.allSettled(
+          legacyMetadata.map((item) => deleteSceneMediaAsset(item.storageKey)),
+        );
+        return snapshot;
+      } catch (error) {
+        await Promise.allSettled(
+          uploaded.map((item) => deleteSharedSceneMedia(displayMode, item.id)),
+        );
+        throw error;
+      }
+    };
+
+    const syncScene = async () => {
+      if (syncing) return;
+      syncing = true;
+      try {
+        let snapshot = await loadSharedScene(displayMode);
+        if (snapshot.updatedAt === null && layoutMode) {
+          snapshot = await migrateLegacyScene();
+        }
+        if (!active) return;
+        const firstLoad = !sceneSyncReadyRef.current[displayMode];
+        if (firstLoad || sceneRevisionRef.current[displayMode] !== snapshot.updatedAt) {
+          applySnapshot(snapshot);
+        }
+        setSceneMediaError('');
+      } catch (error) {
+        console.warn('공유 장면을 불러오지 못했습니다.', error);
+        if (active) {
+          sceneSyncReadyRef.current[displayMode] = false;
+          setSceneMediaError('공유 장면을 불러오지 못했습니다. 네트워크 연결을 확인하세요.');
+        }
+      } finally {
+        syncing = false;
+      }
+    };
+
+    void syncScene();
+    const pollTimer = layoutMode
+      ? undefined
+      : window.setInterval(() => void syncScene(), 2_500);
+    return () => {
+      active = false;
+      if (pollTimer !== undefined) window.clearInterval(pollTimer);
+    };
+  }, [displayMode, layoutMode]);
 
   useEffect(() => {
     if (!layoutMode) return undefined;
@@ -577,7 +755,10 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     if (!layoutMode) return;
     event.preventDefault();
     event.stopPropagation();
-    const startPosition = activeLayout[key] ?? defaultLayoutFor(displayMode)[key];
+    const mediaIndex = sceneMedia.findIndex((item) => sceneMediaLayoutKey(item.id) === key);
+    const startPosition = activeLayout[key]
+      ?? defaultLayoutFor(displayMode)[key]
+      ?? (mediaIndex >= 0 ? defaultSceneMediaPosition(mediaIndex) : undefined);
     if (!startPosition) return;
     setSelectedLayoutKey(key);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -609,7 +790,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
 
   function handleEditableKeyDown(key: string, event: ReactKeyboardEvent<HTMLElement>) {
     if (!layoutMode) return;
-    if (event.key.toLowerCase() === 'f' && key.startsWith('group-')) {
+    if (event.key.toLowerCase() === 'f' && (key.startsWith('group-') || isSceneMediaKey(key))) {
       event.preventDefault();
       updateLayoutPosition(key, (current) => ({ ...current, flipX: !current.flipX }));
       return;
@@ -625,14 +806,18 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   }
 
   function resetSelectedPosition() {
-    const initial = defaultLayoutFor(displayMode)[selectedLayoutKey];
+    const mediaIndex = sceneMedia.findIndex(
+      (item) => sceneMediaLayoutKey(item.id) === selectedLayoutKey,
+    );
+    const initial = defaultLayoutFor(displayMode)[selectedLayoutKey]
+      ?? (mediaIndex >= 0 ? defaultSceneMediaPosition(mediaIndex) : undefined);
     if (initial) {
       setActiveLayout((current) => ({ ...current, [selectedLayoutKey]: initial }));
     }
   }
 
-  function flipSelectedPeter() {
-    if (!selectedLayoutKey.startsWith('group-')) return;
+  function flipSelectedElement() {
+    if (!selectedLayoutKey.startsWith('group-') && !isSceneMediaKey(selectedLayoutKey)) return;
     updateLayoutPosition(
       selectedLayoutKey,
       (current) => ({ ...current, flipX: !current.flipX }),
@@ -640,8 +825,79 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   }
 
   function resetAllPositions() {
-    setActiveLayout(defaultLayoutFor(displayMode));
+    setActiveLayout({
+      ...defaultLayoutFor(displayMode),
+      ...Object.fromEntries(sceneMedia.map((item, index) => [
+        sceneMediaLayoutKey(item.id),
+        defaultSceneMediaPosition(index),
+      ])),
+    });
     setSelectedLayoutKey('group-1');
+  }
+
+  async function addSceneMediaFiles(files: File[]) {
+    const validFiles = files.filter((file) => {
+      if (!isSupportedReferenceImage(file)) {
+        setSceneMediaError('PNG, JPG, WEBP, GIF 파일만 장면에 추가할 수 있습니다.');
+        return false;
+      }
+      if (file.size > MAX_SCENE_MEDIA_BYTES) {
+        setSceneMediaError(`${file.name}: 파일은 30MB 이하만 추가할 수 있습니다.`);
+        return false;
+      }
+      return true;
+    });
+    if (validFiles.length === 0) return;
+
+    const addedAssets: SceneMediaAsset[] = [];
+    const failedFiles: string[] = [];
+    for (const file of validFiles) {
+      try {
+        addedAssets.push(await uploadSharedSceneMedia(displayMode, file));
+      } catch (error) {
+        console.warn(`${file.name} 장면 이미지를 서버에 저장하지 못했습니다.`, error);
+        failedFiles.push(file.name);
+      }
+    }
+
+    if (addedAssets.length > 0) {
+      setSceneMedia((current) => [...current, ...addedAssets]);
+      setActiveLayout((current) => ({
+        ...current,
+        ...Object.fromEntries(addedAssets.map((item, index) => [
+          sceneMediaLayoutKey(item.id),
+          defaultSceneMediaPosition(sceneMedia.length + index),
+        ])),
+      }));
+      setSelectedLayoutKey(sceneMediaLayoutKey(addedAssets.at(-1)!.id));
+    }
+    setSceneMediaError(failedFiles.length > 0
+      ? `${failedFiles.join(', ')} 파일을 서버에 저장하지 못했습니다.`
+      : '');
+  }
+
+  function handleSceneMediaChange(event: ReactChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length > 0) void addSceneMediaFiles(files);
+  }
+
+  async function removeSceneMedia(item: SceneMediaAsset) {
+    try {
+      await deleteSharedSceneMedia(displayMode, item.id);
+      setSceneMedia((current) => current.filter((stored) => stored.id !== item.id));
+      const mediaKey = sceneMediaLayoutKey(item.id);
+      setActiveLayout((current) => {
+        const next = { ...current };
+        delete next[mediaKey];
+        return next;
+      });
+      if (selectedLayoutKey === mediaKey) setSelectedLayoutKey('group-1');
+      setSceneMediaError('');
+    } catch (error) {
+      console.warn('장면 이미지를 삭제하지 못했습니다.', error);
+      setSceneMediaError('이미지/GIF를 삭제하지 못했습니다. 다시 시도하세요.');
+    }
   }
 
   function handleReferenceBackgroundChange(event: ReactChangeEvent<HTMLInputElement>) {
@@ -677,6 +933,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const lineupDirection = displayMode === 'back' ? '뒷모습' : '정면';
   const sidebarGroups = activeSceneGroups;
   const poseOptions = poseOptionsForPage(displayMode);
+  const selectedLayoutLabel = sceneMedia.find(
+    (item) => sceneMediaLayoutKey(item.id) === selectedLayoutKey,
+  )?.name ?? editableLabel(selectedLayoutKey);
 
   return (
     <main
@@ -771,6 +1030,24 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
               </p>
             ) : null}
           </section>
+          <section className="retreat-parade__scene-media-tools" aria-label="장면 이미지 오브젝트 추가">
+            <div>
+              <strong>이미지/GIF 오브젝트</strong>
+              <small>캐릭터처럼 편집 · 다른 기기와 서버 동기화</small>
+            </div>
+            <label className="retreat-parade__scene-media-upload">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                onChange={handleSceneMediaChange}
+              />
+              이미지/GIF 오브젝트 추가
+            </label>
+            {sceneMediaError ? (
+              <p className="retreat-parade__reference-error" role="status">{sceneMediaError}</p>
+            ) : null}
+          </section>
           <div className="retreat-parade__layout-groups" role="group" aria-label="편집할 조 회차 선택">
             {GROUP_SCENES.map(({ groupStart, groupCount }) => (
               <button
@@ -788,6 +1065,48 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
           </div>
 
           <div className="retreat-parade__object-list" aria-label="장면 요소 목록">
+            {sceneMedia.map((item, index) => {
+              const mediaKey = sceneMediaLayoutKey(item.id);
+              const position = activeLayout[mediaKey] ?? defaultSceneMediaPosition(index);
+              return (
+                <div
+                  className="retreat-parade__object-row retreat-parade__object-row--media"
+                  data-selected={selectedLayoutKey === mediaKey ? 'true' : 'false'}
+                  data-visible={position.visible ? 'true' : 'false'}
+                  key={item.id}
+                >
+                  <button
+                    className="retreat-parade__object-main"
+                    type="button"
+                    onClick={() => setSelectedLayoutKey(mediaKey)}
+                  >
+                    <span className="retreat-parade__object-thumb retreat-parade__object-thumb--media">
+                      <img src={item.url} alt="" />
+                    </span>
+                    <span>
+                      <strong>{item.name}</strong>
+                      <small>{item.mimeType === 'image/gif' ? 'GIF' : '이미지'} · {position.visible ? '표시 중' : '빠짐'}</small>
+                    </span>
+                  </button>
+                  <span className="retreat-parade__object-media-actions">
+                    <button
+                      className="retreat-parade__object-toggle"
+                      type="button"
+                      onClick={() => setElementVisibility(mediaKey, !position.visible)}
+                    >
+                      {position.visible ? '빼기' : '+ 추가'}
+                    </button>
+                    <button
+                      className="retreat-parade__object-delete"
+                      type="button"
+                      onClick={() => void removeSceneMedia(item)}
+                    >
+                      삭제
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
             {(['jesus', ...(displayMode === 'campfire' ? ['fire'] : [])] as const).map((key) => {
               const item = activeLayout[key] ?? defaultLayoutFor(displayMode)[key];
               if (!item) return null;
@@ -893,7 +1212,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
           <div className="retreat-parade__layout-actions" role="toolbar" aria-label="선택 대상 조절">
             <div className="retreat-parade__layout-selected">
               <span>선택됨</span>
-              <strong>{editableLabel(selectedLayoutKey)}</strong>
+              <strong>{selectedLayoutLabel}</strong>
             </div>
             <button
               type="button"
@@ -915,11 +1234,11 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             >
               크게 +
             </button>
-            {selectedLayoutKey.startsWith('group-') ? (
+            {selectedLayoutKey.startsWith('group-') || isSceneMediaKey(selectedLayoutKey) ? (
               <button
                 type="button"
-                aria-label={`${editableLabel(selectedLayoutKey)} 좌우 방향 반전`}
-                onClick={flipSelectedPeter}
+                aria-label={`${selectedLayoutLabel} 좌우 방향 반전`}
+                onClick={flipSelectedElement}
               >
                 좌우 반전 (F)
               </button>
@@ -927,8 +1246,38 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             <button type="button" onClick={resetSelectedPosition}>선택 초기화</button>
             <button type="button" onClick={resetAllPositions}>전체 초기화</button>
           </div>
-          <p>요소를 선택하고 캔버스에서 드래그하세요. 추가·빼기와 포즈는 자동 저장됩니다.</p>
+          <p>요소를 선택하고 캔버스에서 드래그하세요. 모든 변경은 서버에 자동 저장됩니다.</p>
         </aside>
+      ) : null}
+
+      {sceneMedia.length > 0 ? (
+        <section className="retreat-parade__scene-media-layer" aria-label="추가한 이미지와 GIF">
+          {sceneMedia.map((item, index) => {
+            const mediaKey = sceneMediaLayoutKey(item.id);
+            const position = activeLayout[mediaKey] ?? defaultSceneMediaPosition(index);
+            if (!position.visible) return null;
+            return (
+              <figure
+                className="retreat-parade__scene-media-object"
+                data-layout-selected={selectedLayoutKey === mediaKey ? 'true' : 'false'}
+                key={item.id}
+                role={layoutMode ? 'button' : undefined}
+                tabIndex={layoutMode ? 0 : undefined}
+                aria-label={layoutMode ? `${item.name} 위치 편집` : undefined}
+                onPointerDown={(event) => handlePointerDown(mediaKey, event)}
+                onKeyDown={(event) => handleEditableKeyDown(mediaKey, event)}
+                style={{
+                  '--scene-media-x': `${position.x}${STAGE_UNIT_X}`,
+                  '--scene-media-bottom': `${position.bottom}${STAGE_UNIT_Y}`,
+                  '--scene-media-scale': position.scale,
+                  '--scene-media-flip': position.flipX ? -1 : 1,
+                } as CSSProperties}
+              >
+                <img src={item.url} alt={item.name} draggable={false} />
+              </figure>
+            );
+          })}
+        </section>
       ) : null}
 
       {displayMode !== 'campfire' ? (

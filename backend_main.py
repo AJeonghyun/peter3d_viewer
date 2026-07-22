@@ -47,6 +47,8 @@ from backend.config import (  # noqa: F401
     LEGACY_GARMENT_TRANSFER_CONTRACT,
     MAX_GLB_BYTES,
     MAX_GLB_TRIANGLES,
+    MAX_SCENE_MEDIA_BYTES,
+    MAX_SCENE_OBJECTS,
     MAX_SPRITE_BYTES,
     MAX_UPLOAD_BYTES,
     MODELS_DIR,
@@ -84,6 +86,8 @@ from backend.schemas import (  # noqa: F401
     ActiveSeatingPresetPayload,
     GrowthCreate,
     ModelAssetApply,
+    RetreatSceneLayoutPayload,
+    RetreatScenePositionPayload,
     SeatingPresetPayload,
     SpriteApprovalPayload,
     SpriteFramePatchPayload,
@@ -174,6 +178,13 @@ from backend.routes.teams import (  # noqa: F401
     team_history,
     update_team,
     upload_team_image,
+)
+from backend.routes.retreat_scenes import (  # noqa: F401
+    delete_retreat_scene_media,
+    get_retreat_scene,
+    save_retreat_scene_layout,
+    upload_retreat_scene_media,
+    validated_scene_media_upload,
 )
 from backend.routes.seating import (  # noqa: F401
     create_seating_preset,

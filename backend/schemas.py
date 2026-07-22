@@ -47,3 +47,16 @@ class SpriteFramePatchPayload(BaseModel):
         min_length=1,
         max_length=config.GARMENT_FRAME_COUNT,
     )
+
+
+class RetreatScenePositionPayload(BaseModel):
+    x: float = Field(ge=2, le=98)
+    bottom: float = Field(ge=-4, le=70)
+    scale: float = Field(ge=0.35, le=1.8)
+    flipX: bool = False
+    visible: bool = True
+    poseId: str = Field(default="idle", min_length=1, max_length=40)
+
+
+class RetreatSceneLayoutPayload(BaseModel):
+    layout: Dict[str, RetreatScenePositionPayload]

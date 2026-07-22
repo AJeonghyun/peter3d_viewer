@@ -178,6 +178,7 @@ class Page3CampfireAssetTests(unittest.TestCase):
 
     def test_page_three_layout_editor_persists_each_group_and_prop(self):
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
+        persistence = (FRONTEND / "src" / "retreat" / "persistence.ts").read_text()
         self.assertIn("peter-page3-stand-layout-v3", source)
         self.assertIn("peter-page3-back-layout-v2", source)
         self.assertIn("peter-page3-campfire-layout-v1", source)
@@ -202,7 +203,25 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("기본 캔버스는 투명함", source)
         self.assertIn("saveReferenceBackground", source)
         self.assertIn("deleteReferenceBackground", source)
+        self.assertIn("이미지/GIF 오브젝트 추가", source)
+        self.assertIn("accept=\"image/png,image/jpeg,image/webp,image/gif\"", source)
+        self.assertIn("multiple", source)
+        self.assertIn("uploadSharedSceneMedia", source)
+        self.assertIn("deleteSharedSceneMedia", source)
+        self.assertIn("loadSharedScene", source)
+        self.assertIn("saveSharedSceneLayout", source)
+        self.assertIn("window.setInterval(() => void syncScene(), 2_500)", source)
+        self.assertIn("retreat-parade__scene-media-object", source)
+        self.assertIn("setElementVisibility(mediaKey", source)
+        self.assertIn("SCENE_MEDIA_STORE_NAME", persistence)
+        self.assertIn("loadSceneMediaMetadata", persistence)
+        self.assertIn("saveSceneMediaMetadata", persistence)
         self.assertIn("window.localStorage.setItem", source)
+
+        sync = (FRONTEND / "src" / "retreat" / "sceneSync.ts").read_text()
+        self.assertIn("/retreat-scenes/${scene}", sync)
+        self.assertIn("method: 'PUT'", sync)
+        self.assertIn("method: 'DELETE'", sync)
 
         poses = (FRONTEND / "src" / "retreat" / "scenePoses.ts").read_text()
         self.assertIn("ALL_POSE_IDS", poses)
