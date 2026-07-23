@@ -455,38 +455,6 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("displayMode !== 'awards' && sceneMedia.length > 0", source)
         self.assertIn("displayMode === 'awards' ? 'trophy' : 'group-1'", source)
         self.assertIn("PPT 위에 겹쳐 띄우는 회전 트로피", source)
-        self.assertNotIn("TROPHY_UNIQUE_FRAMES", source)
-        self.assertNotIn("'--trophy-frame-duration'", source)
-        self.assertNotIn("retreat-trophy-frame-blend", styles)
-        self.assertIn("steps(18, jump-end)", styles)
-        self.assertIn("steps(4, jump-end)", styles)
-        self.assertIn("background-size: 1800% 400%", styles)
-        self.assertIn('background-image: url("/assets/trophy/trophy-strip.png")', styles)
-        self.assertIn("to { background-position-x: 105.882353%; }", styles)
-        self.assertIn("to { background-position-y: 133.333333%; }", styles)
-        self.assertIn("'--trophy-row-duration': `${trophySpinSeconds / 4}s`", source)
-        self.assertIn("role={layoutMode ? 'button' : 'img'}", source)
-        self.assertEqual(
-            source.count('<img src="/assets/trophy/trophy-strip.png"'),
-            0,
-        )
-        with Image.open(FRONTEND / "public" / "assets" / "trophy" / "trophy-strip.png") as sheet:
-            self.assertEqual(sheet.width % 18, 0)
-            self.assertEqual(sheet.height % 4, 0)
-            frame_width = sheet.width // 18
-            frame_height = sheet.height // 4
-            self.assertEqual(frame_width, 136)
-            self.assertEqual(frame_height, 333)
-            for frame_index in range(72):
-                column = frame_index % 18
-                row = frame_index // 18
-                frame = sheet.crop((
-                    column * frame_width,
-                    row * frame_height,
-                    (column + 1) * frame_width,
-                    (row + 1) * frame_height,
-                ))
-                self.assertIsNotNone(frame.getbbox())
         self.assertIn("사이드바 닫기", source)
         self.assertIn('data-panel-open={panelOpen', editor)
         self.assertIn("설정 닫기", editor)

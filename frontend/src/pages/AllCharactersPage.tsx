@@ -1141,7 +1141,6 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       ? groups
       : activeSceneGroups;
   const trophyPosition = activeLayout.trophy ?? defaultTrophyPosition();
-  const trophySpinSeconds = trophyPosition.spinSeconds ?? TROPHY_DEFAULT_SPIN_SECONDS;
   const poseOptions = poseOptionsForPage(displayMode);
   const xForCanvas = (x: number) => (
     displayMode === 'seating' && layoutMode
@@ -1583,7 +1582,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         <div
           className="retreat-parade__trophy"
           data-layout-selected={selectedLayoutKey === 'trophy' ? 'true' : 'false'}
-          role={layoutMode ? 'button' : 'img'}
+          role={layoutMode ? 'button' : undefined}
           tabIndex={layoutMode ? 0 : undefined}
           aria-label={layoutMode ? '트로피 위치 편집' : '회전하는 베드로 트로피'}
           onPointerDown={(event) => handlePointerDown('trophy', event)}
@@ -1593,10 +1592,11 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             '--trophy-bottom': `${trophyPosition.bottom}${STAGE_UNIT_Y}`,
             '--trophy-scale': trophyPosition.scale,
             '--trophy-rotation': `${trophyPosition.rotation}deg`,
-            '--trophy-spin-duration': `${trophySpinSeconds}s`,
-            '--trophy-row-duration': `${trophySpinSeconds / 4}s`,
+            '--trophy-spin-duration': `${trophyPosition.spinSeconds ?? TROPHY_DEFAULT_SPIN_SECONDS}s`,
           } as CSSProperties}
-        />
+        >
+          <img src="/assets/trophy/trophy-strip.png" alt="" draggable={false} />
+        </div>
       ) : null}
 
       {displayMode === 'seating' ? (
