@@ -3,6 +3,7 @@ import { RetreatProvider } from './retreat/RetreatProvider';
 import './styles/retreat.css';
 
 type PageName =
+  | 'home'
   | 'admin'
   | 'admin-seating'
   | 'sprite-lab'
@@ -13,9 +14,11 @@ type PageName =
   | 'back'
   | 'campfire'
   | 'seating'
+  | 'awards'
   | 'garment-test';
 
 function resolvePage(pathname: string): PageName {
+  if (pathname === '/') return 'home';
   if (pathname === '/admin/seating' || pathname.startsWith('/admin/seating/')) return 'admin-seating';
   if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin';
   if (pathname === '/editor/campfire' || pathname.startsWith('/editor/campfire/')) {
@@ -23,6 +26,9 @@ function resolvePage(pathname: string): PageName {
   }
   if (pathname === '/editor/seating' || pathname.startsWith('/editor/seating/')) {
     return 'seating';
+  }
+  if (pathname === '/editor/awards' || pathname.startsWith('/editor/awards/')) {
+    return 'awards';
   }
   if (pathname === '/editor/back' || pathname.startsWith('/editor/back/')) {
     return 'back';
@@ -36,6 +42,11 @@ function resolvePage(pathname: string): PageName {
     || pathname.startsWith('/display/seating/')
     || pathname === '/seating'
   ) return 'seating';
+  if (
+    pathname === '/display/awards'
+    || pathname.startsWith('/display/awards/')
+    || pathname === '/awards'
+  ) return 'awards';
   if (
     pathname === '/display/campfire'
     || pathname.startsWith('/display/campfire/')
@@ -66,11 +77,12 @@ function resolvePage(pathname: string): PageName {
   ) {
     return 'sprite-lab';
   }
-  return 'stand';
+  return 'home';
 }
 
 const page = resolvePage(window.location.pathname);
 const Page = ({
+  home: lazy(() => import('./pages/HomePage')),
   admin: lazy(() => import('./pages/AdminPage')),
   'admin-seating': lazy(() => import('./pages/SeatingAdminPage')),
   editor: lazy(() => import('./pages/EditorPage')),
@@ -78,6 +90,7 @@ const Page = ({
   back: lazy(() => import('./pages/AllCharactersPage')),
   campfire: lazy(() => import('./pages/AllCharactersPage')),
   seating: lazy(() => import('./pages/AllCharactersPage')),
+  awards: lazy(() => import('./pages/AllCharactersPage')),
   'garment-test': lazy(() => import('./pages/GarmentTransferTestPage')),
   showcase: lazy(() => import('./pages/ShowcasePage')),
   'print-template': lazy(() => import('./pages/PrintTemplatePage')),

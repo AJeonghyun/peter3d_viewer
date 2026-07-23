@@ -438,6 +438,22 @@ class Page3CampfireAssetTests(unittest.TestCase):
         provider = (FRONTEND / "src" / "retreat" / "RetreatProvider.tsx").read_text()
         self.assertIn("candidate.currentPage === 'seating'", provider)
 
+    def test_awards_scene_and_home_navigator_are_wired(self):
+        app = (FRONTEND / "src" / "App.tsx").read_text()
+        source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
+        editor = (FRONTEND / "src" / "pages" / "EditorPage.tsx").read_text()
+        home = (FRONTEND / "src" / "pages" / "HomePage.tsx").read_text()
+
+        self.assertIn("/display/awards", app)
+        self.assertIn("defaultAwardsLayout", source)
+        self.assertIn("retreat-parade__awards-stage", source)
+        self.assertIn("사이드바 닫기", source)
+        self.assertIn('data-panel-open={panelOpen', editor)
+        self.assertIn("설정 닫기", editor)
+        self.assertIn("/display/awards", home)
+        self.assertIn("/editor/awards", home)
+        self.assertEqual(home.count("displayPath: '/display/"), 5)
+
     def test_performance_scenes_keep_rounds_while_seating_shows_all_groups(self):
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
         self.assertIn(
