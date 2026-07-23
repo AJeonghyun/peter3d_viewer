@@ -105,7 +105,6 @@ interface ScenePosition {
 const TROPHY_MIN_SPIN_SECONDS = 1.5;
 const TROPHY_MAX_SPIN_SECONDS = 20;
 const TROPHY_DEFAULT_SPIN_SECONDS = 6;
-const TROPHY_UNIQUE_FRAMES = 17;
 
 function clampSpinSeconds(value: number): number {
   return Math.max(TROPHY_MIN_SPIN_SECONDS, Math.min(TROPHY_MAX_SPIN_SECONDS, value));
@@ -1584,7 +1583,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         <div
           className="retreat-parade__trophy"
           data-layout-selected={selectedLayoutKey === 'trophy' ? 'true' : 'false'}
-          role={layoutMode ? 'button' : undefined}
+          role={layoutMode ? 'button' : 'img'}
           tabIndex={layoutMode ? 0 : undefined}
           aria-label={layoutMode ? '트로피 위치 편집' : '회전하는 베드로 트로피'}
           onPointerDown={(event) => handlePointerDown('trophy', event)}
@@ -1595,12 +1594,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             '--trophy-scale': trophyPosition.scale,
             '--trophy-rotation': `${trophyPosition.rotation}deg`,
             '--trophy-spin-duration': `${trophySpinSeconds}s`,
-            '--trophy-frame-duration': `${trophySpinSeconds / TROPHY_UNIQUE_FRAMES}s`,
+            '--trophy-row-duration': `${trophySpinSeconds / 4}s`,
           } as CSSProperties}
-        >
-          <img src="/assets/trophy/trophy-strip.png" alt="" draggable={false} />
-          <img src="/assets/trophy/trophy-strip.png" alt="" draggable={false} />
-        </div>
+        />
       ) : null}
 
       {displayMode === 'seating' ? (

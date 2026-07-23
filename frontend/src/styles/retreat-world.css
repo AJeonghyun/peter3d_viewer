@@ -120,39 +120,21 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   height: clamp(180px, 34cqh, 470px);
   aspect-ratio: 136 / 333;
   overflow: hidden;
+  background-image: url("/assets/trophy/trophy-strip.png");
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  background-size: 1800% 400%;
   transform: translateX(-50%) rotate(var(--trophy-rotation)) scale(var(--trophy-scale));
   transform-origin: 50% 100%;
   filter: drop-shadow(0 1.2vh 1.4vh rgb(8 10 19 / 34%));
   filter: drop-shadow(0 1.2cqh 1.4cqh rgb(8 10 19 / 34%));
-}
-
-.retreat-parade__trophy img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: block;
-  height: 100%;
-  width: 1800%;
-  max-width: none;
-  object-fit: fill;
-  will-change: transform;
-}
-
-.retreat-parade__trophy img:first-child {
-  /* The sheet has 17 unique angles plus an exact copy of frame zero. */
+  /* 72 rendered angles in an 18 x 4 grid: no crossfade or oversized texture. */
   animation:
-    retreat-trophy-spin-current var(--trophy-spin-duration, 6s)
-    steps(17, jump-end) infinite;
-}
-
-.retreat-parade__trophy img:last-child {
-  opacity: 0;
-  animation:
-    retreat-trophy-spin-next var(--trophy-spin-duration, 6s)
-      steps(17, jump-end) infinite,
-    retreat-trophy-frame-blend var(--trophy-frame-duration, 0.352941s)
-      linear infinite;
-  will-change: opacity, transform;
+    retreat-trophy-spin-x var(--trophy-row-duration, 1.5s)
+      steps(18, jump-end) infinite,
+    retreat-trophy-spin-y var(--trophy-spin-duration, 6s)
+      steps(4, jump-end) infinite;
+  will-change: background-position;
 }
 
 .retreat-parade__sky,
@@ -1548,19 +1530,14 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   to { transform: translateX(-87.5%); }
 }
 
-@keyframes retreat-trophy-spin-current {
-  from { transform: translateX(0); }
-  to { transform: translateX(-94.444444%); }
+@keyframes retreat-trophy-spin-x {
+  from { background-position-x: 0; }
+  to { background-position-x: 105.882353%; }
 }
 
-@keyframes retreat-trophy-spin-next {
-  from { transform: translateX(-5.555556%); }
-  to { transform: translateX(-100%); }
-}
-
-@keyframes retreat-trophy-frame-blend {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes retreat-trophy-spin-y {
+  from { background-position-y: 0; }
+  to { background-position-y: 133.333333%; }
 }
 
 @keyframes retreat-fire-glow {
