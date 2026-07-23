@@ -271,7 +271,7 @@ function normalizeLayout(mode: DisplayMode, saved: unknown): SceneLayout {
   if (saved && typeof saved === 'object') {
     const parsed = saved as SceneLayout;
     for (const [key, value] of Object.entries(parsed)) {
-      if (mode === 'awards' && key !== 'trophy') continue;
+      if (mode === 'awards' && key !== 'trophy' && !isSceneMediaKey(key)) continue;
       if (
         value
         && Number.isFinite(value.x)
@@ -706,6 +706,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     let syncing = false;
     sceneSyncReadyRef.current[displayMode] = false;
     sceneRevisionRef.current[displayMode] = undefined;
+    setSceneMedia([]);
     setSceneMediaError('');
 
     const applySnapshot = (snapshot: SharedSceneSnapshot) => {
@@ -715,7 +716,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       else if (displayMode === 'campfire') setCampfireLayout(nextLayout);
       else if (displayMode === 'seating') setSeatingLayout(nextLayout);
       else setAwardsLayout(nextLayout);
-      setSceneMedia(displayMode === 'awards' ? [] : snapshot.media);
+      setSceneMedia(snapshot.media);
       sceneRevisionRef.current[displayMode] = snapshot.updatedAt;
       sceneSyncReadyRef.current[displayMode] = true;
     };
@@ -1032,7 +1033,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         defaultSceneMediaPosition(index),
       ])),
     });
-    setSelectedLayoutKey('group-1');
+    setSelectedLayoutKey(displayMode === 'awards' ? 'trophy' : 'group-1');
   }
 
   async function addSceneMediaFiles(files: File[]) {
@@ -1092,7 +1093,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         delete next[mediaKey];
         return next;
       });
-      if (selectedLayoutKey === mediaKey) setSelectedLayoutKey('group-1');
+      if (selectedLayoutKey === mediaKey) {
+        setSelectedLayoutKey(displayMode === 'awards' ? 'trophy' : 'group-1');
+      }
       setSceneMediaError('');
     } catch (error) {
       console.warn('장면 이미지를 삭제하지 못했습니다.', error);
@@ -1277,32 +1280,25 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 {referenceBackgroundError}
               </p>
             ) : null}
-            {displayMode === 'awards' && sceneMediaError ? (
-              <p className="retreat-parade__reference-error" role="status">
-                {sceneMediaError}
-              </p>
+          </section>
+          <section className="retreat-parade__scene-media-tools" aria-label="장면 이미지 오브젝트 추가">
+            <div>
+              <strong>이미지/GIF 오브젝트</strong>
+              <small>캐릭터처럼 편집 · 다른 기기와 서버 동기화</small>
+            </div>
+            <label className="retreat-parade__scene-media-upload">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                onChange={handleSceneMediaChange}
+              />
+              이미지/GIF 오브젝트 추가
+            </label>
+            {sceneMediaError ? (
+              <p className="retreat-parade__reference-error" role="status">{sceneMediaError}</p>
             ) : null}
           </section>
-          {displayMode !== 'awards' ? (
-            <section className="retreat-parade__scene-media-tools" aria-label="장면 이미지 오브젝트 추가">
-              <div>
-                <strong>이미지/GIF 오브젝트</strong>
-                <small>캐릭터처럼 편집 · 다른 기기와 서버 동기화</small>
-              </div>
-              <label className="retreat-parade__scene-media-upload">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  multiple
-                  onChange={handleSceneMediaChange}
-                />
-                이미지/GIF 오브젝트 추가
-              </label>
-              {sceneMediaError ? (
-                <p className="retreat-parade__reference-error" role="status">{sceneMediaError}</p>
-              ) : null}
-            </section>
-          ) : null}
           {displayMode !== 'seating' && displayMode !== 'awards' ? (
             <div className="retreat-parade__layout-groups" role="group" aria-label="편집할 조 회차 선택">
               {GROUP_SCENES.map(({ groupStart, groupCount }) => (
@@ -1322,7 +1318,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
           ) : null}
 
           <div className="retreat-parade__object-list" aria-label="장면 요소 목록">
-            {(displayMode === 'awards' ? [] : sceneMedia).map((item, index) => {
+            {sceneMedia.map((item, index) => {
               const mediaKey = sceneMediaLayoutKey(item.id);
               const position = activeLayout[mediaKey] ?? defaultSceneMediaPosition(index);
               return (
@@ -1547,7 +1543,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         </>
       ) : null}
 
-      {displayMode !== 'awards' && sceneMedia.length > 0 ? (
+      {sceneMedia.length > 0 ? (
         <section className="retreat-parade__scene-media-layer" aria-label="추가한 이미지와 GIF">
           {sceneMedia.map((item, index) => {
             const mediaKey = sceneMediaLayoutKey(item.id);
