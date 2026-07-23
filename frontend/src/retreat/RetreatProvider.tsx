@@ -42,6 +42,7 @@ function normalizeSettings(candidate: RetreatSettings | null): RetreatSettings {
   const currentPage = candidate.currentPage === 'campfire'
     || candidate.currentPage === 'back'
     || candidate.currentPage === 'seating'
+    || candidate.currentPage === 'awards'
     ? candidate.currentPage
     : 'stand';
   const candidatePlans = Array.isArray(candidate.seatingPlans) ? candidate.seatingPlans : [];

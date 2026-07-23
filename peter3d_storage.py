@@ -215,7 +215,7 @@ SQLITE_SCHEMA = (
     """,
     """
     CREATE TABLE IF NOT EXISTS retreat_scenes (
-        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating', 'awards')),
         layout_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -224,7 +224,7 @@ SQLITE_SCHEMA = (
     """
     CREATE TABLE IF NOT EXISTS retreat_scene_media (
         id TEXT PRIMARY KEY,
-        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating', 'awards')),
         name TEXT NOT NULL,
         mime_type TEXT NOT NULL,
         asset_url TEXT NOT NULL,
@@ -387,7 +387,7 @@ POSTGRES_SCHEMA = (
     """,
     """
     CREATE TABLE IF NOT EXISTS retreat_scenes (
-        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+        scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating', 'awards')),
         layout_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -396,7 +396,7 @@ POSTGRES_SCHEMA = (
     """
     CREATE TABLE IF NOT EXISTS retreat_scene_media (
         id TEXT PRIMARY KEY,
-        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+        scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating', 'awards')),
         name TEXT NOT NULL,
         mime_type TEXT NOT NULL,
         asset_url TEXT NOT NULL,
@@ -452,7 +452,7 @@ TEAM_COLUMN_MIGRATIONS = {
 
 
 def _migrate_retreat_scene_checks(db: DatabaseConnection) -> None:
-    """Allow the all-groups seating scene in databases created before it existed."""
+    """Keep scene constraints aligned with the current editor scene set."""
     if db.postgres:
         tables = ("retreat_scenes", "retreat_scene_media")
         for table in tables:
@@ -464,7 +464,7 @@ def _migrate_retreat_scene_checks(db: DatabaseConnection) -> None:
                 """
             ).fetchall()
             for row in rows:
-                if "seating" in row["definition"]:
+                if "awards" in row["definition"]:
                     continue
                 constraint = row["conname"]
                 if not constraint.replace("_", "").isalnum():
@@ -474,15 +474,21 @@ def _migrate_retreat_scene_checks(db: DatabaseConnection) -> None:
                     f"""
                     ALTER TABLE {table}
                     ADD CONSTRAINT {table}_scene_check
-                    CHECK (scene IN ('stand', 'back', 'campfire', 'seating'))
+                    CHECK (scene IN ('stand', 'back', 'campfire', 'seating', 'awards'))
                     """
                 )
         return
 
-    table_row = db.execute(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'retreat_scenes'"
-    ).fetchone()
-    if table_row is None or "seating" in table_row["sql"]:
+    table_rows = db.execute(
+        """
+        SELECT name, sql
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name IN ('retreat_scenes', 'retreat_scene_media')
+        """
+    ).fetchall()
+    definitions = {row["name"]: row["sql"] for row in table_rows}
+    if len(definitions) < 2 or all("awards" in sql for sql in definitions.values()):
         return
 
     db.execute("DROP INDEX IF EXISTS retreat_scene_media_scene_idx")
@@ -491,7 +497,7 @@ def _migrate_retreat_scene_checks(db: DatabaseConnection) -> None:
     db.execute(
         """
         CREATE TABLE retreat_scenes (
-            scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+            scene TEXT PRIMARY KEY CHECK (scene IN ('stand', 'back', 'campfire', 'seating', 'awards')),
             layout_json TEXT NOT NULL DEFAULT '{}',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -502,7 +508,7 @@ def _migrate_retreat_scene_checks(db: DatabaseConnection) -> None:
         """
         CREATE TABLE retreat_scene_media (
             id TEXT PRIMARY KEY,
-            scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+            scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating', 'awards')),
             name TEXT NOT NULL,
             mime_type TEXT NOT NULL,
             asset_url TEXT NOT NULL,

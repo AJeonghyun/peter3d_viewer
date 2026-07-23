@@ -210,6 +210,36 @@ class Peter3DBackendTests(unittest.TestCase):
         })
         self.assertEqual(loaded["layout"]["trophy"], saved["layout"]["trophy"])
 
+    def test_awards_scene_persists_its_shared_layout(self):
+        payload = backend_main.RetreatSceneLayoutPayload(layout={
+            "group-1": {
+                "x": 50,
+                "bottom": 18,
+                "scale": 1.1,
+                "rotation": 0,
+                "flipX": False,
+                "visible": True,
+                "poseId": "wave",
+            },
+            "trophy": {
+                "x": 50,
+                "bottom": 42,
+                "scale": 0.55,
+                "rotation": 0,
+                "flipX": False,
+                "visible": True,
+                "poseId": "idle",
+                "spinSeconds": 6,
+            },
+        })
+
+        saved = asyncio.run(backend_main.save_retreat_scene_layout("awards", payload))
+        loaded = asyncio.run(backend_main.get_retreat_scene("awards"))
+
+        self.assertEqual(saved["scene"], "awards")
+        self.assertEqual(loaded["layout"]["group-1"]["poseId"], "wave")
+        self.assertTrue(loaded["layout"]["trophy"]["visible"])
+
     def test_seating_scene_persists_all_group_layout_and_rotation(self):
         layout = {
             f"group-{group_number}": {
@@ -232,7 +262,7 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(loaded["layout"]["group-1"]["rotation"], -15.0)
         self.assertEqual(loaded["layout"]["group-21"]["poseId"], "listen-front")
 
-    def test_existing_sqlite_scene_tables_are_migrated_for_seating(self):
+    def test_existing_sqlite_scene_tables_are_migrated_for_new_scenes(self):
         with backend_main.connect_db() as db:
             db.execute("DROP INDEX retreat_scene_media_scene_idx")
             db.execute("DROP TABLE retreat_scene_media")
@@ -272,8 +302,57 @@ class Peter3DBackendTests(unittest.TestCase):
             db.execute(
                 "INSERT INTO retreat_scenes VALUES ('seating', '{}', 'after', 'after')"
             )
+            db.execute(
+                "INSERT INTO retreat_scenes VALUES ('awards', '{}', 'after', 'after')"
+            )
+            db.execute(
+                """
+                INSERT INTO retreat_scene_media
+                    (id, scene, name, mime_type, asset_url, created_at, updated_at)
+                VALUES ('award-media', 'awards', 'award.gif', 'image/gif',
+                        '/uploads/award.gif', 'after', 'after')
+                """
+            )
+            awards_media = db.execute(
+                "SELECT scene FROM retreat_scene_media WHERE id = 'award-media'"
+            ).fetchone()
 
         self.assertEqual(existing["layout_json"], "{}")
+        self.assertEqual(awards_media["scene"], "awards")
+
+    def test_sqlite_scene_migration_repairs_a_stale_media_constraint(self):
+        with backend_main.connect_db() as db:
+            db.execute("DROP INDEX retreat_scene_media_scene_idx")
+            db.execute("DROP TABLE retreat_scene_media")
+            db.execute(
+                """
+                CREATE TABLE retreat_scene_media (
+                    id TEXT PRIMARY KEY,
+                    scene TEXT NOT NULL CHECK (scene IN ('stand', 'back', 'campfire', 'seating')),
+                    name TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    asset_url TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+
+        backend_main.init_db()
+        with backend_main.connect_db() as db:
+            db.execute(
+                """
+                INSERT INTO retreat_scene_media
+                    (id, scene, name, mime_type, asset_url, created_at, updated_at)
+                VALUES ('award-media', 'awards', 'award.gif', 'image/gif',
+                        '/uploads/award.gif', 'after', 'after')
+                """
+            )
+            stored = db.execute(
+                "SELECT scene FROM retreat_scene_media WHERE id = 'award-media'"
+            ).fetchone()
+
+        self.assertEqual(stored["scene"], "awards")
 
     def test_team_api_hides_legacy_teams_above_21(self):
         with backend_main.connect_db() as db:

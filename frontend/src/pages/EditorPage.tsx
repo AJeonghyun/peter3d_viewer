@@ -25,6 +25,7 @@ const PAGE_META: Array<{ id: RetreatPage; label: string; path: string; editPath:
   { id: 'back', label: '뒷모습 라인업', path: '/display/back', editPath: '/editor/back' },
   { id: 'campfire', label: '갈릴리 모닥불', path: '/display/campfire', editPath: '/editor/campfire' },
   { id: 'seating', label: '전체 자리표', path: '/display/seating', editPath: '/editor/seating' },
+  { id: 'awards', label: '시상식', path: '/display/awards', editPath: '/editor/awards' },
 ];
 
 function downloadJson(settings: RetreatSettings) {
@@ -54,6 +55,7 @@ export default function EditorPage() {
   const [captureMode, setCaptureMode] = useState<CaptureMode>('paused');
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState('자동 저장 중');
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const selectedGroup = useMemo(
     () => settings.groups.find((group) => group.id === selectedGroupId) ?? settings.groups[0],
@@ -167,8 +169,14 @@ export default function EditorPage() {
   }
 
   return (
-    <main className="retreat-editor">
-      <aside className="retreat-editor__panel" aria-label="수련회 화면 설정">
+    <main className="retreat-editor" data-panel-open={panelOpen ? 'true' : 'false'}>
+      <aside
+        id="retreat-editor-panel"
+        className="retreat-editor__panel"
+        aria-label="수련회 화면 설정"
+        aria-hidden={!panelOpen}
+        inert={!panelOpen}
+      >
         <header className="retreat-editor__header">
           <p>RETREAT DISPLAY STUDIO</p>
           <h1>수련회 화면 운영</h1>
@@ -559,6 +567,15 @@ export default function EditorPage() {
 
       <section className="retreat-editor__workspace">
         <div className="workspace-toolbar">
+          <button
+            type="button"
+            className="workspace-sidebar-toggle"
+            aria-controls="retreat-editor-panel"
+            aria-expanded={panelOpen}
+            onClick={() => setPanelOpen((current) => !current)}
+          >
+            {panelOpen ? '설정 닫기' : '설정 열기'}
+          </button>
           <div>
             <strong>{pageMeta.label}</strong>
             <span>1920 × 1080 실시간 미리보기</span>

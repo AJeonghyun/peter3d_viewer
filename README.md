@@ -40,6 +40,8 @@ macOS `Control + Command + F`로 실행합니다.
 | 정면 라인업 | `/display/stand?obs=1` |
 | 뒷모습 라인업 | `/display/back?obs=1` |
 | 갈릴리 모닥불 | `/display/campfire?obs=1` |
+| 전체 자리표 | `/display/seating?obs=1` |
+| 시상식 | `/display/awards?obs=1` |
 
 `?obs=1`은 다른 브라우저의 저장 설정과 관계없이 실제 알파 투명 배경을
 강제합니다. `?background=transparent`도 같은 방식으로 사용할 수 있으며,
@@ -96,18 +98,19 @@ python3 scripts/apply_garment_design.py \
 
 ## 페이지별 사용법
 
-### 정면·뒷모습 라인업 · 갈릴리 모닥불
+### 정면·뒷모습 라인업 · 갈릴리 모닥불 · 시상식
 
-세 장면 모두 활성화된 최대 21개 조를 `1–7조`, `8–14조`, `15–21조`로 나눠
+네 장면 모두 활성화된 최대 21개 조를 `1–7조`, `8–14조`, `15–21조`로 나눠
 7개 조씩 14초 간격으로 순환합니다. `/display/stand`는 예수님과 해당 회차의
 베드로가 정면을 보고 서며 몇 초마다 무작위로 한 명이 손을 흔듭니다.
 `/display/back`은 같은 크기와 배치로 예수님까지 모두 뒷모습을 보여줍니다.
 `갈릴리 모닥불`도 해당 회차의 7개 조가 예수님과 모닥불 둘레에 앉습니다.
+`/display/awards`는 회전 트로피와 단상 위에서 손을 흔드는 7개 조를 보여줍니다.
 캐릭터 아래 조 이름표는 표시하지 않습니다.
 
 각 장면의 캐릭터·예수님·모닥불은 `/editor/stand`, `/editor/back`,
-`/editor/campfire`의 왼쪽 오브젝트 패널에서 PPT 요소처럼 추가하거나 뺄 수
-있습니다. 세 편집 페이지 모두 정면·뒷면·착석 포즈와 `서 있기·숨쉬기`,
+`/editor/campfire`, `/editor/awards`의 왼쪽 오브젝트 패널에서 PPT 요소처럼 추가하거나 뺄 수
+있습니다. 네 편집 페이지 모두 정면·뒷면·착석 포즈와 `서 있기·숨쉬기`,
 `손 흔들기` 애니메이션 전체를 고를 수 있고, 캔버스에서는 드래그와 `작게/크게`,
 `좌우 반전(F)`으로 배치합니다. 각 편집 페이지에서 PNG/JPG/WEBP/GIF를 장면
 오브젝트로 여러 개 추가해 캐릭터와 똑같이 이동·확대·숨김·삭제할 수 있습니다.
@@ -119,7 +122,9 @@ python3 scripts/apply_garment_design.py \
 기본 배치와 상수는 `frontend/src/pages/AllCharactersPage.tsx`, 포즈 목록은
 `frontend/src/retreat/scenePoses.ts`에서 수정합니다.
 
-세 송출·편집 장면의 자체 배경은 항상 투명합니다. 편집할 때만 왼쪽 패널의
+각 배치 편집기의 왼쪽 패널은 `사이드바 닫기`로 접어 가려진 캔버스를 편집하고
+같은 위치의 `사이드바 열기`로 다시 펼칠 수 있습니다. 송출·편집 장면의 자체
+배경은 투명하며, 편집할 때만 왼쪽 패널의
 `참조 슬라이드`에서 PNG/JPG/WEBP/GIF를 첨부하거나 PowerPoint에서 슬라이드를
 복사한 뒤 `⌘V`로 붙여넣어 캐릭터 위치를 맞출 수 있습니다. 참조 이미지는
 장면별 IndexedDB에 저장되고 새로고침하면 기본적으로 숨겨집니다. `참조 보기`와
@@ -216,17 +221,20 @@ uvicorn backend_main:app --env-file .env --host 0.0.0.0 --port 8000
 - 뒷모습 라인업 송출: `http://localhost:8000/display/back`
 - 갈릴리 모닥불 송출: `http://localhost:8000/display/campfire`
 - 전체 자리표 송출: `http://localhost:8000/display/seating`
+- 시상식 송출: `http://localhost:8000/display/awards`
 - 정면 라인업 배치 편집: `http://localhost:8000/editor/stand`
 - 뒷모습 라인업 배치 편집: `http://localhost:8000/editor/back`
 - 모닥불 배치 편집: `http://localhost:8000/editor/campfire`
 - 전체 자리표 배치 편집: `http://localhost:8000/editor/seating`
+- 시상식 배치 편집: `http://localhost:8000/editor/awards`
 - 구 걷기·페이지 3 별칭(라인업으로 연결): `http://localhost:8000/display/walk`, `http://localhost:8000/page-3`
 - 운영진 관리: `http://localhost:8000/admin`
 - 21프레임 애니메이션 실험실: `http://localhost:8000/sprite-lab`
 - 서버 상태: `http://localhost:8000/api/health`
 
+`/`는 다섯 장면의 송출 화면과 배치 편집기로 이동하는 운영 허브입니다.
 행사 운영 컴퓨터에서는 `/display/stand`, `/display/back`, `/display/campfire`,
-`/display/seating`을
+`/display/seating`, `/display/awards`를
 각각 크롬 전체 화면으로 열고 프로젝터 또는 LED 화면에 출력합니다. 전시 화면에는 버튼이나
 스탯 패널 및 화면 전환 효과가 없으며, 선택한 종류만 유지한 채 7개 조씩
 끊김 없이 이어서 재생됩니다. 전체 자리표만 예외로 21개 조를 3행 7열 한 화면에 표시합니다.
