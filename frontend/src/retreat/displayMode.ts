@@ -42,12 +42,6 @@ export function getEffectiveDisplayMode(
   return { obsMode: true, backgroundMode: 'transparent' };
 }
 
-export function buildObsDisplayUrl(path: string, origin = window.location.origin) {
-  const url = new URL(path, origin);
-  url.searchParams.set('obs', '1');
-  return url.toString();
-}
-
 // OBS's embedded Chromium predates container-query units. The display stage
 // fills the whole viewport there, so vw/vh are exact substitutes for cqw/cqh.
 const supportsContainerUnits =

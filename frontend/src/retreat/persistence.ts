@@ -49,21 +49,6 @@ export function saveRetreatSettings(settings: RetreatSettings) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-export function clearRetreatSettings() {
-  localStorage.removeItem(SETTINGS_KEY);
-}
-
-export async function saveSpriteAsset(key: string, file: Blob) {
-  const db = await openAssetDb();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(SPRITE_STORE_NAME, 'readwrite');
-    transaction.objectStore(SPRITE_STORE_NAME).put(file, key);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error('이미지를 저장하지 못했습니다.'));
-  });
-  db.close();
-}
-
 export async function loadSpriteAsset(key: string): Promise<Blob | null> {
   const db = await openAssetDb();
   const value = await new Promise<Blob | null>((resolve, reject) => {
@@ -75,17 +60,6 @@ export async function loadSpriteAsset(key: string): Promise<Blob | null> {
   });
   db.close();
   return value;
-}
-
-export async function deleteSpriteAsset(key: string) {
-  const db = await openAssetDb();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(SPRITE_STORE_NAME, 'readwrite');
-    transaction.objectStore(SPRITE_STORE_NAME).delete(key);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error('이미지를 삭제하지 못했습니다.'));
-  });
-  db.close();
 }
 
 export async function saveReferenceBackground(key: string, file: File) {

@@ -443,7 +443,6 @@ class Page3CampfireAssetTests(unittest.TestCase):
         app = (FRONTEND / "src" / "App.tsx").read_text()
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()
         styles = (FRONTEND / "src" / "styles" / "retreat-world.css").read_text()
-        editor = (FRONTEND / "src" / "pages" / "EditorPage.tsx").read_text()
         home = (FRONTEND / "src" / "pages" / "HomePage.tsx").read_text()
         home_styles = (FRONTEND / "src" / "styles" / "home.css").read_text()
 
@@ -464,8 +463,6 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("displayMode === 'awards' ? 'trophy' : 'group-1'", source)
         self.assertIn("PPT 위에 겹쳐 띄우는 회전 트로피", source)
         self.assertIn("사이드바 닫기", source)
-        self.assertIn('data-panel-open={panelOpen', editor)
-        self.assertIn("설정 닫기", editor)
         self.assertIn("/display/awards", home)
         self.assertIn("/editor/awards", home)
         self.assertIn("PPT 위에 회전 트로피만 투명하게", home)
@@ -474,6 +471,32 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("장면을 선택하세요.", home)
         self.assertNotIn("data-featured", home)
         self.assertIn("grid-template-columns: repeat(5, minmax(0, 1fr));", home_styles)
+
+    def test_obsolete_editor_and_seating_admin_pages_are_removed(self):
+        app = (FRONTEND / "src" / "App.tsx").read_text()
+        home = (FRONTEND / "src" / "pages" / "HomePage.tsx").read_text()
+        pages = {path.name for path in (FRONTEND / "src" / "pages").glob("*.tsx")}
+        styles = {path.name for path in (FRONTEND / "src" / "styles").glob("*.css")}
+        libraries = {path.name for path in (FRONTEND / "src" / "lib").glob("*.ts")}
+        retreat_components = {
+            path.name for path in (FRONTEND / "src" / "retreat").glob("*.tsx")
+        }
+
+        self.assertNotIn("'admin-seating'", app)
+        self.assertNotIn("SeatingAdminPage", app)
+        self.assertNotIn("EditorPage", app)
+        self.assertNotIn('href="/editor"', home)
+        self.assertNotIn('href="/admin/seating"', home)
+        self.assertNotIn("EditorPage.tsx", pages)
+        self.assertNotIn("SeatingAdminPage.tsx", pages)
+        self.assertNotIn("retreat-editor.css", styles)
+        self.assertNotIn("retreat-seating-admin.css", styles)
+        self.assertNotIn("seatingPresets.ts", libraries)
+        self.assertNotIn("RetreatDisplay.tsx", retreat_components)
+
+        for scene in ("stand", "back", "campfire", "seating", "awards"):
+            self.assertIn(f"/editor/{scene}", app)
+            self.assertIn(f"/editor/{scene}", home)
 
     def test_performance_scenes_keep_rounds_while_seating_shows_all_groups(self):
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()

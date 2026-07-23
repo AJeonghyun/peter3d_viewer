@@ -12,17 +12,14 @@ class ObsTransparencyTests(unittest.TestCase):
         self.assertIn("params.get('obs') === '1'", source)
         self.assertIn("'transparent'", source)
         self.assertIn("params.has('background')", source)
-        self.assertIn("url.searchParams.set('obs', '1')", source)
 
-    def test_legacy_transparency_setting_remains_available_for_other_scenes(self):
+    def test_legacy_transparency_setting_remains_available_for_existing_scenes(self):
         types = (FRONTEND / "src" / "retreat" / "types.ts").read_text()
         defaults = (FRONTEND / "src" / "retreat" / "defaults.ts").read_text()
-        editor = (FRONTEND / "src" / "pages" / "EditorPage.tsx").read_text()
+        display_mode = (FRONTEND / "src" / "retreat" / "displayMode.ts").read_text()
         self.assertIn("transparentBackground: boolean", types)
         self.assertIn("transparentBackground: false", defaults)
-        self.assertIn("모든 송출 페이지 배경 투명", editor)
-        self.assertGreaterEqual(editor.count("OBS URL 복사"), 1)
-        self.assertIn("buildObsDisplayUrl", editor)
+        self.assertIn("transparentBackground: boolean", display_mode)
 
     def test_display_page_background_layers_are_removed_in_transparent_mode(self):
         world_css = (FRONTEND / "src" / "styles" / "retreat-world.css").read_text()
@@ -36,11 +33,9 @@ class ObsTransparencyTests(unittest.TestCase):
 
     def test_provider_applies_mode_to_the_document_root(self):
         provider = (FRONTEND / "src" / "retreat" / "RetreatProvider.tsx").read_text()
-        shell = (FRONTEND / "src" / "retreat" / "RetreatDisplay.tsx").read_text()
         base_css = (FRONTEND / "src" / "styles" / "retreat.css").read_text()
         self.assertIn("root.dataset.backgroundMode", provider)
         self.assertIn("root.dataset.obs", provider)
-        self.assertIn("data-background-mode={displayMode.backgroundMode}", shell)
         self.assertIn('html[data-background-mode="transparent"] #root', base_css)
 
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()

@@ -11,20 +11,15 @@ import { apiRequest } from '../lib/api';
 import type { Team } from '../types/api';
 import { DEFAULT_RETREAT_SETTINGS } from './defaults';
 import {
-  clearRetreatSettings,
   loadRetreatSettings,
   saveRetreatSettings,
 } from './persistence';
-import type { RetreatGroup, RetreatSettings } from './types';
+import type { RetreatSettings } from './types';
 import { getEffectiveDisplayMode } from './displayMode';
 
 interface RetreatContextValue {
   settings: RetreatSettings;
   updateSettings: (updater: (current: RetreatSettings) => RetreatSettings) => void;
-  updateGroup: (id: string, patch: Partial<RetreatGroup>) => void;
-  importSettings: (next: RetreatSettings) => void;
-  resetSettings: () => void;
-  saveNow: () => void;
 }
 
 const RetreatContext = createContext<RetreatContextValue | null>(null);
@@ -136,24 +131,6 @@ export function RetreatProvider({ children }: PropsWithChildren) {
     });
   }, []);
 
-  const updateGroup = useCallback((id: string, patch: Partial<RetreatGroup>) => {
-    updateSettings((current) => ({
-      ...current,
-      groups: current.groups.map((group) => group.id === id ? { ...group, ...patch } : group),
-    }));
-  }, [updateSettings]);
-
-  const importSettings = useCallback((next: RetreatSettings) => {
-    setSettings(normalizeSettings(next));
-  }, []);
-
-  const resetSettings = useCallback(() => {
-    clearRetreatSettings();
-    setSettings(structuredClone(DEFAULT_RETREAT_SETTINGS));
-  }, []);
-
-  const saveNow = useCallback(() => saveRetreatSettings(settings), [settings]);
-
   const displaySettings = useMemo<RetreatSettings>(() => {
     if (!publishedTeams.length) return settings;
     const teamsByNumber = new Map(publishedTeams.map((team) => [team.id, team]));
@@ -180,16 +157,8 @@ export function RetreatProvider({ children }: PropsWithChildren) {
   const value = useMemo(() => ({
     settings: displaySettings,
     updateSettings,
-    updateGroup,
-    importSettings,
-    resetSettings,
-    saveNow,
   }), [
     displaySettings,
-    importSettings,
-    resetSettings,
-    saveNow,
-    updateGroup,
     updateSettings,
   ]);
 
