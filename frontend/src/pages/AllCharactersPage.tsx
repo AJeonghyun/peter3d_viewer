@@ -219,28 +219,8 @@ function defaultSeatingLayout(): SceneLayout {
   return layout;
 }
 
-function defaultAwardsLayout(): SceneLayout {
-  const xSlots = [13, 25, 37, 50, 63, 75, 87];
-  const bottomSlots = [9, 12, 15, 19, 15, 12, 9];
-  const scaleSlots = [0.82, 0.88, 0.94, 1.02, 0.94, 0.88, 0.82];
-  const layout: SceneLayout = {};
-  for (let groupNumber = 1; groupNumber <= TEAM_COUNT; groupNumber += 1) {
-    const cohortIndex = (groupNumber - 1) % GROUPS_PER_SCENE;
-    layout[`group-${groupNumber}`] = {
-      x: xSlots[cohortIndex],
-      bottom: bottomSlots[cohortIndex],
-      scale: scaleSlots[cohortIndex],
-      rotation: 0,
-      flipX: cohortIndex > 3,
-      visible: true,
-      poseId: 'wave',
-    };
-  }
-  return layout;
-}
-
-// The rotating trophy is an optional prop available on every scene. It starts
-// hidden so existing scenes are untouched; operators add it from the editor.
+// The rotating trophy is optional on the performance scenes. Awards is the
+// dedicated trophy overlay, so it starts visible there.
 function defaultTrophyPosition(): ScenePosition {
   return {
     x: 50,
@@ -260,7 +240,7 @@ function defaultLayoutFor(mode: DisplayMode): SceneLayout {
     : mode === 'seating'
       ? defaultSeatingLayout()
       : mode === 'awards'
-        ? defaultAwardsLayout()
+        ? {}
         : defaultLineupLayout(mode);
   const trophy = defaultTrophyPosition();
   return {
@@ -291,6 +271,7 @@ function normalizeLayout(mode: DisplayMode, saved: unknown): SceneLayout {
   if (saved && typeof saved === 'object') {
     const parsed = saved as SceneLayout;
     for (const [key, value] of Object.entries(parsed)) {
+      if (mode === 'awards' && key !== 'trophy') continue;
       if (
         value
         && Number.isFinite(value.x)
@@ -509,7 +490,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const [seatingLayout, setSeatingLayout] = useState(() => readLayout('seating'));
   const [awardsLayout, setAwardsLayout] = useState(() => readLayout('awards'));
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => scene ?? readDisplayMode());
-  const [selectedLayoutKey, setSelectedLayoutKey] = useState('group-1');
+  const [selectedLayoutKey, setSelectedLayoutKey] = useState(
+    () => (displayMode === 'awards' ? 'trophy' : 'group-1'),
+  );
   const [localPaused, setLocalPaused] = useState(false);
   const [reaction, setReaction] = useState<{ groupNumber: number; action: AnimationName } | null>(null);
   const [referenceBackgroundUrl, setReferenceBackgroundUrl] = useState('');
@@ -520,7 +503,10 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const [sceneMediaError, setSceneMediaError] = useState('');
 
   const playing = settings.animationPlaying && !localPaused;
-  const groupsRotating = displayMode !== 'seating' && !layoutMode && playing;
+  const groupsRotating = displayMode !== 'seating'
+    && displayMode !== 'awards'
+    && !layoutMode
+    && playing;
   const clock = useLoopClock(
     groupsRotating,
     GROUP_SCENES.length * GROUP_SCENE_DURATION,
@@ -566,7 +552,6 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   const campfireGroups = displayMode === 'campfire' ? activeSceneGroups : [];
   const lineupGroups = displayMode === 'stand' || displayMode === 'back' ? activeSceneGroups : [];
   const seatingGroups = displayMode === 'seating' ? groups : [];
-  const awardsGroups = displayMode === 'awards' ? activeSceneGroups : [];
 
   useEffect(() => {
     if (scene) setDisplayMode(scene);
@@ -730,7 +715,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       else if (displayMode === 'campfire') setCampfireLayout(nextLayout);
       else if (displayMode === 'seating') setSeatingLayout(nextLayout);
       else setAwardsLayout(nextLayout);
-      setSceneMedia(snapshot.media);
+      setSceneMedia(displayMode === 'awards' ? [] : snapshot.media);
       sceneRevisionRef.current[displayMode] = snapshot.updatedAt;
       sceneSyncReadyRef.current[displayMode] = true;
     };
@@ -838,7 +823,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
   // Keep the selection valid when switching scenes so the toolbar targets a
   // present element.
   useEffect(() => {
-    setSelectedLayoutKey('group-1');
+    setSelectedLayoutKey(displayMode === 'awards' ? 'trophy' : 'group-1');
     setLayoutGroupStart(0);
     setReferenceBackgroundVisible(false);
   }, [displayMode]);
@@ -1150,7 +1135,11 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         ? '/display/back'
         : '/display/stand';
   const lineupDirection = displayMode === 'back' ? '뒷모습' : '정면';
-  const sidebarGroups = displayMode === 'seating' ? groups : activeSceneGroups;
+  const sidebarGroups = displayMode === 'awards'
+    ? []
+    : displayMode === 'seating'
+      ? groups
+      : activeSceneGroups;
   const trophyPosition = activeLayout.trophy ?? defaultTrophyPosition();
   const poseOptions = poseOptionsForPage(displayMode);
   const xForCanvas = (x: number) => (
@@ -1186,7 +1175,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         : displayMode === 'seating'
           ? '스물한 조 베드로가 한 화면에 모두 보이는 자리표'
           : displayMode === 'awards'
-            ? '회전 트로피와 일곱 조 베드로가 함께하는 시상식'
+            ? 'PPT 위에 겹쳐 띄우는 회전 트로피'
         : `예수님과 스물한 조 베드로의 ${lineupDirection} 라인업 모션그래픽`}
     >
       {layoutMode && referenceBackgroundUrl && referenceBackgroundVisible ? (
@@ -1227,7 +1216,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 : displayMode === 'seating'
                   ? '전체 자리표'
                   : displayMode === 'awards'
-                    ? '시상식 무대'
+                    ? '트로피 오버레이'
                     : `${lineupDirection} 라인업`}</strong>
             </div>
             <a href={displayPath}>완료</a>
@@ -1288,26 +1277,33 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
                 {referenceBackgroundError}
               </p>
             ) : null}
-          </section>
-          <section className="retreat-parade__scene-media-tools" aria-label="장면 이미지 오브젝트 추가">
-            <div>
-              <strong>이미지/GIF 오브젝트</strong>
-              <small>캐릭터처럼 편집 · 다른 기기와 서버 동기화</small>
-            </div>
-            <label className="retreat-parade__scene-media-upload">
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                multiple
-                onChange={handleSceneMediaChange}
-              />
-              이미지/GIF 오브젝트 추가
-            </label>
-            {sceneMediaError ? (
-              <p className="retreat-parade__reference-error" role="status">{sceneMediaError}</p>
+            {displayMode === 'awards' && sceneMediaError ? (
+              <p className="retreat-parade__reference-error" role="status">
+                {sceneMediaError}
+              </p>
             ) : null}
           </section>
-          {displayMode !== 'seating' ? (
+          {displayMode !== 'awards' ? (
+            <section className="retreat-parade__scene-media-tools" aria-label="장면 이미지 오브젝트 추가">
+              <div>
+                <strong>이미지/GIF 오브젝트</strong>
+                <small>캐릭터처럼 편집 · 다른 기기와 서버 동기화</small>
+              </div>
+              <label className="retreat-parade__scene-media-upload">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  onChange={handleSceneMediaChange}
+                />
+                이미지/GIF 오브젝트 추가
+              </label>
+              {sceneMediaError ? (
+                <p className="retreat-parade__reference-error" role="status">{sceneMediaError}</p>
+              ) : null}
+            </section>
+          ) : null}
+          {displayMode !== 'seating' && displayMode !== 'awards' ? (
             <div className="retreat-parade__layout-groups" role="group" aria-label="편집할 조 회차 선택">
               {GROUP_SCENES.map(({ groupStart, groupCount }) => (
                 <button
@@ -1326,7 +1322,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
           ) : null}
 
           <div className="retreat-parade__object-list" aria-label="장면 요소 목록">
-            {sceneMedia.map((item, index) => {
+            {(displayMode === 'awards' ? [] : sceneMedia).map((item, index) => {
               const mediaKey = sceneMediaLayoutKey(item.id);
               const position = activeLayout[mediaKey] ?? defaultSceneMediaPosition(index);
               return (
@@ -1551,7 +1547,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         </>
       ) : null}
 
-      {sceneMedia.length > 0 ? (
+      {displayMode !== 'awards' && sceneMedia.length > 0 ? (
         <section className="retreat-parade__scene-media-layer" aria-label="추가한 이미지와 GIF">
           {sceneMedia.map((item, index) => {
             const mediaKey = sceneMediaLayoutKey(item.id);
@@ -1601,58 +1597,6 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
         >
           <img src="/assets/trophy/trophy-strip.png" alt="" draggable={false} />
         </div>
-      ) : null}
-
-      {displayMode === 'awards' ? (
-        <section className="retreat-parade__awards-stage" aria-label="베드로 시상식 무대">
-          <div className="retreat-parade__awards-backdrop" aria-hidden="true">
-            <span />
-            <span />
-          </div>
-          <header className="retreat-parade__awards-title">
-            <p>RETREAT FINALE · PETER AWARDS</p>
-            <h2>함께 걸어온<br />우리들의 시상식</h2>
-            <span>믿음으로 응답한 모든 조가 오늘의 주인공입니다.</span>
-          </header>
-          <div className="retreat-parade__awards-podium" aria-hidden="true">
-            <span data-place="2">2</span>
-            <span data-place="1">1</span>
-            <span data-place="3">3</span>
-          </div>
-          <div className="retreat-parade__awards-floor" aria-hidden="true" />
-          {awardsGroups.map((group) => {
-            const layoutKey = `group-${group.groupNumber}`;
-            const position = awardsLayout[layoutKey] ?? defaultAwardsLayout()[layoutKey];
-            if (!position?.visible) return null;
-            return (
-              <article
-                className="retreat-parade__award-recipient"
-                data-layout-selected={selectedLayoutKey === layoutKey ? 'true' : 'false'}
-                key={group.id}
-                role={layoutMode ? 'button' : undefined}
-                tabIndex={layoutMode ? 0 : undefined}
-                aria-label={layoutMode ? `${nicknameFor(group)} 시상식 위치 편집` : undefined}
-                onPointerDown={(event) => handlePointerDown(layoutKey, event)}
-                onKeyDown={(event) => handleEditableKeyDown(layoutKey, event)}
-                style={{
-                  '--award-x': `${position.x}${STAGE_UNIT_X}`,
-                  '--award-bottom': `${position.bottom}${STAGE_UNIT_Y}`,
-                  '--award-scale': position.scale,
-                  '--award-rotation': `${position.rotation}deg`,
-                } as CSSProperties}
-              >
-                <RetreatCharacter
-                  group={group}
-                  poseId={position.poseId}
-                  playing={playing}
-                  flipX={position.flipX}
-                  respectReducedMotion={false}
-                  className="retreat-parade__award-character"
-                />
-              </article>
-            );
-          })}
-        </section>
       ) : null}
 
       {displayMode === 'seating' ? (
