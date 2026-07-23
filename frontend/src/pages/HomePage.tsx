@@ -68,58 +68,70 @@ export default function HomePage() {
   return (
     <main className="home-hub">
       <header className="home-hub__topbar">
-        <a className="home-hub__brand" href="/" aria-label="수련회 디스플레이 홈">
-          <span aria-hidden="true">P</span>
-          <span>
-            <strong>Peter display</strong>
-            <small>Retreat control desk</small>
-          </span>
-        </a>
-        <nav className="home-hub__tools" aria-label="운영 도구">
-          <a href="/admin">캐릭터</a>
-        </nav>
+        <div className="home-hub__nav-inner">
+          <a className="home-hub__brand" href="/" aria-label="수련회 디스플레이 홈">
+            <span aria-hidden="true">P</span>
+            <span>
+              <strong>Peter Display</strong>
+              <small>Retreat control</small>
+            </span>
+          </a>
+          <nav className="home-hub__tools" aria-label="운영 도구">
+            <a href="/admin">캐릭터 관리</a>
+          </nav>
+        </div>
       </header>
 
-      <section className="home-hub__intro" aria-labelledby="home-title">
-        <div>
-          <p>5 scenes · live control</p>
-          <h1 id="home-title">장면을 선택하세요.</h1>
-        </div>
-        <p>송출은 전체 화면으로, 편집은 배치 도구로 바로 연결됩니다.</p>
-      </section>
+      <div className="home-hub__content">
+        <section className="home-hub__intro" aria-labelledby="home-title">
+          <p className="home-hub__eyebrow">
+            <span aria-hidden="true" />
+            5개 장면 준비됨
+          </p>
+          <h1 id="home-title">장면을<br />선택하세요.</h1>
+          <p className="home-hub__description">
+            송출 화면을 바로 열거나 각 장면의 캐릭터와 이미지 배치를 편집할 수 있습니다.
+          </p>
+          <a className="home-hub__admin-link" href="/admin">
+            캐릭터 설정
+            <span aria-hidden="true">›</span>
+          </a>
+        </section>
 
-      <nav className="home-scene-grid" aria-label="수련회 장면 바로가기">
-        {HOME_SCENES.map((scene) => (
-          <article
-            className="home-scene-card"
-            data-scene={scene.id}
-            key={scene.id}
-          >
-            <header className="home-scene-card__header">
-              <span className="home-scene-card__number">{scene.number}</span>
-              <span>{scene.eyebrow}</span>
-            </header>
-            <div className="home-scene-card__copy">
-              <h2>{scene.title}</h2>
-              <p>{scene.description}</p>
-            </div>
-            <div className="home-scene-card__actions">
-              <a className="home-scene-card__primary" href={scene.displayPath}>
-                송출
-                <span aria-hidden="true">↗</span>
-              </a>
-              <a href={scene.editorPath}>
-                편집
-                <span aria-hidden="true">→</span>
-              </a>
-            </div>
-          </article>
-        ))}
-      </nav>
+        <nav className="home-scene-list" aria-label="수련회 장면 바로가기">
+          {HOME_SCENES.map((scene) => (
+            <article
+              className="home-scene-row"
+              data-scene={scene.id}
+              key={scene.id}
+            >
+              <span className="home-scene-row__number">{scene.number}</span>
+              <div className="home-scene-row__copy">
+                <span>{scene.eyebrow}</span>
+                <h2>{scene.title}</h2>
+                <p>{scene.description}</p>
+              </div>
+              <div className="home-scene-row__actions">
+                <a className="home-scene-row__primary" href={scene.displayPath}>
+                  송출
+                </a>
+                <a href={scene.editorPath}>
+                  편집
+                  <span aria-hidden="true">›</span>
+                </a>
+              </div>
+            </article>
+          ))}
+        </nav>
+      </div>
 
       <footer className="home-hub__footer">
-        <span>Peter retreat · 2026</span>
-        <span>투명 송출 · 실시간 장면 동기화</span>
+        <div>
+          <span>Peter Retreat 2026</span>
+          <span aria-hidden="true">·</span>
+          <span>실시간 장면 동기화</span>
+        </div>
+        <span>1920 × 1080</span>
       </footer>
     </main>
   );
