@@ -54,7 +54,7 @@ const HOME_SCENES: readonly HomeScene[] = [
     number: '05',
     eyebrow: 'Peter awards',
     title: '시상식',
-    description: '회전 트로피와 함께 수련회 마지막을 장식하는 시상 무대',
+    description: 'PPT 위에 회전 트로피만 투명하게 겹쳐 띄우는 오버레이',
     displayPath: '/display/awards',
     editorPath: '/editor/awards',
   },
