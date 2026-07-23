@@ -445,6 +445,7 @@ class Page3CampfireAssetTests(unittest.TestCase):
         styles = (FRONTEND / "src" / "styles" / "retreat-world.css").read_text()
         editor = (FRONTEND / "src" / "pages" / "EditorPage.tsx").read_text()
         home = (FRONTEND / "src" / "pages" / "HomePage.tsx").read_text()
+        home_styles = (FRONTEND / "src" / "styles" / "home.css").read_text()
 
         self.assertIn("/display/awards", app)
         self.assertNotIn("defaultAwardsLayout", source)
@@ -469,6 +470,10 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("/editor/awards", home)
         self.assertIn("PPT 위에 회전 트로피만 투명하게", home)
         self.assertEqual(home.count("displayPath: '/display/"), 5)
+        self.assertIn('aria-label="운영 도구"', home)
+        self.assertIn("장면을 선택하세요.", home)
+        self.assertNotIn("data-featured", home)
+        self.assertIn("grid-template-columns: repeat(5, minmax(0, 1fr));", home_styles)
 
     def test_performance_scenes_keep_rounds_while_seating_shows_all_groups(self):
         source = (FRONTEND / "src" / "pages" / "AllCharactersPage.tsx").read_text()

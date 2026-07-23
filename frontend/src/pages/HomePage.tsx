@@ -67,46 +67,61 @@ export default function HomePage() {
 
   return (
     <main className="home-hub">
-      <header className="home-hub__header">
-        <div>
-          <p>RETREAT DISPLAY / 2026</p>
-          <h1>필요한 장면을<br />바로 여세요.</h1>
-        </div>
-        <div className="home-hub__intro">
-          <span>5 scenes · live control</span>
-          <p>송출 화면은 전체 화면으로, 배치 편집은 새 창으로 열어 운영할 수 있습니다.</p>
-        </div>
+      <header className="home-hub__topbar">
+        <a className="home-hub__brand" href="/" aria-label="수련회 디스플레이 홈">
+          <span aria-hidden="true">P</span>
+          <span>
+            <strong>Peter display</strong>
+            <small>Retreat control desk</small>
+          </span>
+        </a>
+        <nav className="home-hub__tools" aria-label="운영 도구">
+          <a href="/editor">통합 편집</a>
+          <a href="/admin">캐릭터</a>
+          <a href="/admin/seating">자리표 관리</a>
+        </nav>
       </header>
+
+      <section className="home-hub__intro" aria-labelledby="home-title">
+        <div>
+          <p>5 scenes · live control</p>
+          <h1 id="home-title">장면을 선택하세요.</h1>
+        </div>
+        <p>송출은 전체 화면으로, 편집은 배치 도구로 바로 연결됩니다.</p>
+      </section>
 
       <nav className="home-scene-grid" aria-label="수련회 장면 바로가기">
         {HOME_SCENES.map((scene) => (
           <article
             className="home-scene-card"
             data-scene={scene.id}
-            data-featured={scene.id === 'awards' ? 'true' : 'false'}
             key={scene.id}
           >
-            <span className="home-scene-card__number">{scene.number}</span>
+            <header className="home-scene-card__header">
+              <span className="home-scene-card__number">{scene.number}</span>
+              <span>{scene.eyebrow}</span>
+            </header>
             <div className="home-scene-card__copy">
-              <p>{scene.eyebrow}</p>
               <h2>{scene.title}</h2>
-              <span>{scene.description}</span>
+              <p>{scene.description}</p>
             </div>
             <div className="home-scene-card__actions">
-              <a className="home-scene-card__primary" href={scene.displayPath}>송출 화면</a>
-              <a href={scene.editorPath}>배치 편집</a>
+              <a className="home-scene-card__primary" href={scene.displayPath}>
+                송출
+                <span aria-hidden="true">↗</span>
+              </a>
+              <a href={scene.editorPath}>
+                편집
+                <span aria-hidden="true">→</span>
+              </a>
             </div>
           </article>
         ))}
       </nav>
 
       <footer className="home-hub__footer">
-        <p>Peter retreat display studio</p>
-        <nav aria-label="운영 도구">
-          <a href="/editor">전체 운영 설정</a>
-          <a href="/admin">캐릭터 관리</a>
-          <a href="/admin/seating">자리표 관리</a>
-        </nav>
+        <span>Peter retreat · 2026</span>
+        <span>투명 송출 · 실시간 장면 동기화</span>
       </footer>
     </main>
   );
