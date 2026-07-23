@@ -450,9 +450,16 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertNotIn("defaultAwardsLayout", source)
         self.assertNotIn("retreat-parade__awards-stage", source)
         self.assertNotIn("retreat-parade__award-recipient", styles)
-        self.assertIn("mode === 'awards' && key !== 'trophy'", source)
-        self.assertIn("displayMode === 'awards' ? [] : snapshot.media", source)
-        self.assertIn("displayMode !== 'awards' && sceneMedia.length > 0", source)
+        self.assertIn(
+            "mode === 'awards' && key !== 'trophy' && !isSceneMediaKey(key)",
+            source,
+        )
+        self.assertIn("setSceneMedia([]);", source)
+        self.assertIn("setSceneMedia(snapshot.media)", source)
+        self.assertNotIn("displayMode === 'awards' ? [] : sceneMedia", source)
+        self.assertNotIn("displayMode !== 'awards' && sceneMedia.length > 0", source)
+        self.assertIn("{sceneMedia.length > 0 ? (", source)
+        self.assertIn("이미지/GIF 오브젝트 추가", source)
         self.assertIn("displayMode === 'awards' ? 'trophy' : 'group-1'", source)
         self.assertIn("PPT 위에 겹쳐 띄우는 회전 트로피", source)
         self.assertIn("사이드바 닫기", source)
