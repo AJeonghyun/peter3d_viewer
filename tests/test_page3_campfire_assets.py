@@ -468,9 +468,15 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("PPT 위에 회전 트로피만 투명하게", home)
         self.assertEqual(home.count("displayPath: '/display/"), 5)
         self.assertIn('aria-label="운영 도구"', home)
-        self.assertIn("장면을 선택하세요.", home)
+        self.assertIn("장면을<br />선택하세요.", home)
         self.assertNotIn("data-featured", home)
-        self.assertIn("grid-template-columns: repeat(5, minmax(0, 1fr));", home_styles)
+        self.assertIn('className="home-scene-list"', home)
+        self.assertIn("--home-accent: #3465af;", home_styles)
+        self.assertIn("background: #f5f5f7;", home_styles)
+        self.assertIn("color: #000;", home_styles)
+        self.assertIn("grid-template-columns: minmax(300px, 0.72fr)", home_styles)
+        self.assertNotIn("#09141e", home_styles)
+        self.assertNotIn("#d5aa5a", home_styles)
 
     def test_obsolete_editor_and_seating_admin_pages_are_removed(self):
         app = (FRONTEND / "src" / "App.tsx").read_text()
