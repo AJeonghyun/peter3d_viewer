@@ -76,9 +76,7 @@ export default function HomePage() {
           </span>
         </a>
         <nav className="home-hub__tools" aria-label="운영 도구">
-          <a href="/editor">통합 편집</a>
           <a href="/admin">캐릭터</a>
-          <a href="/admin/seating">자리표 관리</a>
         </nav>
       </header>
 

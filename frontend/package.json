@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@ga1az/react-pixel-motion": "0.0.18",
-    "html-to-image": "^1.11.13",
     "matter-js": "^0.20.0",
     "react": "19.2.7",
     "react-dom": "19.2.7"

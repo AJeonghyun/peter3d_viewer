@@ -914,13 +914,15 @@ class Peter3DBackendTests(unittest.TestCase):
                 "/display/all-characters",
                 "/showcase",
                 "/print-template",
-                "/admin/seating",
                 "/api/retreat-scenes/{scene}",
                 "/api/retreat-scenes/{scene}/layout",
                 "/api/retreat-scenes/{scene}/media",
                 "/api/retreat-scenes/{scene}/media/{media_id}",
             }.issubset(registered_paths)
         )
+        self.assertNotIn("/editor", registered_paths)
+        self.assertNotIn("/admin/seating", registered_paths)
+        self.assertNotIn("/seating-admin", registered_paths)
 
     def test_character_image_upload_updates_only_the_showcase_image(self):
         previous_image = "/uploads/team-1-3d-source.png"

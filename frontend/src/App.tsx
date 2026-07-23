@@ -5,11 +5,9 @@ import './styles/retreat.css';
 type PageName =
   | 'home'
   | 'admin'
-  | 'admin-seating'
   | 'sprite-lab'
   | 'showcase'
   | 'print-template'
-  | 'editor'
   | 'stand'
   | 'back'
   | 'campfire'
@@ -19,8 +17,7 @@ type PageName =
 
 function resolvePage(pathname: string): PageName {
   if (pathname === '/') return 'home';
-  if (pathname === '/admin/seating' || pathname.startsWith('/admin/seating/')) return 'admin-seating';
-  if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin';
+  if (pathname === '/admin') return 'admin';
   if (pathname === '/editor/campfire' || pathname.startsWith('/editor/campfire/')) {
     return 'campfire';
   }
@@ -36,7 +33,6 @@ function resolvePage(pathname: string): PageName {
   if (pathname === '/editor/stand' || pathname.startsWith('/editor/stand/')) {
     return 'stand';
   }
-  if (pathname === '/editor' || pathname.startsWith('/editor/')) return 'editor';
   if (
     pathname === '/display/seating'
     || pathname.startsWith('/display/seating/')
@@ -84,8 +80,6 @@ const page = resolvePage(window.location.pathname);
 const Page = ({
   home: lazy(() => import('./pages/HomePage')),
   admin: lazy(() => import('./pages/AdminPage')),
-  'admin-seating': lazy(() => import('./pages/SeatingAdminPage')),
-  editor: lazy(() => import('./pages/EditorPage')),
   stand: lazy(() => import('./pages/AllCharactersPage')),
   back: lazy(() => import('./pages/AllCharactersPage')),
   campfire: lazy(() => import('./pages/AllCharactersPage')),
