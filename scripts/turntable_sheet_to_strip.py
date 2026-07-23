@@ -11,10 +11,12 @@ GRID (N columns x M rows). This tool:
 3. Keeps only the COMPLETE rows (a cropped partial bottom row is dropped).
 4. Reads the cells row-major (row0 col0..colN, row1 ...) which is the natural
    continuous-rotation order.
-5. Trims each frame and bottom-centre aligns it on a uniform canvas so the base
+5. Replaces the final near-360-degree frame with an exact copy of the first
+   frame. The last cell is a blend-only loop sentinel, not another held frame.
+6. Trims each frame and bottom-centre aligns it on a uniform canvas so the base
    stays fixed while the figure spins in place.
-6. Writes one horizontal strip PNG and prints the frame count / size so the CSS
-   (`steps(N)` and `width: N*100%`) can be matched.
+7. Writes one horizontal strip PNG and prints the unique frame count / size so
+   the CSS animation can crossfade into the loop sentinel without a seam.
 
 Usage:
     .venv/bin/python scripts/turntable_sheet_to_strip.py \
@@ -102,7 +104,7 @@ def extract_frame(mask: np.ndarray, rgb: np.ndarray,
     sub_rgb = rgb[y0 + cy0:y0 + cy1 + 1, x0 + cx0:x0 + cx1 + 1]
     sub_alpha = cell_mask[cy0:cy1 + 1, cx0:cx1 + 1]
     rgba = np.dstack([sub_rgb, np.where(sub_alpha, 255, 0)]).astype(np.uint8)
-    return Image.fromarray(rgba, 'RGBA')
+    return Image.fromarray(rgba)
 
 
 def build_strip(frames: list[Image.Image], pad: int = 8) -> Image.Image:
@@ -114,6 +116,14 @@ def build_strip(frames: list[Image.Image], pad: int = 8) -> Image.Image:
         oy = max_h - frame.height  # bottom aligned -> base stays put
         strip.paste(frame, (ox, oy), frame)
     return strip, max_w, max_h
+
+
+def add_exact_loop_sentinel(frames: list[Image.Image]) -> tuple[list[Image.Image], int]:
+    """Drop the approximate 360° endpoint and append an exact 0° sentinel."""
+    if len(frames) < 3:
+        raise ValueError("A seamless turntable requires at least three source frames")
+    unique_frames = frames[:-1]
+    return [*unique_frames, unique_frames[0].copy()], len(unique_frames)
 
 
 def main() -> None:
@@ -133,14 +143,14 @@ def main() -> None:
         for row in full_rows
         for col in cols
     ]
+    frames, unique_frame_count = add_exact_loop_sentinel(frames)
     strip, fw, fh = build_strip(frames)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     strip.save(args.output)
-    print(f"strip -> {args.output} ({strip.size[0]}x{strip.size[1]})")
-    print(f"FRAMES = {len(frames)}  frameWidth = {fw}  frameHeight = {fh}  "
-          f"aspect = {round(fw / fh, 5)}")
-    print(f"CSS: width: {len(frames) * 100}%;  animation steps({len(frames)});  "
-          f"aspect-ratio: {fw} / {fh};")
+    print(f"strip -> {args.output} ({strip.size[0]}x{strip.size[1]}, "
+          f"{unique_frame_count} unique + 1 exact loop sentinel)")
+    print(f"UNIQUE_FRAMES = {unique_frame_count}  SHEET_FRAMES = {len(frames)}  "
+          f"frameWidth = {fw}  frameHeight = {fh}  aspect = {round(fw / fh, 5)}")
 
 
 if __name__ == '__main__':
