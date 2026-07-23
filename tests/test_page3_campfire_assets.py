@@ -455,6 +455,26 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("displayMode !== 'awards' && sceneMedia.length > 0", source)
         self.assertIn("displayMode === 'awards' ? 'trophy' : 'group-1'", source)
         self.assertIn("PPT 위에 겹쳐 띄우는 회전 트로피", source)
+        self.assertIn("TROPHY_UNIQUE_FRAMES = 17", source)
+        self.assertIn("'--trophy-frame-duration'", source)
+        self.assertIn("retreat-trophy-frame-blend", styles)
+        self.assertIn("steps(17, jump-end)", styles)
+        self.assertNotIn("steps(18)", styles)
+        self.assertEqual(
+            source.count('<img src="/assets/trophy/trophy-strip.png"'),
+            2,
+        )
+        with Image.open(FRONTEND / "public" / "assets" / "trophy" / "trophy-strip.png") as strip:
+            self.assertEqual(strip.width % 18, 0)
+            frame_width = strip.width // 18
+            first_frame = strip.crop((0, 0, frame_width, strip.height))
+            loop_sentinel = strip.crop((
+                strip.width - frame_width,
+                0,
+                strip.width,
+                strip.height,
+            ))
+            self.assertEqual(first_frame.tobytes(), loop_sentinel.tobytes())
         self.assertIn("사이드바 닫기", source)
         self.assertIn('data-panel-open={panelOpen', editor)
         self.assertIn("설정 닫기", editor)

@@ -127,13 +127,32 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
 }
 
 .retreat-parade__trophy img {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
   height: 100%;
   width: 1800%;
   max-width: none;
   object-fit: fill;
-  animation: retreat-trophy-spin var(--trophy-spin-duration, 6s) steps(18) infinite;
   will-change: transform;
+}
+
+.retreat-parade__trophy img:first-child {
+  /* The sheet has 17 unique angles plus an exact copy of frame zero. */
+  animation:
+    retreat-trophy-spin-current var(--trophy-spin-duration, 6s)
+    steps(17, jump-end) infinite;
+}
+
+.retreat-parade__trophy img:last-child {
+  opacity: 0;
+  animation:
+    retreat-trophy-spin-next var(--trophy-spin-duration, 6s)
+      steps(17, jump-end) infinite,
+    retreat-trophy-frame-blend var(--trophy-frame-duration, 0.352941s)
+      linear infinite;
+  will-change: opacity, transform;
 }
 
 .retreat-parade__sky,
@@ -1529,9 +1548,19 @@ html[data-background-mode="transparent"] .retreat-parade__sand {
   to { transform: translateX(-87.5%); }
 }
 
-@keyframes retreat-trophy-spin {
+@keyframes retreat-trophy-spin-current {
   from { transform: translateX(0); }
+  to { transform: translateX(-94.444444%); }
+}
+
+@keyframes retreat-trophy-spin-next {
+  from { transform: translateX(-5.555556%); }
   to { transform: translateX(-100%); }
+}
+
+@keyframes retreat-trophy-frame-blend {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes retreat-fire-glow {

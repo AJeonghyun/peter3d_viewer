@@ -105,6 +105,7 @@ interface ScenePosition {
 const TROPHY_MIN_SPIN_SECONDS = 1.5;
 const TROPHY_MAX_SPIN_SECONDS = 20;
 const TROPHY_DEFAULT_SPIN_SECONDS = 6;
+const TROPHY_UNIQUE_FRAMES = 17;
 
 function clampSpinSeconds(value: number): number {
   return Math.max(TROPHY_MIN_SPIN_SECONDS, Math.min(TROPHY_MAX_SPIN_SECONDS, value));
@@ -1141,6 +1142,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
       ? groups
       : activeSceneGroups;
   const trophyPosition = activeLayout.trophy ?? defaultTrophyPosition();
+  const trophySpinSeconds = trophyPosition.spinSeconds ?? TROPHY_DEFAULT_SPIN_SECONDS;
   const poseOptions = poseOptionsForPage(displayMode);
   const xForCanvas = (x: number) => (
     displayMode === 'seating' && layoutMode
@@ -1592,9 +1594,11 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
             '--trophy-bottom': `${trophyPosition.bottom}${STAGE_UNIT_Y}`,
             '--trophy-scale': trophyPosition.scale,
             '--trophy-rotation': `${trophyPosition.rotation}deg`,
-            '--trophy-spin-duration': `${trophyPosition.spinSeconds ?? TROPHY_DEFAULT_SPIN_SECONDS}s`,
+            '--trophy-spin-duration': `${trophySpinSeconds}s`,
+            '--trophy-frame-duration': `${trophySpinSeconds / TROPHY_UNIQUE_FRAMES}s`,
           } as CSSProperties}
         >
+          <img src="/assets/trophy/trophy-strip.png" alt="" draggable={false} />
           <img src="/assets/trophy/trophy-strip.png" alt="" draggable={false} />
         </div>
       ) : null}
