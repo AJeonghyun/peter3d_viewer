@@ -410,6 +410,10 @@ Vercel 프로젝트에는 `DATABASE_URL`(또는 `POSTGRES_URL`),
 `BLOB_READ_WRITE_TOKEN`, `OPENAI_API_KEY`, `OPENAI_IMAGE_MODEL`이
 설정되어야 합니다. 비밀값은
 `.env`, `.env.local` 또는 Vercel 환경 변수에만 두고 저장소에 커밋하지 마세요.
+촬영 사진의 평면 일러스트 변환은 기본적으로 `1024x1440`, `medium`, JPEG 90으로
+처리해 대기 시간을 줄입니다. 필요하면 `CAPTURE_ILLUSTRATION_SIZE`와
+`CAPTURE_ILLUSTRATION_QUALITY`만 별도로 조정할 수 있으며, 32컷 생성에 사용하는
+`OPENAI_IMAGE_QUALITY=high` 설정에는 영향을 주지 않습니다.
 `/api/health`의 `persistent_storage`가 `true`이고 `openai_configured`가
 `true`이면 저장소와 AI 캐릭터 생성 연결이 준비된 상태입니다.
 

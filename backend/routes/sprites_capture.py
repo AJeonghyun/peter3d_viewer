@@ -31,6 +31,22 @@ from backend.serializers import (
 router = APIRouter()
 
 
+def update_capture_stage(team_id: int, status: str) -> None:
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_capture_status = ?,
+                showcase_sprite_status = ?,
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (status, status, timestamp, timestamp, team_id),
+        )
+
+
 @router.post("/api/teams/{team_id}/showcase-sprite")
 async def generate_showcase_sprite(team_id: int, reference: UploadFile = File(...)):
     if config.SERVERLESS_RUNTIME and not blob_configured():
@@ -112,10 +128,10 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
         db.execute(
             """
             UPDATE teams
-            SET showcase_capture_status = 'processing',
+            SET showcase_capture_status = 'quality_review',
                 showcase_capture_url = NULL,
                 showcase_capture_corrected_url = NULL,
-                showcase_sprite_status = 'processing',
+                showcase_sprite_status = 'quality_review',
                 showcase_sprite_url = NULL,
                 showcase_sprite_version_id = NULL,
                 showcase_sprite_error = NULL,
@@ -167,10 +183,14 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
         db.execute(
             """
             UPDATE teams
-            SET showcase_capture_source_url = ?, updated_at = ?
+            SET showcase_capture_source_url = ?,
+                showcase_capture_status = 'illustrating',
+                showcase_sprite_status = 'illustrating',
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
             WHERE id = ?
             """,
-            (source_url, timestamp, team_id),
+            (source_url, timestamp, timestamp, team_id),
         )
     try:
         corrected = correct_capture_image(contents, quality)
@@ -179,6 +199,7 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
             corrected_bytes,
             filename=f"team-{team_id}-corrected-capture.png",
         )
+        update_capture_stage(team_id, "illustration_saving")
         illustration_url = await persist_showcase_asset(
             team_id,
             "capture-illustration",

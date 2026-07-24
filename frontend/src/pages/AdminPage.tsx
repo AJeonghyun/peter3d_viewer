@@ -30,6 +30,37 @@ const FIXED_MASTER_URL = '/api/showcase/fixed-master';
 const CURRENT_MASTER_FRAME_COUNT = 32;
 const CURRENT_MASTER_COLUMNS = 8;
 const CURRENT_MASTER_ROWS = 4;
+const CAPTURE_EXPECTED_SECONDS = 65;
+const CAPTURE_STAGES = [
+  {
+    status: 'preparing',
+    label: '사진 업로드를 준비하는 중',
+    detail: '휴대폰 사진의 방향과 용량을 확인해 서버로 전송합니다.',
+    floor: 2,
+    ceiling: 10,
+  },
+  {
+    status: 'quality_review',
+    label: '촬영 품질을 검사하는 중',
+    detail: '종이 모서리, 흔들림, 빛 반사와 원근을 확인합니다.',
+    floor: 12,
+    ceiling: 28,
+  },
+  {
+    status: 'illustrating',
+    label: '학생 디자인을 일러스트로 변환하는 중',
+    detail: '학생이 꾸민 무늬를 고정 도안의 평면 그림체로 다시 그립니다.',
+    floor: 30,
+    ceiling: 94,
+  },
+  {
+    status: 'illustration_saving',
+    label: '완성된 일러스트를 저장하는 중',
+    detail: '32컷 제작에 사용할 최종 디자인 참조를 저장합니다.',
+    floor: 96,
+    ceiling: 99,
+  },
+] as const;
 const GENERATION_EXPECTED_SECONDS = 210;
 const GENERATION_RETRY_SECONDS = 10;
 const GENERATION_STAGES = [
@@ -64,9 +95,14 @@ const GENERATION_STAGES = [
 ] as const;
 
 type GenerationStageStatus = typeof GENERATION_STAGES[number]['status'];
+type CaptureStageStatus = typeof CAPTURE_STAGES[number]['status'];
 
 function isGenerationStage(status: ShowcaseCaptureStatus): status is GenerationStageStatus {
   return GENERATION_STAGES.some((stage) => stage.status === status);
+}
+
+function isCaptureStage(status: ShowcaseCaptureStatus): status is CaptureStageStatus {
+  return CAPTURE_STAGES.some((stage) => stage.status === status);
 }
 
 function formatGenerationTime(seconds: number) {
@@ -101,6 +137,19 @@ function generationProgress(status: ShowcaseCaptureStatus, elapsedSeconds: numbe
   return { stage, stageIndex, percent, remainingSeconds, delayed };
 }
 
+function captureProgress(status: ShowcaseCaptureStatus, elapsedSeconds: number) {
+  const normalizedStatus = status === 'processing' ? 'quality_review' : status;
+  const stageIndex = isCaptureStage(normalizedStatus)
+    ? CAPTURE_STAGES.findIndex((stage) => stage.status === normalizedStatus)
+    : 0;
+  const stage = CAPTURE_STAGES[Math.max(0, stageIndex)];
+  const timedPercent = 2 + (elapsedSeconds / CAPTURE_EXPECTED_SECONDS) * 96;
+  const percent = Math.round(Math.min(stage.ceiling, Math.max(stage.floor, timedPercent)));
+  const remainingSeconds = Math.max(0, CAPTURE_EXPECTED_SECONDS - elapsedSeconds);
+  const delayed = stage.status === 'illustrating' && remainingSeconds === 0;
+  return { stage, stageIndex, percent, remainingSeconds, delayed };
+}
+
 const SPRITE_REVIEW_PREVIEWS: Array<{
   label: string;
   animation: AnimationName;
@@ -127,6 +176,10 @@ function spriteStatusLabel(status: ShowcaseCaptureStatus) {
     empty: '대기',
     generating: 'AI 32컷 생성 중',
     processing: '사진 품질검사·일러스트 변환 중',
+    preparing: '사진 업로드 준비 중',
+    quality_review: '촬영 품질 검사 중',
+    illustrating: '평면 일러스트 변환 중',
+    illustration_saving: '변환 일러스트 저장 중',
     garment_review: 'AI 생성 준비',
     composing: '프레임 크기 정렬 중',
     reviewing: '전신·동작 자동 검수 중',
@@ -342,6 +395,8 @@ export default function AdminPage() {
   const [versions, setVersions] = useState<ShowcaseSpriteVersion[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [restoringVersionId, setRestoringVersionId] = useState<string | number | null>(null);
+  const [captureJob, setCaptureJob] = useState<{ teamId: number; startedAt: number } | null>(null);
+  const [captureElapsedSeconds, setCaptureElapsedSeconds] = useState(0);
   const [generationJob, setGenerationJob] = useState<{ teamId: number; startedAt: number } | null>(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [selectedPatchFrames, setSelectedPatchFrames] = useState<number[]>([]);
@@ -356,6 +411,11 @@ export default function AdminPage() {
   const selectedSpriteUrl = activeSpriteUrl(selected);
   const fixedMaster = isFixedMaster(selected);
   const designReferenceReady = Boolean(correctedCaptureUrl(selected));
+  const captureActive = Boolean(
+    uploadingCapture && captureJob && selected?.id === captureJob.teamId,
+  );
+  const currentCaptureStatus = captureStatus(selected);
+  const capture = captureProgress(currentCaptureStatus, captureElapsedSeconds);
   const generationActive = Boolean(
     composingSprite && generationJob && selected?.id === generationJob.teamId,
   );
@@ -447,6 +507,46 @@ export default function AdminPage() {
   }, [selectedId, selected?.showcase_sprite_version_id, qaProblemFrameKey]);
 
   useEffect(() => {
+    if (!captureJob) {
+      setCaptureElapsedSeconds(0);
+      return undefined;
+    }
+    const updateElapsed = () => {
+      setCaptureElapsedSeconds(Math.max(
+        0,
+        Math.floor((Date.now() - captureJob.startedAt) / 1000),
+      ));
+    };
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [captureJob]);
+
+  useEffect(() => {
+    if (!captureJob) return undefined;
+    let active = true;
+    const pollCaptureStage = async () => {
+      try {
+        const team = await apiRequest<Team>(`/teams/${captureJob.teamId}`, {
+          cache: 'no-store',
+        });
+        if (active) {
+          setTeams((current) => current.map((item) => item.id === team.id ? team : item));
+        }
+      } catch (error) {
+        console.warn('일러스트 변환 단계를 확인하지 못했습니다.', error);
+      }
+    };
+    const timer = window.setInterval(() => {
+      void pollCaptureStage();
+    }, 1500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [captureJob]);
+
+  useEffect(() => {
     if (!generationJob) {
       setGenerationElapsedSeconds(0);
       return undefined;
@@ -527,17 +627,24 @@ export default function AdminPage() {
     event.preventDefault();
     const image = characterInputRef.current?.files?.[0];
     if (!selected || !image) return;
+    const teamId = selected.id;
     setUploadingCapture(true);
+    setCaptureJob({ teamId, startedAt: Date.now() });
     setTeams((current) => current.map((team) => (
-      team.id === selected.id
-        ? { ...team, showcase_capture_status: 'processing', showcase_sprite_status: 'processing', showcase_sprite_error: null }
+      team.id === teamId
+        ? { ...team, showcase_capture_status: 'preparing', showcase_sprite_status: 'preparing', showcase_sprite_error: null }
         : team
     )));
     try {
       const prepared = await prepareCharacterUploadImage(image);
+      setTeams((current) => current.map((team) => (
+        team.id === teamId
+          ? { ...team, showcase_capture_status: 'quality_review', showcase_sprite_status: 'quality_review' }
+          : team
+      )));
       const form = new FormData();
       form.append('reference', prepared.file);
-      const response = await apiRequest<ShowcaseCaptureResponse>(`/teams/${selected.id}/capture/process`, {
+      const response = await apiRequest<ShowcaseCaptureResponse>(`/teams/${teamId}/capture/process`, {
         method: 'POST',
         body: form,
       });
@@ -551,13 +658,14 @@ export default function AdminPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : '촬영 사진을 처리하지 못했습니다';
       setTeams((current) => current.map((team) => (
-        team.id === selected.id
+        team.id === teamId
           ? { ...team, showcase_capture_status: 'failed', showcase_sprite_status: 'failed', showcase_sprite_error: message }
           : team
       )));
       showToast(message);
     } finally {
       setUploadingCapture(false);
+      setCaptureJob(null);
     }
   }
 
@@ -856,6 +964,51 @@ export default function AdminPage() {
                 </div>
                 {selected?.showcase_sprite_error && (
                   <p className="sprite-generation-error">{selected.showcase_sprite_error}</p>
+                )}
+                {captureActive && (
+                  <div
+                    className="sprite-generation-live capture-generation-live"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <header>
+                      <div>
+                        <strong>{capture.stage.label}</strong>
+                        <span>{capture.stage.detail}</span>
+                      </div>
+                      <b>{capture.percent}%</b>
+                    </header>
+                    <progress max={100} value={capture.percent}>
+                      {capture.percent}%
+                    </progress>
+                    <div className="sprite-generation-time">
+                      <span>경과 {formatGenerationTime(captureElapsedSeconds)}</span>
+                      <span>
+                        {capture.delayed
+                          ? '정교한 무늬를 처리하고 있어 조금 더 걸리고 있습니다'
+                          : `약 ${formatGenerationTime(capture.remainingSeconds)} 남음`}
+                      </span>
+                    </div>
+                    <ol>
+                      {CAPTURE_STAGES.map((stage, index) => {
+                        const state = index < capture.stageIndex
+                          ? 'complete'
+                          : index === capture.stageIndex
+                            ? 'active'
+                            : 'pending';
+                        return (
+                          <li key={stage.status} data-state={state}>
+                            <i>{state === 'complete' ? '✓' : index + 1}</i>
+                            {stage.label}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    <p>
+                      단계는 서버에서 실제 처리 상태를 받아 표시하며, 퍼센트와 남은 시간은
+                      평균 처리 시간을 기준으로 한 예상값입니다.
+                    </p>
+                  </div>
                 )}
                 <div className="capture-review-grid">
                   <div className="capture-review-image">

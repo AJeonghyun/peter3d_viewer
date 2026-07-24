@@ -79,8 +79,9 @@ async def request_capture_illustration(
         "model": config.OPENAI_IMAGE_MODEL,
         "prompt": config.CAPTURE_ILLUSTRATION_PROMPT,
         "size": config.CAPTURE_ILLUSTRATION_SIZE,
-        "quality": config.OPENAI_IMAGE_QUALITY,
-        "output_format": "png",
+        "quality": config.CAPTURE_ILLUSTRATION_QUALITY,
+        "output_format": config.CAPTURE_ILLUSTRATION_OUTPUT_FORMAT,
+        "output_compression": str(config.CAPTURE_ILLUSTRATION_OUTPUT_COMPRESSION),
         "background": "opaque",
         "n": "1",
     }

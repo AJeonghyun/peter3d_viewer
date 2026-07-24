@@ -696,7 +696,11 @@ class Peter3DBackendTests(unittest.TestCase):
 
     def test_capture_illustration_request_uses_photo_then_flat_style_master(self):
         generated_stream = io.BytesIO()
-        Image.new("RGB", (64, 96), (220, 40, 60)).save(generated_stream, format="PNG")
+        Image.new("RGB", (64, 96), (220, 40, 60)).save(
+            generated_stream,
+            format="JPEG",
+            quality=90,
+        )
         recorded = {}
 
         class FakeResponse:
@@ -741,7 +745,10 @@ class Peter3DBackendTests(unittest.TestCase):
             self.assertEqual(illustration.size, backend_main.GARMENT_TEMPLATE_SIZE)
         self.assertEqual(recorded["url"], backend_main.OPENAI_IMAGE_API_URL)
         self.assertEqual(recorded["data"]["model"], "gpt-image-2")
-        self.assertEqual(recorded["data"]["size"], backend_main.CAPTURE_ILLUSTRATION_SIZE)
+        self.assertEqual(recorded["data"]["size"], "1024x1440")
+        self.assertEqual(recorded["data"]["quality"], "medium")
+        self.assertEqual(recorded["data"]["output_format"], "jpeg")
+        self.assertEqual(recorded["data"]["output_compression"], "90")
         self.assertEqual(recorded["data"]["background"], "opaque")
         self.assertNotIn("input_fidelity", recorded["data"])
         self.assertEqual(recorded["files"][0], (
@@ -1217,6 +1224,87 @@ class Peter3DBackendTests(unittest.TestCase):
         restored = asyncio.run(backend_main.restore_sprite_version(1, composed["version"]["id"]))
         self.assertEqual(restored["status"], "ready")
         self.assertEqual(restored["team"]["showcase_sprite_active_url"], composed["atlas_url"])
+
+    def test_capture_process_exposes_illustration_and_saving_stages(self):
+        quality = {
+            "status": "passed",
+            "can_process": True,
+            "summary": "usable worksheet",
+            "page_corners": {
+                "top_left": [0, 0],
+                "top_right": [1, 0],
+                "bottom_right": [1, 1],
+                "bottom_left": [0, 1],
+            },
+            "checks": {},
+            "issues": [],
+        }
+        illustrated_reference = make_garment_capture()
+
+        async def exercise():
+            illustrating_started = asyncio.Event()
+            illustration_release = asyncio.Event()
+            saving_started = asyncio.Event()
+            saving_release = asyncio.Event()
+
+            async def illustrate(*_args, **_kwargs):
+                illustrating_started.set()
+                await illustration_release.wait()
+                return illustrated_reference
+
+            async def persist(_team_id, kind, _contents, **_kwargs):
+                if kind == "capture-source":
+                    return "/uploads/capture-source.png"
+                self.assertEqual(kind, "capture-illustration")
+                saving_started.set()
+                await saving_release.wait()
+                return "/uploads/capture-illustration.png"
+
+            reference = backend_main.UploadFile(
+                filename="capture.png",
+                file=io.BytesIO(make_garment_capture()),
+                headers=Headers({"content-type": "image/png"}),
+            )
+            with (
+                patch(
+                    "backend.ai_generation.request_capture_quality_review",
+                    new=AsyncMock(return_value=quality),
+                ),
+                patch(
+                    "backend.ai_generation.request_capture_illustration",
+                    new=illustrate,
+                ),
+                patch(
+                    "backend.routes.sprites_capture.persist_showcase_asset",
+                    new=persist,
+                ),
+            ):
+                task = asyncio.create_task(
+                    backend_main.process_showcase_capture(1, reference),
+                )
+                await asyncio.wait_for(illustrating_started.wait(), timeout=1)
+                illustrating = await backend_main.get_team(1)
+                self.assertEqual(illustrating["showcase_capture_status"], "illustrating")
+                self.assertEqual(illustrating["showcase_sprite_status"], "illustrating")
+
+                illustration_release.set()
+                await asyncio.wait_for(saving_started.wait(), timeout=1)
+                saving = await backend_main.get_team(1)
+                self.assertEqual(
+                    saving["showcase_capture_status"],
+                    "illustration_saving",
+                )
+                self.assertEqual(
+                    saving["showcase_sprite_status"],
+                    "illustration_saving",
+                )
+
+                saving_release.set()
+                result = await task
+                self.assertEqual(result["team"]["showcase_capture_status"], "garment_review")
+                self.assertEqual(result["team"]["showcase_sprite_status"], "garment_review")
+
+        asyncio.run(exercise())
 
     def test_capture_illustration_failure_keeps_source_but_clears_stale_candidate(self):
         quality = {
@@ -1931,6 +2019,8 @@ class Peter3DBackendTests(unittest.TestCase):
             backend_main.ROOT / "runtime-assets",
         )
         self.assertTrue(backend_main.CAPTURE_ILLUSTRATION_TEMPLATE_PATH.is_file())
+        with Image.open(backend_main.CAPTURE_ILLUSTRATION_TEMPLATE_PATH) as template:
+            self.assertEqual(template.size, backend_main.GARMENT_TEMPLATE_SIZE)
 
 
 
