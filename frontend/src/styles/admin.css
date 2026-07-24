@@ -37,6 +37,16 @@ a:focus-visible, button:focus-visible { border-radius: 11px; }
 .batch-workflow-summary > div { display:flex; align-items:baseline; gap:7px; padding:9px 10px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:rgba(255,255,255,.035); }
 .batch-workflow-summary b { color:#edf5f2; font-size:16px; }
 .batch-workflow-summary span { color:#8fa8ad; font-size:8px; font-weight:800; }
+.batch-overall-progress { display:grid; gap:7px; padding:11px 12px; border:1px solid rgba(240,200,121,.18); border-radius:12px; background:rgba(3,25,34,.3); }
+.batch-overall-progress > div { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.batch-overall-progress strong { color:#dfeae7; font-size:9px; }
+.batch-overall-progress b { color:#f0c879; font-size:14px; }
+.batch-overall-progress progress { width:100%; height:10px; overflow:hidden; border:0; border-radius:99px; background:rgba(255,255,255,.08); appearance:none; }
+.batch-overall-progress progress::-webkit-progress-bar { border-radius:99px; background:rgba(255,255,255,.08); }
+.batch-overall-progress progress::-webkit-progress-value { border-radius:99px; background:linear-gradient(90deg,#5caebb 0%,#8fd5df 48%,#f0c879 100%); transition:width .6s ease; }
+.batch-overall-progress progress::-moz-progress-bar { border-radius:99px; background:linear-gradient(90deg,#5caebb 0%,#8fd5df 48%,#f0c879 100%); }
+.batch-overall-progress small { display:flex; align-items:center; gap:7px; color:#90a8ad; font-size:8px; }
+.batch-overall-progress small i { width:3px; height:3px; border-radius:50%; background:#657f85; }
 .batch-team-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; max-height:390px; overflow:auto; padding-right:3px; }
 .batch-team-row { display:grid; grid-template-columns:66px minmax(0,1fr) minmax(80px,.65fr); align-items:center; gap:7px; min-width:0; padding:8px; border:1px solid rgba(255,255,255,.08); border-radius:10px; color:#dce8e5; background:rgba(3,25,34,.25); }
 .batch-team-row[data-busy="true"] { border-color:rgba(100,196,210,.24); background:rgba(100,196,210,.055); }

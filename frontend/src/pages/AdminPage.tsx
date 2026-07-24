@@ -478,6 +478,39 @@ export default function AdminPage() {
     && !captureJobs[team.id]
   ));
   const composeActiveCount = Object.keys(generationJobs).length;
+  const batchProgress = teams.reduce((summary, team) => {
+    const composeComplete = ['review', 'ready'].includes(team.showcase_sprite_status);
+    const captureComplete = composeComplete || Boolean(correctedCaptureUrl(team));
+    const captureStartedAt = captureJobs[team.id];
+    const generationStartedAt = generationJobs[team.id];
+    const captureValue = captureComplete
+      ? 1
+      : captureStartedAt === undefined
+        ? 0
+        : captureProgress(
+            captureStatus(team),
+            Math.max(0, Math.floor((jobClock - captureStartedAt) / 1000)),
+          ).percent / 100;
+    const composeValue = composeComplete
+      ? 1
+      : generationStartedAt === undefined
+        ? 0
+        : generationProgress(
+            isGenerationStage(team.showcase_sprite_status)
+              ? team.showcase_sprite_status
+              : 'generating',
+            Math.max(0, Math.floor((jobClock - generationStartedAt) / 1000)),
+          ).percent / 100;
+
+    return {
+      completedIllustrations: summary.completedIllustrations + Number(captureComplete),
+      completedSprites: summary.completedSprites + Number(composeComplete),
+      completedUnits: summary.completedUnits + captureValue + composeValue,
+    };
+  }, { completedIllustrations: 0, completedSprites: 0, completedUnits: 0 });
+  const batchOverallPercent = teams.length
+    ? Math.round((batchProgress.completedUnits / (teams.length * 2)) * 100)
+    : 0;
   const qaProblemFrames = useMemo(
     () => problemFrameNumbers(selected?.showcase_sprite_quality),
     [selected?.showcase_sprite_quality],
@@ -1063,6 +1096,24 @@ export default function AdminPage() {
               <div><b>{captureQueueTeamIds.length + Object.keys(captureJobs).length}</b><span>일러스트 작업</span></div>
               <div><b>{illustrationReadyTeams.length}</b><span>32컷 준비</span></div>
               <div><b>{composeQueue.length + composeActiveCount}</b><span>32컷 대기·진행</span></div>
+            </div>
+            <div className="batch-overall-progress">
+              <div>
+                <strong>전체 21조 제작 진행률</strong>
+                <b>{batchOverallPercent}%</b>
+              </div>
+              <progress
+                aria-label={`전체 21조 제작 진행률 ${batchOverallPercent}%`}
+                max={100}
+                value={batchOverallPercent}
+              >
+                {batchOverallPercent}%
+              </progress>
+              <small>
+                일러스트 {batchProgress.completedIllustrations}/{teams.length}
+                <i aria-hidden="true" />
+                32컷 {batchProgress.completedSprites}/{teams.length}
+              </small>
             </div>
             <div className="batch-team-list">
               {teams.map((team) => {
