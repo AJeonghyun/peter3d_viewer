@@ -28,14 +28,14 @@ export interface RetreatPoseDefinition {
 export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
   idle: {
     id: 'idle',
-    label: '서 있기 · 숨쉬기',
+    label: '서 있기',
     shortLabel: '서 있기',
-    kind: 'animation',
+    kind: 'static',
     animation: 'idle',
-    currentFrames: [0, 1],
-    expandedFrames: [25, 26],
-    legacyFrames: [0, 9],
-    retreatFrames: [0, 1],
+    currentFrames: [0],
+    expandedFrames: [25],
+    legacyFrames: [0],
+    retreatFrames: [0],
   },
   wave: {
     id: 'wave',

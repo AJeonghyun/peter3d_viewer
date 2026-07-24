@@ -9,7 +9,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import type { AnimationName } from '../spriteLab/types';
 import { RetreatCharacter } from '../retreat/RetreatCharacter';
 import { JesusCharacter } from '../retreat/JesusCharacter';
 import { useRetreat } from '../retreat/RetreatProvider';
@@ -61,10 +60,6 @@ const START_OFFSET = 2_400;
 const TEAM_COUNT = 21;
 const SEATING_EDITOR_X_OFFSET = 21;
 const SEATING_EDITOR_X_SCALE = 0.79;
-const REACTION_ACTIONS = ['wave'] as const satisfies readonly AnimationName[];
-const REACTION_HOLD_MS = 950;
-const REACTION_MIN_GAP_MS = 1_600;
-const REACTION_MAX_GAP_MS = 3_400;
 const STAND_LAYOUT_STORAGE_KEY = 'peter-page3-stand-layout-v3';
 const BACK_LAYOUT_STORAGE_KEY = 'peter-page3-back-layout-v2';
 const CAMPFIRE_LAYOUT_STORAGE_KEY = 'peter-page3-campfire-layout-v1';
@@ -494,7 +489,6 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     () => (displayMode === 'awards' ? 'trophy' : 'group-1'),
   );
   const [localPaused, setLocalPaused] = useState(false);
-  const [reaction, setReaction] = useState<{ groupNumber: number; action: AnimationName } | null>(null);
   const [referenceBackgroundUrl, setReferenceBackgroundUrl] = useState('');
   const [referenceBackgroundName, setReferenceBackgroundName] = useState('');
   const [referenceBackgroundError, setReferenceBackgroundError] = useState('');
@@ -828,33 +822,6 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
     setLayoutGroupStart(0);
     setReferenceBackgroundVisible(false);
   }, [displayMode]);
-
-  // Front lineup: every few seconds one Peter waves.
-  useEffect(() => {
-    if (displayMode !== 'stand' || !playing || lineupGroups.length === 0) {
-      setReaction(null);
-      return undefined;
-    }
-    let holdTimer = 0;
-    let nextTimer = 0;
-    const scheduleNext = () => {
-      const gap = REACTION_MIN_GAP_MS + Math.random() * (REACTION_MAX_GAP_MS - REACTION_MIN_GAP_MS);
-      nextTimer = window.setTimeout(() => {
-        const target = lineupGroups[Math.floor(Math.random() * lineupGroups.length)];
-        const action = REACTION_ACTIONS[Math.floor(Math.random() * REACTION_ACTIONS.length)];
-        setReaction({ groupNumber: target.groupNumber, action });
-        holdTimer = window.setTimeout(() => {
-          setReaction(null);
-          scheduleNext();
-        }, REACTION_HOLD_MS);
-      }, gap);
-    };
-    scheduleNext();
-    return () => {
-      window.clearTimeout(nextTimer);
-      window.clearTimeout(holdTimer);
-    };
-  }, [activeGroupScene.groupStart, displayMode, playing, lineupGroups.length]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1646,14 +1613,9 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
               displayMode === 'back' ? 'back' : 'stand',
             )[layoutKey];
             if (!position?.visible) return null;
-            const isReacting = displayMode === 'stand'
-              && position.poseId === 'idle'
-              && reaction?.groupNumber === group.groupNumber;
-            const poseId: RetreatPoseId = isReacting ? 'wave' : position.poseId;
             return (
               <article
                 className="retreat-parade__stander"
-                data-reaction={isReacting ? reaction!.action : 'idle'}
                 data-layout-selected={selectedLayoutKey === layoutKey ? 'true' : 'false'}
                 key={group.id}
                 role={layoutMode ? 'button' : undefined}
@@ -1670,7 +1632,7 @@ export function AllCharactersWorld({ preview = false, scene }: AllCharactersPage
               >
                 <RetreatCharacter
                   group={group}
-                  poseId={poseId}
+                  poseId={position.poseId}
                   playing={playing}
                   flipX={position.flipX}
                   respectReducedMotion={false}

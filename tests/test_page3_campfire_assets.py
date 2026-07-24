@@ -366,7 +366,7 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("campfire-sheet.png", source)
         self.assertIn("JesusCharacter", source)
         self.assertIn("aria-label=\"예수님 포즈\"", source)
-        self.assertIn("poseId={poseId}", source)
+        self.assertIn("poseId={position.poseId}", source)
         self.assertNotIn("retreat-parade__nameplate", source)
         self.assertNotIn("retreat-parade__nameplate", styles)
         self.assertNotIn("retreat-parade__scene-label", styles)
@@ -429,6 +429,12 @@ class Page3CampfireAssetTests(unittest.TestCase):
         poses = (FRONTEND / "src" / "retreat" / "scenePoses.ts").read_text()
         self.assertIn("ALL_POSE_IDS", poses)
         self.assertIn("'back',", poses)
+        idle_pose = poses.split("idle: {", 1)[1].split("wave: {", 1)[0]
+        self.assertIn("label: '서 있기'", idle_pose)
+        self.assertIn("kind: 'static'", idle_pose)
+        self.assertIn("currentFrames: [0]", idle_pose)
+        self.assertNotIn("숨쉬기", idle_pose)
+        self.assertNotIn("setReaction", source)
         self.assertIn("currentFrames: [2, 3]", poses)
         self.assertNotIn("POSES_BY_PAGE", poses)
 
