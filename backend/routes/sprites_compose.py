@@ -306,7 +306,7 @@ async def regenerate_showcase_frame_patch(team_id: int):
             corrected_bytes,
             atlas_bytes,
             frame,
-            filename=f"team-{team_id}-corrected-peter.png",
+            filename=f"team-{team_id}-illustrated-peter.png",
             correction=str((patch.get("issues") or {}).get(str(frame), "")),
             on_progress=report_progress,
         )
@@ -491,7 +491,7 @@ async def generate_showcase_capture_atlas(team_id: int):
         report_timing("generation_started")
         atlas_bytes = await ai_generation.request_master_locked_garment_atlas(
             corrected_bytes,
-            filename=f"team-{team_id}-corrected-peter.png",
+            filename=f"team-{team_id}-illustrated-peter.png",
             correction=correction,
             on_progress=report_progress,
         )

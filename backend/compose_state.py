@@ -237,5 +237,5 @@ def current_compose_version(team_id: int) -> tuple[dict, dict]:
             raise HTTPException(status_code=409, detail="먼저 캡처를 처리해주세요")
         version = row_dict(get_sprite_version_or_404(db, team_id, version_id))
     if not version.get("corrected_url"):
-        raise HTTPException(status_code=409, detail="보정된 학생 디자인 이미지가 없습니다")
+        raise HTTPException(status_code=409, detail="변환된 학생 디자인 일러스트가 없습니다")
     return team, version

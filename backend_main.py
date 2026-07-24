@@ -14,6 +14,10 @@ from backend.app import app  # noqa: F401
 from backend.config import (  # noqa: F401
     CHROMA_EDGE_FEATHER_RADIUS,
     CHROMA_SPILL_TOLERANCE,
+    CAPTURE_ILLUSTRATION_PROMPT,
+    CAPTURE_ILLUSTRATION_SIZE,
+    CAPTURE_ILLUSTRATION_TEMPLATE_PATH,
+    CAPTURE_ILLUSTRATION_TIMEOUT_SECONDS,
     COMPOSE_ACTIVE_TEAM_STATUSES,
     COMPOSE_GENERATION_LEASE_SECONDS,
     COMPOSE_RETRY_AFTER_SECONDS,
@@ -144,6 +148,7 @@ from backend.capture import (  # noqa: F401
 )
 from backend.ai_generation import (  # noqa: F401
     openai_error_detail,
+    request_capture_illustration,
     request_capture_quality_review,
     request_master_locked_garment_atlas,
     request_master_locked_garment_frame,

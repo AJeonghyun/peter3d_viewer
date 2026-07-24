@@ -63,6 +63,11 @@ CHROMA_EDGE_FEATHER_RADIUS = 0.55
 CHROMA_SPILL_TOLERANCE = 8
 GARMENT_DISPLAY_SCALE = 1.38
 GARMENT_TEMPLATE_SIZE = (1240, 1754)
+CAPTURE_ILLUSTRATION_SIZE = "1248x1760"
+CAPTURE_ILLUSTRATION_TIMEOUT_SECONDS = 180.0
+CAPTURE_ILLUSTRATION_TEMPLATE_PATH = (
+    ROOT / "frontend" / "public" / "assets" / "showcase" / "peter-print-template.png"
+)
 GARMENT_PART_CROPS = {
     "upper": (0.12, 0.34, 0.88, 0.62),
     "lower": (0.25, 0.60, 0.75, 0.82),
@@ -92,10 +97,49 @@ SHOWCASE_MASTER_PATH = (
 SHOWCASE_FRAME_SAFE_MARGIN = 14
 STAT_KEYS = ("courage", "wisdom", "faith", "love")
 
+CAPTURE_ILLUSTRATION_PROMPT = """
+You receive exactly two reference images in this order:
+1. STUDENT PHOTO: a perspective-corrected photo of a physical Peter paper craft
+   decorated by students
+2. CLEAN STYLE MASTER: the canonical flat Peter print illustration
+
+Create one clean, front-facing, full-body 2D illustration for production use.
+Use the CLEAN STYLE MASTER as the immutable source for Peter's silhouette, face,
+hair, beard, skin, body proportions, simple rounded vector shapes, flat colors,
+and white background. Use the STUDENT PHOTO as the sole source for the student's
+intentional upper-garment, lower-garment, belt, left-shoe, and right-shoe
+designs. Faithfully preserve their colors, patterns, circles, stripes, writing,
+hand-drawn marks, and intentional left/right asymmetry. Convert those physical
+paper and marker details into the same polished flat illustration style as the
+CLEAN STYLE MASTER. Do not replace a decorated area with the blank master
+garment, and do not invent a new motif.
+
+Ignore the room, tabletop, paper thickness, cut edges, tape, lighting, glare,
+cast shadows, wrinkles, perspective, camera noise, and everything outside the
+character. The result must look like a native digital illustration, never a
+photo, scan, collage, paper cutout, 3D render, or textured mockup.
+
+OUTPUT CONTRACT:
+- exactly one complete Peter, standing front-facing and centered
+- full hair, ears, beard, hands, garment, legs, feet, and shoe soles visible
+- the same pose, scale, silhouette, facial features, and visual language as the
+  CLEAN STYLE MASTER
+- flat solid fills with clean smooth edges and no photographic texture
+- pure white opaque background
+- no shadows, scenery, borders, labels, captions, watermarks, extra people,
+  extra limbs, cropped body parts, or new accessories
+
+This step creates the single illustrated student-design reference that will be
+used to generate all 32 animation frames. Preserve the student's design first;
+when a photographed detail is ambiguous, simplify only that detail in the
+master's flat illustration language.
+""".strip()
+
 GARMENT_MASTER_EDIT_PROMPT = """
 You receive exactly two reference images in this order:
 1. FIXED MASTER: the canonical Peter v7 32-frame pose sheet in a strict 8x4 grid
-2. STUDENT DESIGN: one corrected full-body photo of Peter decorated by students
+2. STUDENT DESIGN: one clean full-body flat illustration converted from the
+   students' decorated Peter photo
 
 Create a NEW production-ready 32-frame Peter sheet by editing the fixed master.
 The fixed master is an immutable template for every team. Copy its exact 8x4
@@ -126,8 +170,8 @@ skin, legs, or shoes. Footwear designs must remain on their corresponding foot.
 Preserve intentional left/right asymmetry. For side views and hidden areas,
 continue only the nearest visible color or motif; invent nothing new.
 
-Ignore the paper, room, lighting, glare, shadows, wrinkles, perspective, printed
-guide marks, and everything outside the student's four decorated regions.
+Ignore the white canvas and everything outside the student's four decorated
+regions.
 
 OUTPUT CONTRACT:
 - exactly 3072 by 1536 pixels

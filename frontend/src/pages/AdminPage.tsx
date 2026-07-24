@@ -126,7 +126,7 @@ function spriteStatusLabel(status: ShowcaseCaptureStatus) {
   return ({
     empty: '대기',
     generating: 'AI 32컷 생성 중',
-    processing: '사진 품질·보정 중',
+    processing: '사진 품질검사·일러스트 변환 중',
     garment_review: 'AI 생성 준비',
     composing: '프레임 크기 정렬 중',
     reviewing: '전신·동작 자동 검수 중',
@@ -165,8 +165,6 @@ function captureStatus(team: Team | null): ShowcaseCaptureStatus {
 function correctedCaptureUrl(team: Team | null) {
   return team?.showcase_capture_corrected_url
     || team?.showcase_corrected_capture_url
-    || team?.showcase_capture_url
-    || team?.showcase_image_url
     || '';
 }
 
@@ -239,6 +237,7 @@ function SpriteFrameInspection({
   spriteUrl,
   aiIssue,
   fixedMaster,
+  frameCount,
   selectable,
   selected,
   onSelectionChange,
@@ -247,13 +246,14 @@ function SpriteFrameInspection({
   spriteUrl: string;
   aiIssue?: string;
   fixedMaster: boolean;
+  frameCount?: number;
   selectable: boolean;
   selected: boolean;
   onSelectionChange: (frame: number, selected: boolean) => void;
 }) {
   const frameIndex = Math.max(0, frame.frame - 1);
-  const columns = fixedMaster ? 5 : 4;
-  const rows = fixedMaster ? 5 : 3;
+  const columns = frameCount === CURRENT_MASTER_FRAME_COUNT ? CURRENT_MASTER_COLUMNS : fixedMaster ? 5 : 4;
+  const rows = frameCount === CURRENT_MASTER_FRAME_COUNT ? CURRENT_MASTER_ROWS : fixedMaster ? 5 : 3;
   const column = frameIndex % columns;
   const row = Math.floor(frameIndex / columns);
   const status = aiIssue && frame.status === 'passed' ? 'warning' : frame.status;
@@ -546,7 +546,7 @@ export default function AdminPage() {
       if (response.can_process === false) {
         showToast(response.quality?.summary || '촬영 품질 문제로 처리를 중단했습니다. 사진을 다시 촬영해주세요.');
       } else {
-        showToast(`촬영 사진을 보정하고 AI 디자인 참조를 준비했습니다${prepared.optimized ? ' · PNG 자동 최적화됨' : ''}`);
+        showToast(`촬영 사진을 평면 일러스트로 변환해 32컷 디자인 참조를 준비했습니다${prepared.optimized ? ' · PNG 자동 최적화됨' : ''}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '촬영 사진을 처리하지 못했습니다';
@@ -835,7 +835,7 @@ export default function AdminPage() {
                 <input ref={characterInputRef} type="file" accept="image/png,image/jpeg" required />
                 <div className="character-upload-actions">
                   <button className="primary" disabled={!selected || uploadingCapture || composingSprite}>
-                    {uploadingCapture ? '사진 처리 중…' : '사진 품질검사·자동 보정'}
+                    {uploadingCapture ? '일러스트 변환 중…' : '품질검사·일러스트 변환'}
                   </button>
                   <span className="capture-tip">{spriteStatusLabel(captureStatus(selected))}</span>
                 </div>
@@ -847,9 +847,9 @@ export default function AdminPage() {
               >
                 <div className="sprite-generation-heading">
                   <div>
-                    <h3>2. 촬영 품질·보정 사진 확인</h3>
+                    <h3>2. 촬영 품질·변환 일러스트 확인</h3>
                     <p className="muted">
-                      종이의 기울기·색상·테두리가 보정된 전신 사진을 확인합니다. 이 한 장이 AI의 의상 디자인 참조가 됩니다.
+                      촬영 사진을 고정 도안과 같은 평면 그림체로 다시 그린 결과입니다. 이 일러스트 한 장을 기준으로 32컷을 만듭니다.
                     </p>
                   </div>
                   <span>{spriteStatusLabel(selected?.showcase_sprite_status ?? 'empty')}</span>
@@ -866,10 +866,10 @@ export default function AdminPage() {
                     />
                   </div>
                   <div className="capture-review-image">
-                    <span>보정 사진</span>
+                    <span>변환 일러스트</span>
                     <img
                       src={correctedCaptureUrl(selected) || TEMPLATE_URL}
-                      alt={selected ? `${selected.name} 보정된 촬영 사진` : '보정 사진'}
+                      alt={selected ? `${selected.name} 변환 일러스트` : '변환 일러스트'}
                     />
                   </div>
                   <div className="capture-quality-report">
@@ -888,11 +888,11 @@ export default function AdminPage() {
                 <div>
                   <h3>마스터 고정 32컷 새로 만들기</h3>
                   <p className="muted">
-                    AI가 고정 베드로의 얼굴·몸·32개 동작·크기를 잠그고, 보정 사진에서 상의·하의·양쪽 신발 디자인만 옮깁니다.
+                    AI가 변환 일러스트의 의상·양쪽 신발 디자인을 고정 베드로의 32개 동작에 옮깁니다.
                   </p>
                 </div>
               </div>
-              <strong>{designReferenceReady ? '생성 준비 완료' : '보정 사진 대기'}</strong>
+              <strong>{designReferenceReady ? '생성 준비 완료' : '변환 일러스트 대기'}</strong>
             </header>
             <div className="master-edit-reference-grid">
               <article className="master-edit-reference">
@@ -901,11 +901,11 @@ export default function AdminPage() {
                 <p>얼굴 · 헤어 · 수염 · 몸 비율 · 동작 · 프레임 크기 고정</p>
               </article>
               <article className="master-edit-reference">
-                <span>학생 디자인 참조</span>
+                <span>학생 디자인 일러스트</span>
                 <div>
                   <img
                     src={correctedCaptureUrl(selected) || TEMPLATE_URL}
-                    alt={selected ? `${selected.name} 학생 디자인 참조` : '학생 디자인 참조'}
+                    alt={selected ? `${selected.name} 학생 디자인 일러스트` : '학생 디자인 일러스트'}
                   />
                 </div>
                 <p>상의 · 하의 · 왼쪽 신발 · 오른쪽 신발 디자인만 반영</p>
@@ -1067,6 +1067,7 @@ export default function AdminPage() {
                         frame={frame}
                         spriteUrl={selectedSpriteUrl}
                         fixedMaster={fixedMaster}
+                        frameCount={selected.showcase_sprite_contract?.frame_count}
                         aiIssue={selected.showcase_sprite_quality?.ai.frames.find(
                           (candidate) => candidate.frame === frame.frame,
                         )?.issue}

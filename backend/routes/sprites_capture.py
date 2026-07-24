@@ -107,6 +107,26 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
         team = row_dict(get_team_or_404(db, team_id))
     ensure_compose_not_active(team)
     contents, content_type, extension = await validated_image_upload(reference)
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_capture_status = 'processing',
+                showcase_capture_url = NULL,
+                showcase_capture_corrected_url = NULL,
+                showcase_sprite_status = 'processing',
+                showcase_sprite_url = NULL,
+                showcase_sprite_version_id = NULL,
+                showcase_sprite_error = NULL,
+                showcase_sprite_quality_status = 'unchecked',
+                showcase_sprite_quality_json = NULL,
+                showcase_sprite_updated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (timestamp, timestamp, team_id),
+        )
     quality = await ai_generation.request_capture_quality_review(contents, content_type)
     if not quality.get("can_process", False):
         timestamp = now_iso()
@@ -115,14 +135,17 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
                 """
                 UPDATE teams
                 SET showcase_capture_status = 'failed',
+                    showcase_sprite_status = 'failed',
                     showcase_capture_quality_json = ?,
                     showcase_sprite_error = ?,
+                    showcase_sprite_updated_at = ?,
                     updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     json.dumps(quality, ensure_ascii=False),
                     quality.get("summary", "캡처 품질 검수 실패"),
+                    timestamp,
                     timestamp,
                     team_id,
                 ),
@@ -139,16 +162,78 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
         content_type=content_type,
         extension=extension,
     )
-    corrected = correct_capture_image(contents, quality)
-    corrected_bytes = image_to_png_bytes(corrected)
-    corrected_url = await persist_showcase_asset(team_id, "capture-corrected", corrected_bytes)
+    timestamp = now_iso()
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_capture_source_url = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (source_url, timestamp, team_id),
+        )
+    try:
+        corrected = correct_capture_image(contents, quality)
+        corrected_bytes = image_to_png_bytes(corrected)
+        illustration_bytes = await ai_generation.request_capture_illustration(
+            corrected_bytes,
+            filename=f"team-{team_id}-corrected-capture.png",
+        )
+        illustration_url = await persist_showcase_asset(
+            team_id,
+            "capture-illustration",
+            illustration_bytes,
+        )
+    except HTTPException as exc:
+        timestamp = now_iso()
+        with connect_db() as db:
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_capture_status = 'failed',
+                    showcase_sprite_status = 'failed',
+                    showcase_sprite_error = ?,
+                    showcase_capture_quality_json = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    str(exc.detail)[:300],
+                    json.dumps(quality, ensure_ascii=False),
+                    timestamp,
+                    team_id,
+                ),
+            )
+        raise
+    except Exception as exc:  # noqa: BLE001 - image conversion and storage boundary
+        detail = "사진을 일러스트로 변환하거나 저장하지 못했습니다"
+        timestamp = now_iso()
+        with connect_db() as db:
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_capture_status = 'failed',
+                    showcase_sprite_status = 'failed',
+                    showcase_sprite_error = ?,
+                    showcase_capture_quality_json = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    detail,
+                    json.dumps(quality, ensure_ascii=False),
+                    timestamp,
+                    team_id,
+                ),
+            )
+        raise HTTPException(status_code=502, detail=detail) from exc
     version_id = uuid.uuid4().hex
     timestamp = now_iso()
     reference_payload = {
         "contract": config.GARMENT_TRANSFER_CONTRACT,
         "template_size": list(config.GARMENT_TEMPLATE_SIZE),
-        "mode": "full-body-master-edit",
-        "corrected_url": corrected_url,
+        "mode": "illustrated-full-body-master-edit",
+        "corrected_url": illustration_url,
         "regions": ["upper", "lower", "left_shoe", "right_shoe"],
     }
     with connect_db() as db:
@@ -164,7 +249,7 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
                 team_id,
                 config.GARMENT_TRANSFER_CONTRACT,
                 source_url,
-                corrected_url,
+                illustration_url,
                 json.dumps(quality, ensure_ascii=False),
                 json.dumps(reference_payload, ensure_ascii=False),
                 config.OPENAI_IMAGE_MODEL,
@@ -190,9 +275,9 @@ async def process_showcase_capture(team_id: int, reference: UploadFile = File(..
             WHERE id = ?
             """,
             (
-                corrected_url,
+                illustration_url,
                 source_url,
-                corrected_url,
+                illustration_url,
                 json.dumps(quality, ensure_ascii=False),
                 config.GARMENT_TRANSFER_CONTRACT,
                 version_id,

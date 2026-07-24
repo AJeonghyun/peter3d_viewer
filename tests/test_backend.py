@@ -546,6 +546,15 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertIn("no chroma-green fringe", prompt)
         self.assertIn("background color must never appear", prompt)
 
+    def test_capture_illustration_prompt_preserves_student_art_in_master_style(self):
+        prompt = backend_main.CAPTURE_ILLUSTRATION_PROMPT
+        normalized = " ".join(prompt.split())
+        self.assertIn("CLEAN STYLE MASTER", prompt)
+        self.assertIn("flat illustration style", prompt)
+        self.assertIn("hand-drawn marks", prompt)
+        self.assertIn("never a photo", normalized)
+        self.assertIn("used to generate all 32 animation frames", prompt)
+
     def test_chroma_cleanup_removes_green_spill_without_recoloring_the_interior(self):
         cell = Image.new("RGBA", (32, 32), (0, 255, 0, 255))
         pixels = cell.load()
@@ -684,6 +693,70 @@ class Peter3DBackendTests(unittest.TestCase):
             ("team-1-corrected.png", b"corrected-student-peter", "image/png"),
         ))
         self.assertEqual(progress, ["composing"])
+
+    def test_capture_illustration_request_uses_photo_then_flat_style_master(self):
+        generated_stream = io.BytesIO()
+        Image.new("RGB", (64, 96), (220, 40, 60)).save(generated_stream, format="PNG")
+        recorded = {}
+
+        class FakeResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    "data": [{
+                        "b64_json": backend_main.base64.b64encode(
+                            generated_stream.getvalue(),
+                        ).decode("ascii"),
+                    }],
+                }
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return None
+
+            async def post(self, url, *, headers, data, files):
+                recorded.update({
+                    "url": url,
+                    "headers": headers,
+                    "data": data,
+                    "files": files,
+                })
+                return FakeResponse()
+
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key"}),
+            patch("backend.ai_generation.httpx.AsyncClient", return_value=FakeClient()),
+        ):
+            actual = asyncio.run(backend_main.request_capture_illustration(
+                b"perspective-corrected-photo",
+                filename="team-1-corrected-capture.png",
+            ))
+
+        with Image.open(io.BytesIO(actual)) as illustration:
+            self.assertEqual(illustration.size, backend_main.GARMENT_TEMPLATE_SIZE)
+        self.assertEqual(recorded["url"], backend_main.OPENAI_IMAGE_API_URL)
+        self.assertEqual(recorded["data"]["model"], "gpt-image-2")
+        self.assertEqual(recorded["data"]["size"], backend_main.CAPTURE_ILLUSTRATION_SIZE)
+        self.assertEqual(recorded["data"]["background"], "opaque")
+        self.assertNotIn("input_fidelity", recorded["data"])
+        self.assertEqual(recorded["files"][0], (
+            "image[]",
+            (
+                "team-1-corrected-capture.png",
+                b"perspective-corrected-photo",
+                "image/png",
+            ),
+        ))
+        self.assertEqual(recorded["files"][1][1][0], "peter-flat-illustration-style.png")
+        self.assertEqual(
+            recorded["files"][1][1][1],
+            backend_main.CAPTURE_ILLUSTRATION_TEMPLATE_PATH.read_bytes(),
+        )
 
     def test_openai_sprite_request_sends_reference_and_fixed_contract(self):
         expected_sprite = make_png_header(1536, 1152)
@@ -1039,20 +1112,33 @@ class Peter3DBackendTests(unittest.TestCase):
             headers=Headers({"content-type": "image/png"}),
         )
 
-        with patch(
-            "backend.ai_generation.request_capture_quality_review",
-            new=AsyncMock(return_value=quality),
-        ) as review:
+        illustrated_reference = make_garment_capture()
+        with (
+            patch(
+                "backend.ai_generation.request_capture_quality_review",
+                new=AsyncMock(return_value=quality),
+            ) as review,
+            patch(
+                "backend.ai_generation.request_capture_illustration",
+                new=AsyncMock(return_value=illustrated_reference),
+            ) as illustrate,
+        ):
             processed = asyncio.run(backend_main.process_showcase_capture(1, reference))
 
         review.assert_awaited_once()
+        illustrate.assert_awaited_once()
+        self.assertTrue(illustrate.await_args.args[0].startswith(b"\x89PNG"))
+        self.assertEqual(
+            illustrate.await_args.kwargs["filename"],
+            "team-1-corrected-capture.png",
+        )
         self.assertEqual(processed["status"], "reference_ready")
         self.assertEqual(
             processed["version"]["contract"]["id"],
             backend_main.GARMENT_TRANSFER_CONTRACT,
         )
         self.assertEqual(processed["version"]["status"], "reference_ready")
-        self.assertEqual(processed["reference"]["mode"], "full-body-master-edit")
+        self.assertEqual(processed["reference"]["mode"], "illustrated-full-body-master-edit")
         self.assertEqual(processed["reference"]["template_size"], list(backend_main.GARMENT_TEMPLATE_SIZE))
         self.assertEqual(processed["reference"]["regions"], list(backend_main.GARMENT_PARTS))
         self.assertIsNone(processed["team"]["showcase_garment_parts"])
@@ -1098,7 +1184,8 @@ class Peter3DBackendTests(unittest.TestCase):
         generate.assert_awaited_once()
         inspect.assert_awaited_once()
         self.assertTrue(generate.await_args.args[0].startswith(b"\x89PNG"))
-        self.assertEqual(generate.await_args.kwargs["filename"], "team-1-corrected-peter.png")
+        self.assertEqual(generate.await_args.args[0], illustrated_reference)
+        self.assertEqual(generate.await_args.kwargs["filename"], "team-1-illustrated-peter.png")
         self.assertTrue(callable(generate.await_args.kwargs["on_progress"]))
 
         self.assertEqual(started["next_action"], "generate")
@@ -1131,27 +1218,143 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(restored["status"], "ready")
         self.assertEqual(restored["team"]["showcase_sprite_active_url"], composed["atlas_url"])
 
+    def test_capture_illustration_failure_keeps_source_but_clears_stale_candidate(self):
+        quality = {
+            "status": "passed",
+            "can_process": True,
+            "summary": "usable worksheet",
+            "page_corners": {
+                "top_left": [0, 0],
+                "top_right": [1, 0],
+                "bottom_right": [1, 1],
+                "bottom_left": [0, 1],
+            },
+            "checks": {},
+            "issues": [],
+        }
+        with backend_main.connect_db() as db:
+            db.execute(
+                """
+                UPDATE teams
+                SET showcase_capture_corrected_url = '/uploads/stale.png',
+                    showcase_sprite_url = '/uploads/stale-atlas.png',
+                    showcase_sprite_version_id = 'stale-version'
+                WHERE id = 1
+                """
+            )
+        reference = backend_main.UploadFile(
+            filename="capture.png",
+            file=io.BytesIO(make_garment_capture()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        with (
+            patch(
+                "backend.ai_generation.request_capture_quality_review",
+                new=AsyncMock(return_value=quality),
+            ),
+            patch(
+                "backend.ai_generation.request_capture_illustration",
+                new=AsyncMock(side_effect=HTTPException(
+                    status_code=502,
+                    detail="일러스트 변환 실패",
+                )),
+            ),
+            self.assertRaises(HTTPException),
+        ):
+            asyncio.run(backend_main.process_showcase_capture(1, reference))
+
+        failed = asyncio.run(backend_main.get_team(1))
+        self.assertEqual(failed["showcase_capture_status"], "failed")
+        self.assertEqual(failed["showcase_sprite_status"], "failed")
+        self.assertIsNone(failed["showcase_capture_corrected_url"])
+        self.assertIsNone(failed["showcase_sprite_url"])
+        self.assertIsNone(failed["showcase_sprite_version_id"])
+        self.assertTrue(failed["showcase_capture_source_url"].startswith("/uploads/"))
+        self.assertEqual(failed["showcase_sprite_error"], "일러스트 변환 실패")
+
+    def test_capture_illustration_storage_failure_marks_processing_failed(self):
+        quality = {
+            "status": "passed",
+            "can_process": True,
+            "summary": "usable worksheet",
+            "page_corners": {
+                "top_left": [0, 0],
+                "top_right": [1, 0],
+                "bottom_right": [1, 1],
+                "bottom_left": [0, 1],
+            },
+            "checks": {},
+            "issues": [],
+        }
+        reference = backend_main.UploadFile(
+            filename="capture.png",
+            file=io.BytesIO(make_garment_capture()),
+            headers=Headers({"content-type": "image/png"}),
+        )
+        persist = AsyncMock(side_effect=[
+            "/uploads/capture-source.png",
+            OSError("disk full"),
+        ])
+
+        with (
+            patch(
+                "backend.ai_generation.request_capture_quality_review",
+                new=AsyncMock(return_value=quality),
+            ),
+            patch(
+                "backend.ai_generation.request_capture_illustration",
+                new=AsyncMock(return_value=make_garment_capture()),
+            ),
+            patch(
+                "backend.routes.sprites_capture.persist_showcase_asset",
+                new=persist,
+            ),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            asyncio.run(backend_main.process_showcase_capture(1, reference))
+
+        self.assertEqual(raised.exception.status_code, 502)
+        failed = asyncio.run(backend_main.get_team(1))
+        self.assertEqual(failed["showcase_capture_status"], "failed")
+        self.assertEqual(failed["showcase_sprite_status"], "failed")
+        self.assertEqual(
+            failed["showcase_capture_source_url"],
+            "/uploads/capture-source.png",
+        )
+        self.assertIsNone(failed["showcase_capture_corrected_url"])
+        self.assertEqual(
+            failed["showcase_sprite_error"],
+            "사진을 일러스트로 변환하거나 저장하지 못했습니다",
+        )
+
     def test_compose_generation_timeout_is_queued_for_automatic_retry(self):
         reference = backend_main.UploadFile(
             filename="capture.png",
             file=io.BytesIO(make_garment_capture()),
             headers=Headers({"content-type": "image/png"}),
         )
-        with patch(
-            "backend.ai_generation.request_capture_quality_review",
-            new=AsyncMock(return_value={
-                "status": "passed",
-                "can_process": True,
-                "summary": "통과",
-                "page_corners": {
-                    "top_left": [0.0, 0.0],
-                    "top_right": [1.0, 0.0],
-                    "bottom_right": [1.0, 1.0],
-                    "bottom_left": [0.0, 1.0],
-                },
-                "checks": {},
-                "issues": [],
-            }),
+        with (
+            patch(
+                "backend.ai_generation.request_capture_quality_review",
+                new=AsyncMock(return_value={
+                    "status": "passed",
+                    "can_process": True,
+                    "summary": "통과",
+                    "page_corners": {
+                        "top_left": [0.0, 0.0],
+                        "top_right": [1.0, 0.0],
+                        "bottom_right": [1.0, 1.0],
+                        "bottom_left": [0.0, 1.0],
+                    },
+                    "checks": {},
+                    "issues": [],
+                }),
+            ),
+            patch(
+                "backend.ai_generation.request_capture_illustration",
+                new=AsyncMock(return_value=make_garment_capture()),
+            ),
         ):
             asyncio.run(backend_main.process_showcase_capture(1, reference))
 
@@ -1342,21 +1545,27 @@ class Peter3DBackendTests(unittest.TestCase):
             file=io.BytesIO(make_garment_capture()),
             headers=Headers({"content-type": "image/png"}),
         )
-        with patch(
-            "backend.ai_generation.request_capture_quality_review",
-            new=AsyncMock(return_value={
-                "status": "passed",
-                "can_process": True,
-                "summary": "통과",
-                "page_corners": {
-                    "top_left": [0.0, 0.0],
-                    "top_right": [1.0, 0.0],
-                    "bottom_right": [1.0, 1.0],
-                    "bottom_left": [0.0, 1.0],
-                },
-                "checks": {},
-                "issues": [],
-            }),
+        with (
+            patch(
+                "backend.ai_generation.request_capture_quality_review",
+                new=AsyncMock(return_value={
+                    "status": "passed",
+                    "can_process": True,
+                    "summary": "통과",
+                    "page_corners": {
+                        "top_left": [0.0, 0.0],
+                        "top_right": [1.0, 0.0],
+                        "bottom_right": [1.0, 1.0],
+                        "bottom_left": [0.0, 1.0],
+                    },
+                    "checks": {},
+                    "issues": [],
+                }),
+            ),
+            patch(
+                "backend.ai_generation.request_capture_illustration",
+                new=AsyncMock(return_value=make_garment_capture()),
+            ),
         ):
             asyncio.run(backend_main.process_showcase_capture(1, reference))
 
@@ -1396,9 +1605,15 @@ class Peter3DBackendTests(unittest.TestCase):
             "checks": {},
             "issues": [],
         }
-        with patch(
-            "backend.ai_generation.request_capture_quality_review",
-            new=AsyncMock(return_value=quality),
+        with (
+            patch(
+                "backend.ai_generation.request_capture_quality_review",
+                new=AsyncMock(return_value=quality),
+            ),
+            patch(
+                "backend.ai_generation.request_capture_illustration",
+                new=AsyncMock(return_value=make_garment_capture()),
+            ),
         ):
             asyncio.run(backend_main.process_showcase_capture(1, first_reference))
         asyncio.run(backend_main.start_showcase_capture_compose(1))
@@ -1420,21 +1635,27 @@ class Peter3DBackendTests(unittest.TestCase):
             file=io.BytesIO(make_garment_capture()),
             headers=Headers({"content-type": "image/png"}),
         )
-        with patch(
-            "backend.ai_generation.request_capture_quality_review",
-            new=AsyncMock(return_value={
-                "status": "passed",
-                "can_process": True,
-                "summary": "통과",
-                "page_corners": {
-                    "top_left": [0.0, 0.0],
-                    "top_right": [1.0, 0.0],
-                    "bottom_right": [1.0, 1.0],
-                    "bottom_left": [0.0, 1.0],
-                },
-                "checks": {},
-                "issues": [],
-            }),
+        with (
+            patch(
+                "backend.ai_generation.request_capture_quality_review",
+                new=AsyncMock(return_value={
+                    "status": "passed",
+                    "can_process": True,
+                    "summary": "통과",
+                    "page_corners": {
+                        "top_left": [0.0, 0.0],
+                        "top_right": [1.0, 0.0],
+                        "bottom_right": [1.0, 1.0],
+                        "bottom_left": [0.0, 1.0],
+                    },
+                    "checks": {},
+                    "issues": [],
+                }),
+            ),
+            patch(
+                "backend.ai_generation.request_capture_illustration",
+                new=AsyncMock(return_value=make_garment_capture()),
+            ),
         ):
             asyncio.run(backend_main.process_showcase_capture(1, reference))
 
@@ -1555,6 +1776,25 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertGreater(samples[2][2], max(samples[2][:2]))
         self.assertGreater(samples[3][0], samples[3][2])
         self.assertGreater(samples[3][1], samples[3][2])
+
+    def test_capture_correction_applies_exif_orientation_before_rectification(self):
+        source = Image.new("RGB", (100, 60), (230, 30, 30))
+        ImageDraw.Draw(source).rectangle((50, 0, 99, 59), fill=(30, 30, 230))
+        exif = Image.Exif()
+        exif[274] = 6
+        buffer = io.BytesIO()
+        source.save(buffer, format="JPEG", quality=100, exif=exif)
+
+        corrected = backend_main.correct_capture_image(
+            buffer.getvalue(),
+            backend_main.default_capture_quality(),
+        )
+        width, height = corrected.size
+        top = corrected.getpixel((width // 2, height // 4))
+        bottom = corrected.getpixel((width // 2, height * 3 // 4))
+
+        self.assertGreater(top[0], top[2])
+        self.assertGreater(bottom[2], bottom[0])
 
     def test_master_loader_keeps_all_32_poses_inside_cell_margins(self):
         expected_path = (

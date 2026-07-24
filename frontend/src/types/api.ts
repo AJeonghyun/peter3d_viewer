@@ -164,7 +164,7 @@ export interface ShowcaseCaptureResponse {
   reference?: {
     contract: string;
     template_size: number[];
-    mode: 'full-body-master-edit';
+    mode: 'full-body-master-edit' | 'illustrated-full-body-master-edit';
     corrected_url: string;
     regions: ShowcaseGarmentPartKey[];
   };

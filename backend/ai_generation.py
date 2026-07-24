@@ -1,12 +1,14 @@
 """OpenAI image-generation calls for sprite sheets and capture quality review."""
 
 import base64
+import io
 import json
 import os
 from typing import Callable, Optional
 
 import httpx
 from fastapi import HTTPException
+from PIL import Image
 
 from backend import config
 from backend.capture import default_capture_quality, normalize_capture_quality
@@ -43,6 +45,100 @@ def response_output_text(payload: dict) -> str:
             if content.get("type") == "output_text" and isinstance(content.get("text"), str):
                 return content["text"]
     raise ValueError("Responses API 응답에서 텍스트를 찾지 못했습니다")
+
+
+async def request_capture_illustration(
+    corrected_reference: bytes,
+    *,
+    filename: str = "corrected-student-peter.png",
+) -> bytes:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key.startswith("sk-"):
+        raise HTTPException(
+            status_code=503,
+            detail="사진을 일러스트로 변환하려면 OPENAI_API_KEY가 필요합니다",
+        )
+    if not config.CAPTURE_ILLUSTRATION_TEMPLATE_PATH.is_file():
+        raise HTTPException(
+            status_code=500,
+            detail="일러스트 스타일 기준 도안을 찾지 못했습니다",
+        )
+
+    files = [
+        ("image[]", (filename, corrected_reference, "image/png")),
+        (
+            "image[]",
+            (
+                "peter-flat-illustration-style.png",
+                config.CAPTURE_ILLUSTRATION_TEMPLATE_PATH.read_bytes(),
+                "image/png",
+            ),
+        ),
+    ]
+    data = {
+        "model": config.OPENAI_IMAGE_MODEL,
+        "prompt": config.CAPTURE_ILLUSTRATION_PROMPT,
+        "size": config.CAPTURE_ILLUSTRATION_SIZE,
+        "quality": config.OPENAI_IMAGE_QUALITY,
+        "output_format": "png",
+        "background": "opaque",
+        "n": "1",
+    }
+    if config.OPENAI_IMAGE_MODEL == "gpt-image-1":
+        data["input_fidelity"] = config.OPENAI_IMAGE_INPUT_FIDELITY
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                config.CAPTURE_ILLUSTRATION_TIMEOUT_SECONDS,
+                connect=10.0,
+            ),
+        ) as client:
+            response = await client.post(
+                config.OPENAI_IMAGE_API_URL,
+                headers={"Authorization": f"Bearer {api_key}"},
+                data=data,
+                files=files,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="사진의 일러스트 변환 시간이 초과되었습니다. 다시 시도해주세요.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenAI 이미지 변환 서버에 연결하지 못했습니다.",
+        ) from exc
+
+    if response.status_code >= 400:
+        _raise_for_image_edit_error(response)
+    try:
+        encoded = response.json()["data"][0]["b64_json"]
+        generated = base64.b64decode(encoded, validate=True)
+        illustration = Image.open(io.BytesIO(generated)).convert("RGB")
+        illustration.load()
+        illustration = illustration.resize(
+            config.GARMENT_TEMPLATE_SIZE,
+            Image.Resampling.LANCZOS,
+        )
+        illustration_bytes = image_to_png_bytes(illustration)
+    except (
+        KeyError,
+        IndexError,
+        TypeError,
+        ValueError,
+        OSError,
+        json.JSONDecodeError,
+        base64.binascii.Error,
+    ) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 일러스트 변환 응답을 처리하지 못했습니다: {exc}",
+        ) from exc
+    if len(illustration_bytes) > config.MAX_SPRITE_BYTES:
+        raise HTTPException(status_code=502, detail="AI 일러스트 파일이 너무 큽니다")
+    return illustration_bytes
 
 
 async def request_showcase_sprite(

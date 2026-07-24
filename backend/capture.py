@@ -72,7 +72,8 @@ def normalize_capture_quality(payload: dict) -> dict:
 
 
 def correct_capture_image(reference: bytes, quality: dict) -> Image.Image:
-    source = Image.open(io.BytesIO(reference)).convert("RGB")
+    source = Image.open(io.BytesIO(reference))
+    source = ImageOps.exif_transpose(source).convert("RGB")
     source.load()
     corners = quality.get("page_corners") or default_capture_quality()["page_corners"]
     width, height = source.size
