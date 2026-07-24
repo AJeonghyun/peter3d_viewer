@@ -430,10 +430,14 @@ class Page3CampfireAssetTests(unittest.TestCase):
         self.assertIn("ALL_POSE_IDS", poses)
         self.assertIn("'back',", poses)
         idle_pose = poses.split("idle: {", 1)[1].split("wave: {", 1)[0]
-        self.assertIn("label: '서 있기'", idle_pose)
+        self.assertIn("label: '서 있기 · 1컷'", idle_pose)
         self.assertIn("kind: 'static'", idle_pose)
         self.assertIn("currentFrames: [0]", idle_pose)
         self.assertNotIn("숨쉬기", idle_pose)
+        idle_second_pose = poses.split("'idle-2': {", 1)[1].split("wave: {", 1)[0]
+        self.assertIn("label: '서 있기 · 2컷'", idle_second_pose)
+        self.assertIn("kind: 'static'", idle_second_pose)
+        self.assertIn("currentFrames: [1]", idle_second_pose)
         self.assertNotIn("setReaction", source)
         self.assertIn("currentFrames: [2, 3]", poses)
         self.assertNotIn("POSES_BY_PAGE", poses)

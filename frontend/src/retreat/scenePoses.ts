@@ -3,6 +3,7 @@ import type { RetreatPage } from './types';
 
 export type RetreatPoseId =
   | 'idle'
+  | 'idle-2'
   | 'wave'
   | 'jump'
   | 'pray'
@@ -28,14 +29,25 @@ export interface RetreatPoseDefinition {
 export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
   idle: {
     id: 'idle',
-    label: '서 있기',
-    shortLabel: '서 있기',
+    label: '서 있기 · 1컷',
+    shortLabel: '서 있기 1컷',
     kind: 'static',
     animation: 'idle',
     currentFrames: [0],
     expandedFrames: [25],
     legacyFrames: [0],
     retreatFrames: [0],
+  },
+  'idle-2': {
+    id: 'idle-2',
+    label: '서 있기 · 2컷',
+    shortLabel: '서 있기 2컷',
+    kind: 'static',
+    animation: 'idle',
+    currentFrames: [1],
+    expandedFrames: [26],
+    legacyFrames: [9],
+    retreatFrames: [1],
   },
   wave: {
     id: 'wave',
@@ -140,6 +152,7 @@ export const RETREAT_POSES: Record<RetreatPoseId, RetreatPoseDefinition> = {
 
 const ALL_POSE_IDS: readonly RetreatPoseId[] = [
   'idle',
+  'idle-2',
   'wave',
   'jump',
   'pray',
