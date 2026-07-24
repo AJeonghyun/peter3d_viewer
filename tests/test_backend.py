@@ -1462,6 +1462,136 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(retry["team"]["showcase_sprite_status"], "generating")
         self.assertIn("자동 재시도", retry["team"]["showcase_sprite_error"])
 
+    def test_compose_generation_waits_when_two_other_teams_are_active(self):
+        timestamp = backend_main.now_iso()
+        with backend_main.connect_db() as db:
+            for team_id in (1, 2, 3):
+                version_id = f"batch-version-{team_id}"
+                version_status = "generating" if team_id < 3 else "queued"
+                team_status = "generating"
+                db.execute(
+                    """
+                    INSERT INTO sprite_versions (
+                        id, team_id, contract, status, source_url, corrected_url,
+                        model, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        version_id,
+                        team_id,
+                        backend_main.GARMENT_TRANSFER_CONTRACT,
+                        version_status,
+                        f"/uploads/source-{team_id}.png",
+                        f"/uploads/corrected-{team_id}.png",
+                        backend_main.OPENAI_IMAGE_MODEL,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                db.execute(
+                    """
+                    UPDATE teams
+                    SET showcase_capture_corrected_url = ?,
+                        showcase_sprite_contract = ?,
+                        showcase_sprite_version_id = ?,
+                        showcase_sprite_status = ?,
+                        showcase_sprite_updated_at = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        f"/uploads/corrected-{team_id}.png",
+                        backend_main.GARMENT_TRANSFER_CONTRACT,
+                        version_id,
+                        team_status,
+                        timestamp,
+                        timestamp,
+                        team_id,
+                    ),
+                )
+
+        with patch(
+            "backend.ai_generation.request_master_locked_garment_atlas",
+            new=AsyncMock(),
+        ) as generate:
+            waiting = asyncio.run(backend_main.generate_showcase_capture_atlas(3))
+
+        generate.assert_not_awaited()
+        self.assertEqual(waiting["next_action"], "wait")
+        self.assertEqual(waiting["retry_after_seconds"], 5)
+        self.assertEqual(waiting["version"]["status"], "queued")
+        self.assertEqual(backend_main.COMPOSE_MAX_CONCURRENT_TEAMS, 2)
+
+    def test_compose_generation_allows_a_second_active_team(self):
+        timestamp = backend_main.now_iso()
+        with backend_main.connect_db() as db:
+            for team_id, version_status in ((1, "generating"), (2, "queued")):
+                version_id = f"second-slot-version-{team_id}"
+                db.execute(
+                    """
+                    INSERT INTO sprite_versions (
+                        id, team_id, contract, status, source_url, corrected_url,
+                        model, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        version_id,
+                        team_id,
+                        backend_main.GARMENT_TRANSFER_CONTRACT,
+                        version_status,
+                        f"/uploads/source-{team_id}.png",
+                        f"/uploads/corrected-{team_id}.png",
+                        backend_main.OPENAI_IMAGE_MODEL,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                db.execute(
+                    """
+                    UPDATE teams
+                    SET showcase_capture_corrected_url = ?,
+                        showcase_sprite_contract = ?,
+                        showcase_sprite_version_id = ?,
+                        showcase_sprite_status = 'generating',
+                        showcase_sprite_updated_at = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        f"/uploads/corrected-{team_id}.png",
+                        backend_main.GARMENT_TRANSFER_CONTRACT,
+                        version_id,
+                        timestamp,
+                        timestamp,
+                        team_id,
+                    ),
+                )
+
+        atlas = backend_main._image_to_png_bytes(
+            backend_main.normalize_master_locked_atlas(
+                backend_main.master_reference_for_ai(),
+            ),
+        )
+        with (
+            patch(
+                "backend.routes.sprites_compose.read_public_asset_bytes",
+                new=AsyncMock(return_value=make_garment_capture()),
+            ),
+            patch(
+                "backend.ai_generation.request_master_locked_garment_atlas",
+                new=AsyncMock(return_value=atlas),
+            ) as generate,
+            patch(
+                "backend.routes.sprites_compose.persist_showcase_asset",
+                new=AsyncMock(return_value="/uploads/team-2-atlas.png"),
+            ),
+        ):
+            generated = asyncio.run(backend_main.generate_showcase_capture_atlas(2))
+
+        generate.assert_awaited_once()
+        self.assertEqual(generated["next_action"], "review")
+        self.assertEqual(generated["team"]["showcase_sprite_status"], "reviewing")
+
     def test_problem_frame_patch_preserves_other_cells_and_creates_a_new_version(self):
         atlas = backend_main.normalize_master_locked_atlas(
             backend_main.master_reference_for_ai(),

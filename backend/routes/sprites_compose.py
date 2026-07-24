@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from backend import ai_generation, ai_review, config
 from backend.compose_state import (
+    claim_compose_generation_slot,
     compose_next_action,
     compose_response,
     current_compose_version,
@@ -250,29 +251,15 @@ async def regenerate_showcase_frame_patch(team_id: int):
             flush=True,
         )
 
-    timestamp = now_iso()
-    with connect_db() as db:
-        claimed = db.execute(
-            """
-            UPDATE sprite_versions
-            SET status = 'generating', error = NULL, updated_at = ?
-            WHERE id = ? AND team_id = ? AND status = ? AND updated_at = ?
-            """,
-            (
-                timestamp,
-                version_id,
-                team_id,
-                version.get("status"),
-                version.get("updated_at"),
-            ),
-        )
-        if claimed.rowcount != 1:
+    claim = claim_compose_generation_slot(team_id, version)
+    if claim != "claimed":
+        with connect_db() as db:
             return compose_response(
                 db,
                 team_id,
                 version_id,
                 next_action="wait",
-                retry_after_seconds=3,
+                retry_after_seconds=5 if claim == "capacity" else 3,
             )
 
     def report_progress(status: str) -> None:
@@ -427,40 +414,16 @@ async def generate_showcase_capture_atlas(team_id: int):
                 next_action="wait",
                 retry_after_seconds=3,
             )
-
-    timestamp = now_iso()
-    with connect_db() as db:
-        claimed = db.execute(
-            """
-            UPDATE sprite_versions
-            SET status = 'generating', error = NULL, updated_at = ?
-            WHERE id = ? AND team_id = ? AND status = ? AND updated_at = ?
-            """,
-            (
-                timestamp,
-                version_id,
-                team_id,
-                version.get("status"),
-                version.get("updated_at"),
-            ),
-        )
-        if claimed.rowcount != 1:
+    claim = claim_compose_generation_slot(team_id, version)
+    if claim != "claimed":
+        with connect_db() as db:
             return compose_response(
                 db,
                 team_id,
                 version_id,
                 next_action="wait",
-                retry_after_seconds=3,
+                retry_after_seconds=5 if claim == "capacity" else 3,
             )
-        db.execute(
-            """
-            UPDATE teams
-            SET showcase_sprite_status = 'generating', showcase_sprite_error = NULL,
-                showcase_sprite_updated_at = ?, updated_at = ?
-            WHERE id = ? AND showcase_sprite_version_id = ?
-            """,
-            (timestamp, timestamp, team_id, version_id),
-        )
 
     correction = ai_review.garment_retry_instruction(version.get("qa_json"))
 

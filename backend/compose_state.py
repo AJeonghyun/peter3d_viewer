@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import HTTPException
 
@@ -83,6 +83,73 @@ def seconds_since(timestamp: Any) -> float:
         return max(0.0, (datetime.now(timezone.utc) - parsed).total_seconds())
     except (TypeError, ValueError):
         return float("inf")
+
+
+def _compose_lease_is_active(status: str, updated_at: Any) -> bool:
+    lease_seconds = (
+        config.COMPOSE_REVIEW_LEASE_SECONDS
+        if status in {"reviewing", "saving"}
+        else config.COMPOSE_GENERATION_LEASE_SECONDS
+    )
+    return seconds_since(updated_at) < lease_seconds
+
+
+def claim_compose_generation_slot(
+    team_id: int,
+    version: dict,
+) -> Literal["claimed", "busy", "capacity"]:
+    """Atomically claim one of the globally limited 32-frame workflow slots."""
+    timestamp = now_iso()
+    version_id = version["id"]
+    with connect_db() as db:
+        if db.postgres:
+            db.execute("SELECT pg_advisory_xact_lock(?)", (731_032_002,))
+        else:
+            db.execute("BEGIN IMMEDIATE")
+
+        active_rows = db.execute(
+            """
+            SELECT team_id, status, updated_at
+            FROM sprite_versions
+            WHERE team_id <> ?
+              AND status IN ('generating', 'composing', 'reviewing', 'saving')
+            """,
+            (team_id,),
+        ).fetchall()
+        active_team_ids = {
+            row["team_id"]
+            for row in active_rows
+            if _compose_lease_is_active(row["status"], row["updated_at"])
+        }
+        if len(active_team_ids) >= config.COMPOSE_MAX_CONCURRENT_TEAMS:
+            return "capacity"
+
+        claimed = db.execute(
+            """
+            UPDATE sprite_versions
+            SET status = 'generating', error = NULL, updated_at = ?
+            WHERE id = ? AND team_id = ? AND status = ? AND updated_at = ?
+            """,
+            (
+                timestamp,
+                version_id,
+                team_id,
+                version.get("status"),
+                version.get("updated_at"),
+            ),
+        )
+        if claimed.rowcount != 1:
+            return "busy"
+        db.execute(
+            """
+            UPDATE teams
+            SET showcase_sprite_status = 'generating', showcase_sprite_error = NULL,
+                showcase_sprite_updated_at = ?, updated_at = ?
+            WHERE id = ? AND showcase_sprite_version_id = ?
+            """,
+            (timestamp, timestamp, team_id, version_id),
+        )
+    return "claimed"
 
 
 def frame_patch_metadata(version: dict) -> Optional[dict]:

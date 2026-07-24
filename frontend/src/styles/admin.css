@@ -26,6 +26,30 @@ a:focus-visible, button:focus-visible { border-radius: 11px; }
 .card { background:rgba(11,38,50,.88); border:1px solid var(--line); border-radius:20px; padding:18px; box-shadow:0 18px 55px rgba(0,0,0,.17); }
 .card h2 { font-size:15px; margin:0 0 15px; }
 .muted { color:#8ca5ad; font-size:11px; }
+.batch-workflow-card { display:grid; gap:13px; margin-bottom:18px; padding:15px; border:1px solid rgba(240,200,121,.3); border-radius:16px; background:linear-gradient(145deg,rgba(240,200,121,.09),rgba(3,25,34,.28)); }
+.batch-workflow-card > header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.batch-workflow-card > header > div { min-width:0; }
+.batch-workflow-card > header span { display:inline-block; margin-bottom:5px; color:#f0c879; font-size:8px; font-weight:900; letter-spacing:.09em; text-transform:uppercase; }
+.batch-workflow-card h3 { margin:0; color:#f3eee3; font-size:15px; }
+.batch-workflow-card header p { max-width:610px; margin:6px 0 0; color:#9fb3b8; font-size:9px; line-height:1.5; }
+.batch-workflow-card > header > strong { flex:none; padding:6px 9px; border-radius:99px; color:#f4e4bc; background:rgba(240,200,121,.12); font-size:9px; }
+.batch-workflow-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+.batch-workflow-summary > div { display:flex; align-items:baseline; gap:7px; padding:9px 10px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:rgba(255,255,255,.035); }
+.batch-workflow-summary b { color:#edf5f2; font-size:16px; }
+.batch-workflow-summary span { color:#8fa8ad; font-size:8px; font-weight:800; }
+.batch-team-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; max-height:390px; overflow:auto; padding-right:3px; }
+.batch-team-row { display:grid; grid-template-columns:66px minmax(0,1fr) minmax(80px,.65fr); align-items:center; gap:7px; min-width:0; padding:8px; border:1px solid rgba(255,255,255,.08); border-radius:10px; color:#dce8e5; background:rgba(3,25,34,.25); }
+.batch-team-row[data-busy="true"] { border-color:rgba(100,196,210,.24); background:rgba(100,196,210,.055); }
+.batch-team-name { display:flex; align-items:center; gap:6px; font-size:9px; font-weight:900; }
+.batch-team-name i { width:7px; height:7px; flex:none; border-radius:50%; background:var(--team-color); }
+.batch-team-row input[type=file] { position:absolute; width:1px; height:1px; margin:0; padding:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
+.batch-team-file { min-width:0; overflow:hidden; padding:7px 8px; border:1px solid rgba(255,255,255,.1); border-radius:8px; color:#b9cacd; background:rgba(255,255,255,.045); font-size:8px; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+.batch-team-row:focus-within .batch-team-file { border-color:#6fb7c3; box-shadow:0 0 0 1px #6fb7c3; }
+.batch-team-row[data-busy="true"] .batch-team-file { cursor:not-allowed; opacity:.55; }
+.batch-team-row em { min-width:0; overflow:hidden; color:#8fd5df; font-size:7px; font-style:normal; font-weight:800; text-align:right; text-overflow:ellipsis; white-space:nowrap; }
+.batch-workflow-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.batch-workflow-actions button { padding:10px 13px; font-size:9px; }
+.batch-workflow-actions > span { color:#90a8ad; font-size:8px; }
 .teams { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; max-height:calc(100vh - 140px); overflow:auto; }
 .team-button { border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.035); padding:11px 7px; color:#dce8e5; transition:background .16s, border-color .16s, transform .16s; }
 .team-button:hover { background:rgba(255,255,255,.08); border-color:color-mix(in srgb,var(--team-color) 45%,var(--line)); transform:translateY(-1px); }
@@ -203,6 +227,11 @@ textarea { resize:vertical; min-height:68px; }
   .admin-layout { display:block; }
   .card { margin-bottom:12px; }
   .teams { grid-template-columns:repeat(5,1fr); max-height:none; }
+  .batch-workflow-card > header { flex-direction:column; }
+  .batch-workflow-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .batch-team-list { grid-template-columns:1fr; max-height:440px; }
+  .batch-team-row { grid-template-columns:60px minmax(0,1fr) minmax(78px,.7fr); }
+  .batch-workflow-actions { align-items:stretch; flex-direction:column; }
   .team-button { font-size:11px; }
   .form-grid { grid-template-columns:1fr; }
   .character-upload-card { grid-template-columns:110px minmax(0,1fr); }

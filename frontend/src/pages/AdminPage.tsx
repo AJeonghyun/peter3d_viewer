@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { ApiError, apiRequest } from '../lib/api';
+import {
+  BATCH_WORKFLOW_CONCURRENCY,
+  composeJobsForPersistence,
+  mergeComposeQueue,
+  reserveComposeJobs,
+  type ComposeQueueItem,
+} from '../lib/batchQueue';
 import { prepareCharacterUploadImage } from '../lib/prepareUploadImage';
 import { AtlasSpriteAnimator } from '../retreat/AtlasSpriteAnimator';
 import type {
@@ -30,6 +37,7 @@ const FIXED_MASTER_URL = '/api/showcase/fixed-master';
 const CURRENT_MASTER_FRAME_COUNT = 32;
 const CURRENT_MASTER_COLUMNS = 8;
 const CURRENT_MASTER_ROWS = 4;
+const COMPOSE_QUEUE_STORAGE_KEY = 'peter3d-admin-compose-queue-v1';
 const CAPTURE_EXPECTED_SECONDS = 65;
 const CAPTURE_STAGES = [
   {
@@ -115,6 +123,31 @@ function wait(milliseconds: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, milliseconds);
   });
+}
+
+function loadPersistedComposeQueue(): ComposeQueueItem[] {
+  try {
+    const stored = window.localStorage.getItem(COMPOSE_QUEUE_STORAGE_KEY);
+    const parsed: unknown = stored ? JSON.parse(stored) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((candidate) => {
+      if (
+        typeof candidate !== 'object'
+        || candidate === null
+        || !('teamId' in candidate)
+        || typeof candidate.teamId !== 'number'
+      ) return [];
+      return [{
+        teamId: candidate.teamId,
+        restart: 'restart' in candidate ? Boolean(candidate.restart) : false,
+        patchFrames: 'patchFrames' in candidate && Array.isArray(candidate.patchFrames)
+          ? candidate.patchFrames.filter((frame: unknown): frame is number => typeof frame === 'number')
+          : [],
+      }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 function isRetryableRequestError(error: unknown) {
@@ -389,20 +422,23 @@ export default function AdminPage() {
   const [teamDraft, setTeamDraft] = useState<TeamDraft>(EMPTY_DRAFT);
   const [toast, setToast] = useState('');
   const [savingTeam, setSavingTeam] = useState(false);
-  const [uploadingCapture, setUploadingCapture] = useState(false);
-  const [composingSprite, setComposingSprite] = useState(false);
   const [approvingSprite, setApprovingSprite] = useState(false);
   const [versions, setVersions] = useState<ShowcaseSpriteVersion[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [restoringVersionId, setRestoringVersionId] = useState<string | number | null>(null);
-  const [captureJob, setCaptureJob] = useState<{ teamId: number; startedAt: number } | null>(null);
-  const [captureElapsedSeconds, setCaptureElapsedSeconds] = useState(0);
-  const [generationJob, setGenerationJob] = useState<{ teamId: number; startedAt: number } | null>(null);
-  const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
+  const [batchFiles, setBatchFiles] = useState<Record<number, File | undefined>>({});
+  const [captureQueueTeamIds, setCaptureQueueTeamIds] = useState<number[]>([]);
+  const [captureJobs, setCaptureJobs] = useState<Record<number, number>>({});
+  const [batchCaptureRunning, setBatchCaptureRunning] = useState(false);
+  const [composeQueue, setComposeQueue] = useState<ComposeQueueItem[]>(loadPersistedComposeQueue);
+  const [reservedComposeJobs, setReservedComposeJobs] = useState<ComposeQueueItem[]>([]);
+  const [generationJobs, setGenerationJobs] = useState<Record<number, number>>({});
+  const [schedulerRevision, setSchedulerRevision] = useState(0);
+  const [jobClock, setJobClock] = useState(Date.now());
   const [selectedPatchFrames, setSelectedPatchFrames] = useState<number[]>([]);
   const characterInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const composeWorkflowTeamRef = useRef<number | null>(null);
+  const composeActiveTeamIdsRef = useRef(new Set<number>());
 
   const selected = useMemo(
     () => teams.find((team) => team.id === selectedId) ?? null,
@@ -411,18 +447,37 @@ export default function AdminPage() {
   const selectedSpriteUrl = activeSpriteUrl(selected);
   const fixedMaster = isFixedMaster(selected);
   const designReferenceReady = Boolean(correctedCaptureUrl(selected));
-  const captureActive = Boolean(
-    uploadingCapture && captureJob && selected?.id === captureJob.teamId,
-  );
+  const selectedCaptureStartedAt = selected ? captureJobs[selected.id] : undefined;
+  const captureActive = selectedCaptureStartedAt !== undefined;
+  const captureElapsedSeconds = selectedCaptureStartedAt === undefined
+    ? 0
+    : Math.max(0, Math.floor((jobClock - selectedCaptureStartedAt) / 1000));
   const currentCaptureStatus = captureStatus(selected);
   const capture = captureProgress(currentCaptureStatus, captureElapsedSeconds);
-  const generationActive = Boolean(
-    composingSprite && generationJob && selected?.id === generationJob.teamId,
+  const selectedGenerationStartedAt = selected ? generationJobs[selected.id] : undefined;
+  const generationActive = selectedGenerationStartedAt !== undefined;
+  const generationElapsedSeconds = selectedGenerationStartedAt === undefined
+    ? 0
+    : Math.max(0, Math.floor((jobClock - selectedGenerationStartedAt) / 1000));
+  const selectedComposeQueued = Boolean(
+    selected && composeQueue.some((job) => job.teamId === selected.id),
   );
+  const selectedCaptureQueued = Boolean(
+    selected && captureQueueTeamIds.includes(selected.id),
+  );
+  const selectedComposeBusy = generationActive || selectedComposeQueued;
+  const selectedCaptureBusy = captureActive || selectedCaptureQueued;
   const generationStatus = isGenerationStage(selected?.showcase_sprite_status ?? 'generating')
     ? selected?.showcase_sprite_status ?? 'generating'
     : 'generating';
   const generation = generationProgress(generationStatus, generationElapsedSeconds);
+  const attachedPhotoCount = Object.values(batchFiles).filter(Boolean).length;
+  const illustrationReadyTeams = teams.filter((team) => (
+    Boolean(correctedCaptureUrl(team))
+    && ['garment_review', 'failed'].includes(team.showcase_sprite_status)
+    && !captureJobs[team.id]
+  ));
+  const composeActiveCount = Object.keys(generationJobs).length;
   const qaProblemFrames = useMemo(
     () => problemFrameNumbers(selected?.showcase_sprite_quality),
     [selected?.showcase_sprite_quality],
@@ -506,97 +561,96 @@ export default function AdminPage() {
     );
   }, [selectedId, selected?.showcase_sprite_version_id, qaProblemFrameKey]);
 
-  useEffect(() => {
-    if (!captureJob) {
-      setCaptureElapsedSeconds(0);
-      return undefined;
-    }
-    const updateElapsed = () => {
-      setCaptureElapsedSeconds(Math.max(
-        0,
-        Math.floor((Date.now() - captureJob.startedAt) / 1000),
-      ));
-    };
-    updateElapsed();
-    const timer = window.setInterval(updateElapsed, 1000);
-    return () => window.clearInterval(timer);
-  }, [captureJob]);
+  const captureJobKey = Object.keys(captureJobs).sort().join(',');
+  const generationJobKey = Object.keys(generationJobs).sort().join(',');
 
   useEffect(() => {
-    if (!captureJob) return undefined;
+    if (!captureJobKey && !generationJobKey) return undefined;
+    setJobClock(Date.now());
+    const timer = window.setInterval(() => setJobClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [captureJobKey, generationJobKey]);
+
+  useEffect(() => {
+    const teamIds = [
+      ...new Set([
+        ...Object.keys(captureJobs).map(Number),
+        ...Object.keys(generationJobs).map(Number),
+      ]),
+    ];
+    if (!teamIds.length) return undefined;
     let active = true;
-    const pollCaptureStage = async () => {
-      try {
-        const team = await apiRequest<Team>(`/teams/${captureJob.teamId}`, {
-          cache: 'no-store',
-        });
-        if (active) {
-          setTeams((current) => current.map((item) => item.id === team.id ? team : item));
-        }
-      } catch (error) {
-        console.warn('일러스트 변환 단계를 확인하지 못했습니다.', error);
+    const pollActiveJobs = async () => {
+      const results = await Promise.allSettled(teamIds.map((teamId) => (
+        apiRequest<Team>(`/teams/${teamId}`, { cache: 'no-store' })
+      )));
+      if (!active) return;
+      const updates = new Map<number, Team>();
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') updates.set(result.value.id, result.value);
+      });
+      if (updates.size) {
+        setTeams((current) => current.map((team) => updates.get(team.id) ?? team));
       }
     };
+    void pollActiveJobs();
     const timer = window.setInterval(() => {
-      void pollCaptureStage();
+      void pollActiveJobs();
     }, 1500);
     return () => {
       active = false;
       window.clearInterval(timer);
     };
-  }, [captureJob]);
+  }, [captureJobKey, generationJobKey]);
 
   useEffect(() => {
-    if (!generationJob) {
-      setGenerationElapsedSeconds(0);
-      return undefined;
-    }
-    const updateElapsed = () => {
-      setGenerationElapsedSeconds(Math.max(
-        0,
-        Math.floor((Date.now() - generationJob.startedAt) / 1000),
-      ));
-    };
-    updateElapsed();
-    const timer = window.setInterval(updateElapsed, 1000);
-    return () => window.clearInterval(timer);
-  }, [generationJob]);
+    window.localStorage.setItem(
+      COMPOSE_QUEUE_STORAGE_KEY,
+      JSON.stringify(composeJobsForPersistence(composeQueue, reservedComposeJobs)),
+    );
+  }, [composeQueue, reservedComposeJobs]);
 
   useEffect(() => {
-    if (!generationJob) return undefined;
-    let active = true;
-    const pollGenerationStage = async () => {
-      try {
-        const team = await apiRequest<Team>(`/teams/${generationJob.teamId}`, {
-          cache: 'no-store',
-        });
-        if (active) {
-          setTeams((current) => current.map((item) => item.id === team.id ? team : item));
-        }
-      } catch (error) {
-        console.warn('32컷 생성 단계를 확인하지 못했습니다.', error);
-      }
-    };
-    void pollGenerationStage();
-    const timer = window.setInterval(() => {
-      void pollGenerationStage();
-    }, 2000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [generationJob]);
+    const resumable = teams
+      .filter((team) => isGenerationStage(team.showcase_sprite_status))
+      .map((team) => ({ teamId: team.id, restart: false, patchFrames: [] }));
+    if (resumable.length) enqueueComposeJobs(resumable);
+  }, [teams]);
 
   useEffect(() => {
-    if (composeWorkflowTeamRef.current !== null) return;
-    const activeTeam = teams.find((team) => isGenerationStage(team.showcase_sprite_status));
-    if (!activeTeam) return;
-    if (selectedId !== activeTeam.id) {
-      setSelectedId(activeTeam.id);
-      setTeamDraft(draftFromTeam(activeTeam));
-    }
-    void runComposeWorkflow(activeTeam.id, false);
-  }, [teams, selectedId]);
+    const { starting, remaining } = reserveComposeJobs(
+      composeQueue,
+      composeActiveTeamIdsRef.current.size,
+    );
+    if (!starting.length) return;
+    starting.forEach((job) => composeActiveTeamIdsRef.current.add(job.teamId));
+    setReservedComposeJobs((current) => [...current, ...starting]);
+    setComposeQueue(remaining);
+    starting.forEach((job) => {
+      void runComposeWorkflow(job.teamId, job.restart, job.patchFrames);
+    });
+  }, [composeQueue, schedulerRevision]);
+
+  function enqueueComposeJobs(jobs: ComposeQueueItem[]) {
+    setComposeQueue((current) => mergeComposeQueue(
+      current,
+      jobs,
+      composeActiveTeamIdsRef.current,
+    ));
+  }
+
+  function updateBatchFile(teamId: number, file?: File) {
+    setBatchFiles((current) => ({ ...current, [teamId]: file }));
+  }
+
+  function batchTeamStatus(team: Team) {
+    if (captureQueueTeamIds.includes(team.id)) return '일러스트 변환 대기';
+    if (captureJobs[team.id]) return spriteStatusLabel(captureStatus(team));
+    if (composeQueue.some((job) => job.teamId === team.id)) return '32컷 생성 대기';
+    if (generationJobs[team.id]) return spriteStatusLabel(team.showcase_sprite_status);
+    if (batchFiles[team.id]) return '사진 첨부 완료';
+    return spriteStatusLabel(team.showcase_sprite_status);
+  }
 
   function chooseTeam(team: Team) {
     setSelectedId(team.id);
@@ -623,13 +677,8 @@ export default function AdminPage() {
     }
   }
 
-  async function uploadCapturePhoto(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const image = characterInputRef.current?.files?.[0];
-    if (!selected || !image) return;
-    const teamId = selected.id;
-    setUploadingCapture(true);
-    setCaptureJob({ teamId, startedAt: Date.now() });
+  async function processCapturePhoto(teamId: number, image: File) {
+    setCaptureJobs((current) => ({ ...current, [teamId]: Date.now() }));
     setTeams((current) => current.map((team) => (
       team.id === teamId
         ? { ...team, showcase_capture_status: 'preparing', showcase_sprite_status: 'preparing', showcase_sprite_error: null }
@@ -649,12 +698,17 @@ export default function AdminPage() {
         body: form,
       });
       updateTeam(response.team);
-      if (characterInputRef.current) characterInputRef.current.value = '';
       if (response.can_process === false) {
-        showToast(response.quality?.summary || '촬영 품질 문제로 처리를 중단했습니다. 사진을 다시 촬영해주세요.');
-      } else {
-        showToast(`촬영 사진을 평면 일러스트로 변환해 32컷 디자인 참조를 준비했습니다${prepared.optimized ? ' · PNG 자동 최적화됨' : ''}`);
+        return {
+          ok: false,
+          message: response.quality?.summary || '촬영 품질 문제로 처리를 중단했습니다. 사진을 다시 촬영해주세요.',
+        };
       }
+      setBatchFiles((current) => ({ ...current, [teamId]: undefined }));
+      return {
+        ok: true,
+        message: `촬영 사진을 평면 일러스트로 변환했습니다${prepared.optimized ? ' · PNG 자동 최적화됨' : ''}`,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : '촬영 사진을 처리하지 못했습니다';
       setTeams((current) => current.map((team) => (
@@ -662,11 +716,82 @@ export default function AdminPage() {
           ? { ...team, showcase_capture_status: 'failed', showcase_sprite_status: 'failed', showcase_sprite_error: message }
           : team
       )));
-      showToast(message);
+      return { ok: false, message };
     } finally {
-      setUploadingCapture(false);
-      setCaptureJob(null);
+      setCaptureJobs((current) => {
+        const next = { ...current };
+        delete next[teamId];
+        return next;
+      });
     }
+  }
+
+  async function uploadCapturePhoto(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const image = characterInputRef.current?.files?.[0];
+    if (!selected || !image || selectedCaptureBusy) return;
+    const result = await processCapturePhoto(selected.id, image);
+    if (result.ok && characterInputRef.current) characterInputRef.current.value = '';
+    showToast(result.message);
+  }
+
+  async function processBatchCaptures() {
+    const pending = teams.flatMap((team) => {
+      const file = batchFiles[team.id];
+      if (!file || captureJobs[team.id] || isGenerationStage(team.showcase_sprite_status)) return [];
+      return [{ teamId: team.id, file }];
+    });
+    if (!pending.length || batchCaptureRunning) return;
+
+    setBatchCaptureRunning(true);
+    setCaptureQueueTeamIds(pending.map(({ teamId }) => teamId));
+    let cursor = 0;
+    let completed = 0;
+    let failed = 0;
+
+    const worker = async () => {
+      for (;;) {
+        const item = pending[cursor];
+        cursor += 1;
+        if (!item) return;
+        setCaptureQueueTeamIds((current) => current.filter((teamId) => teamId !== item.teamId));
+        const result = await processCapturePhoto(item.teamId, item.file);
+        if (result.ok) completed += 1;
+        else failed += 1;
+      }
+    };
+
+    try {
+      await Promise.all(
+        Array.from(
+          { length: Math.min(BATCH_WORKFLOW_CONCURRENCY, pending.length) },
+          () => worker(),
+        ),
+      );
+      await refreshTeams();
+      showToast(
+        failed
+          ? `일러스트 ${completed}개 완료 · ${failed}개 확인 필요`
+          : `${completed}개 조의 일러스트 변환을 완료했습니다`,
+      );
+    } finally {
+      setCaptureQueueTeamIds([]);
+      setBatchCaptureRunning(false);
+    }
+  }
+
+  function enqueueAllReadyTeams() {
+    const jobs = illustrationReadyTeams.map((team) => ({
+      teamId: team.id,
+      restart: true,
+      patchFrames: [],
+    }));
+    if (!jobs.length) {
+      showToast('32컷 생성 준비가 끝난 조가 없습니다');
+      return;
+    }
+    enqueueComposeJobs(jobs);
+    showToast(`${jobs.length}개 조를 32컷 대기열에 등록했습니다 · 2조씩 자동 실행합니다`);
   }
 
   async function getComposeStatusUntilAvailable(teamId: number) {
@@ -750,10 +875,7 @@ export default function AdminPage() {
   }
 
   async function runComposeWorkflow(teamId: number, restart: boolean, patchFrames: number[] = []) {
-    if (composeWorkflowTeamRef.current !== null) return;
-    composeWorkflowTeamRef.current = teamId;
-    setComposingSprite(true);
-    setGenerationJob({ teamId, startedAt: Date.now() });
+    setGenerationJobs((current) => ({ ...current, [teamId]: Date.now() }));
     setTeams((current) => current.map((team) => (
       team.id === teamId
         ? { ...team, showcase_sprite_status: 'generating', showcase_sprite_error: null }
@@ -766,6 +888,9 @@ export default function AdminPage() {
         : restart
           ? await startComposeUntilAvailable(teamId)
           : await getComposeStatusUntilAvailable(teamId);
+      setReservedComposeJobs((current) => current.map((job) => (
+        job.teamId === teamId ? { ...job, restart: false } : job
+      )));
 
       for (;;) {
         patchWorkflow = patchWorkflow || Boolean(response.frame_patch);
@@ -818,21 +943,26 @@ export default function AdminPage() {
       )));
       showToast(message);
     } finally {
-      composeWorkflowTeamRef.current = null;
-      setComposingSprite(false);
-      setGenerationJob(null);
+      composeActiveTeamIdsRef.current.delete(teamId);
+      setReservedComposeJobs((current) => current.filter((job) => job.teamId !== teamId));
+      setGenerationJobs((current) => {
+        const next = { ...current };
+        delete next[teamId];
+        return next;
+      });
+      setSchedulerRevision((current) => current + 1);
     }
   }
 
-  async function composeShowcaseSprite() {
+  function composeShowcaseSprite() {
     if (!selected) return;
-    await runComposeWorkflow(selected.id, true);
+    enqueueComposeJobs([{ teamId: selected.id, restart: true, patchFrames: [] }]);
   }
 
-  async function regenerateSelectedFrames() {
+  function regenerateSelectedFrames() {
     if (!selected || selectedPatchFrames.length === 0) return;
     const frames = [...selectedPatchFrames].sort((a, b) => a - b);
-    await runComposeWorkflow(selected.id, false, frames);
+    enqueueComposeJobs([{ teamId: selected.id, restart: false, patchFrames: frames }]);
   }
 
   function togglePatchFrame(frame: number, checked: boolean) {
@@ -915,6 +1045,79 @@ export default function AdminPage() {
 
         <section className="card editor-card">
           <h2>{selected ? `${selected.name} 관리` : '조를 선택하세요'}</h2>
+
+          <section className="batch-workflow-card" aria-label="21개 조 일괄 제작">
+            <header>
+              <div>
+                <span>일괄 제작</span>
+                <h3>1~21조 사진을 먼저 모두 등록하세요</h3>
+                <p>
+                  각 조 사진을 첨부한 뒤 일러스트를 2조씩 변환하고, 준비된 조 전체를
+                  32컷 대기열에 넣을 수 있습니다.
+                </p>
+              </div>
+              <strong>동시 작업 {BATCH_WORKFLOW_CONCURRENCY}조</strong>
+            </header>
+            <div className="batch-workflow-summary" aria-live="polite">
+              <div><b>{attachedPhotoCount}</b><span>사진 첨부</span></div>
+              <div><b>{captureQueueTeamIds.length + Object.keys(captureJobs).length}</b><span>일러스트 작업</span></div>
+              <div><b>{illustrationReadyTeams.length}</b><span>32컷 준비</span></div>
+              <div><b>{composeQueue.length + composeActiveCount}</b><span>32컷 대기·진행</span></div>
+            </div>
+            <div className="batch-team-list">
+              {teams.map((team) => {
+                const file = batchFiles[team.id];
+                const busy = Boolean(
+                  captureJobs[team.id]
+                  || generationJobs[team.id]
+                  || captureQueueTeamIds.includes(team.id)
+                  || composeQueue.some((job) => job.teamId === team.id)
+                  || isGenerationStage(team.showcase_sprite_status),
+                );
+                return (
+                  <label className="batch-team-row" key={team.id} data-busy={busy ? 'true' : 'false'}>
+                    <span className="batch-team-name">
+                      <i style={{ '--team-color': team.color } as CSSProperties} />
+                      {team.name}
+                    </span>
+                    <input
+                      key={`${team.id}-${file?.lastModified ?? 'empty'}`}
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      disabled={busy}
+                      onChange={(event) => updateBatchFile(team.id, event.target.files?.[0])}
+                    />
+                    <span className="batch-team-file" title={file?.name}>
+                      {file?.name || '사진 선택'}
+                    </span>
+                    <em>{batchTeamStatus(team)}</em>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="batch-workflow-actions">
+              <button
+                type="button"
+                className="primary"
+                disabled={!attachedPhotoCount || batchCaptureRunning}
+                onClick={() => { void processBatchCaptures(); }}
+              >
+                {batchCaptureRunning
+                  ? `일러스트 ${Object.keys(captureJobs).length}조 처리 중…`
+                  : `선택한 ${attachedPhotoCount}개 사진 일괄 변환`}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={!illustrationReadyTeams.length}
+                onClick={enqueueAllReadyTeams}
+              >
+                준비된 {illustrationReadyTeams.length}개 조 32컷 만들기
+              </button>
+              <span>32컷은 대기 순서대로 최대 2조씩 자동 실행됩니다.</span>
+            </div>
+          </section>
+
           <form className="form-grid" onSubmit={saveTeam}>
             <label>조 이름<input value={teamDraft.name} maxLength={30} required onChange={(event) => setTeamDraft({ ...teamDraft, name: event.target.value })} /></label>
             <label>대표 색상<input value={teamDraft.color} type="color" onChange={(event) => setTeamDraft({ ...teamDraft, color: event.target.value })} /></label>
@@ -942,8 +1145,8 @@ export default function AdminPage() {
                 </div>
                 <input ref={characterInputRef} type="file" accept="image/png,image/jpeg" required />
                 <div className="character-upload-actions">
-                  <button className="primary" disabled={!selected || uploadingCapture || composingSprite}>
-                    {uploadingCapture ? '일러스트 변환 중…' : '품질검사·일러스트 변환'}
+                  <button className="primary" disabled={!selected || selectedCaptureBusy || selectedComposeBusy}>
+                    {selectedCaptureBusy ? '일러스트 변환 중…' : '품질검사·일러스트 변환'}
                   </button>
                   <span className="capture-tip">{spriteStatusLabel(captureStatus(selected))}</span>
                 </div>
@@ -1077,10 +1280,12 @@ export default function AdminPage() {
               <button
                 type="button"
                 className="primary"
-                disabled={!selected || composingSprite || !designReferenceReady}
-                onClick={() => { void composeShowcaseSprite(); }}
+                disabled={!selected || selectedComposeBusy || !designReferenceReady}
+                onClick={composeShowcaseSprite}
               >
-                {composingSprite
+                {selectedComposeQueued
+                  ? '32컷 생성 대기 중…'
+                  : generationActive
                   ? `${generation.stage.label}…`
                   : selectedSpriteUrl
                     ? 'QA 반영해 32컷 다시 생성'
@@ -1242,10 +1447,10 @@ export default function AdminPage() {
                       <button
                         type="button"
                         className="primary"
-                        disabled={composingSprite || selectedPatchFrames.length === 0}
-                        onClick={() => { void regenerateSelectedFrames(); }}
+                        disabled={selectedComposeBusy || selectedPatchFrames.length === 0}
+                        onClick={regenerateSelectedFrames}
                       >
-                        {composingSprite
+                        {selectedComposeBusy
                           ? '문제 컷 교체 중…'
                           : `선택한 ${selectedPatchFrames.length}컷만 재생성`}
                       </button>
