@@ -66,7 +66,7 @@ GARMENT_TEMPLATE_SIZE = (1240, 1754)
 CAPTURE_ILLUSTRATION_SIZE = "1248x1760"
 CAPTURE_ILLUSTRATION_TIMEOUT_SECONDS = 180.0
 CAPTURE_ILLUSTRATION_TEMPLATE_PATH = (
-    ROOT / "frontend" / "public" / "assets" / "showcase" / "peter-print-template.png"
+    ROOT / "runtime-assets" / "peter-print-template.png"
 )
 GARMENT_PART_CROPS = {
     "upper": (0.12, 0.34, 0.88, 0.62),

@@ -1921,11 +1921,16 @@ class Peter3DBackendTests(unittest.TestCase):
         self.assertEqual(response.media_type, "image/png")
         self.assertEqual(response.headers["cache-control"], "public, max-age=3600")
 
-    def test_vercel_function_bundle_includes_fixed_peter_master(self):
+    def test_vercel_function_bundle_includes_ai_reference_assets(self):
         config = json.loads((backend_main.ROOT / "vercel.json").read_text())
         function = config["functions"]["api/index.py"]
         self.assertEqual(function["includeFiles"], "runtime-assets/**")
         self.assertTrue(backend_main.SHOWCASE_SAFE_MASTER_PATH.is_file())
+        self.assertEqual(
+            backend_main.CAPTURE_ILLUSTRATION_TEMPLATE_PATH.parent,
+            backend_main.ROOT / "runtime-assets",
+        )
+        self.assertTrue(backend_main.CAPTURE_ILLUSTRATION_TEMPLATE_PATH.is_file())
 
 
 
